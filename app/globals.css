@@ -192,3 +192,60 @@
 .react-flow__handle-bottom {
   bottom: -8px !important;
 }
+
+/* Cursor styling for React Flow */
+.react-flow {
+  cursor: pointer !important;
+}
+
+.react-flow__pane {
+  cursor: pointer !important;
+}
+
+.react-flow__pane.dragging {
+  cursor: grabbing !important;
+}
+
+.react-flow__pane.dragging * {
+  cursor: grabbing !important;
+}
+
+/* Ensure nodes and edges have pointer cursor */
+.react-flow__node {
+  cursor: pointer !important;
+}
+
+.react-flow__node * {
+  cursor: pointer !important;
+}
+
+.react-flow__edge {
+  cursor: pointer !important;
+}
+
+.react-flow__edge * {
+  cursor: pointer !important;
+}
+
+/* Handle cursor for connection points */
+.react-flow__handle {
+  cursor: crosshair !important;
+}
+
+/* Override any conflicting cursor styles */
+.react-flow__viewport {
+  cursor: pointer !important;
+}
+
+.react-flow__viewport.dragging {
+  cursor: grabbing !important;
+}
+
+/* Ensure proper cursor during different states */
+.react-flow__pane:not(.dragging) {
+  cursor: pointer !important;
+}
+
+.react-flow__pane:not(.dragging) * {
+  cursor: pointer !important;
+}

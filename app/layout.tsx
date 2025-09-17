@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { ReactFlowProvider } from '@xyflow/react'
+import { Toaster } from '@/components/ui/sonner'
 
 export const metadata: Metadata = {
   title: 'Magic Flow',
@@ -22,6 +23,7 @@ export default function RootLayout({
         <ReactFlowProvider>
           {children}
         </ReactFlowProvider>
+        <Toaster />
         <Analytics />
       </body>
     </html>

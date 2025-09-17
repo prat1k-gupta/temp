@@ -15,6 +15,8 @@ import {
   type Node,
   BackgroundVariant,
   useReactFlow,
+  ReactFlowProvider,
+  Panel,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
@@ -40,6 +42,7 @@ import { Button } from "@/components/ui/button"
 import { Download, Save, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { toast } from "sonner"
 
 // Modular imports
 import type { 
@@ -47,7 +50,7 @@ import type {
   NodeData, 
   ButtonData, 
   OptionData, 
-  ContextMenuState, 
+  ContextMenuState,
   ConnectionMenuState, 
   Coordinates 
 } from "@/types"
@@ -97,17 +100,6 @@ const initialNodes: Node[] = [
     position: { x: 250, y: 25 },
     data: { label: "Start", platform: "web" },
   },
-  {
-    id: "2",
-    type: "question",
-    position: { x: 250, y: 150 },
-    data: {
-      label: "Welcome Question",
-      question: "Hello! How can I help you today?",
-      characterLimit: 160,
-      platform: "web",
-    },
-  },
 ]
 
 const initialEdges: Edge[] = [
@@ -124,13 +116,23 @@ export default function MagicFlow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
     y: 0,
+  })
+  const [nodeContextMenu, setNodeContextMenu] = useState<{
+    isOpen: boolean
+    x: number
+    y: number
+    nodeId: string | null
+  }>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    nodeId: null,
   })
   const [draggedNodeType, setDraggedNodeType] = useState<string | null>(null)
   const [connectionMenu, setConnectionMenu] = useState<ConnectionMenuState>({
@@ -145,48 +147,140 @@ export default function MagicFlow() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [nodeToFocus, setNodeToFocus] = useState<string | null>(null)
+  const [clipboard, setClipboard] = useState<{ nodes: Node[], edges: Edge[] } | null>(null)
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([])
+  const [pastePosition, setPastePosition] = useState<{ x: number, y: number } | null>(null)
 
-  const { screenToFlowPosition, fitView, setCenter, getViewport, getNode } = useReactFlow();
+  const { screenToFlowPosition, fitView, getNodes, getEdges } = useReactFlow();
 
-  const focusNode = useCallback(
-    (nodeId: string) => {
-      const node = nodes.find((n) => n.id === nodeId);
-      if (node) {
-        // Use fitView to optimally show the specific node
-        fitView({ 
-          nodes: [{ id: nodeId }], 
-          duration: 1200,
-          padding: 0.2,
-          minZoom: 0.5,
-          maxZoom: 2.0
-        });
-        // Also select the node to highlight it
-        setSelectedNode(node);
-        setIsPropertiesPanelOpen(true);
-      }
-    },
-    [nodes, fitView, setSelectedNode, setIsPropertiesPanelOpen]
-  );
 
   const deleteNode = useCallback(
     (nodeId: string) => {
+      const nodeToDelete = nodes.find(n => n.id === nodeId)
       setNodes((nds) => nds.filter((n) => n.id !== nodeId))
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null)
         setIsPropertiesPanelOpen(false)
       }
+      
+      // Show toast notification
+      if (nodeToDelete) {
+        toast.success(`"${nodeToDelete.data.label || nodeToDelete.type}" deleted`)
+      }
     },
-    [setNodes, setEdges, selectedNode, setIsPropertiesPanelOpen],
+    [setNodes, setEdges, selectedNode, setIsPropertiesPanelOpen, nodes],
   )
 
-  const deleteEdge = useCallback(
-    (edgeId: string) => {
-      setEdges((eds) => eds.filter((e) => e.id !== edgeId))
-      setSelectedEdge(null)
-    },
-    [setEdges],
-  )
+  const copyNodes = useCallback(() => {
+    if (selectedNodes.length === 0) return
+    
+    // Get all edges that connect the selected nodes
+    const selectedNodeIds = selectedNodes.map(node => node.id)
+    const connectedEdges = edges.filter(edge => 
+      selectedNodeIds.includes(edge.source) && selectedNodeIds.includes(edge.target)
+    )
+    
+    setClipboard({
+      nodes: selectedNodes.map(node => ({ ...node })),
+      edges: connectedEdges.map(edge => ({ ...edge }))
+    })
+    
+    // Show toast notification for copy
+    toast.success(`${selectedNodes.length} node${selectedNodes.length > 1 ? 's' : ''} copied to clipboard`)
+    
+    console.log("[v0] Copied nodes:", selectedNodes.length, "edges:", connectedEdges.length)
+  }, [selectedNodes, edges])
+
+  const pasteNodes = useCallback((cursorPosition?: { x: number, y: number }) => {
+    if (!clipboard) return
+    
+    const nodeIdMap = new Map<string, string>()
+    
+    // Calculate the center of the original nodes for offset calculation
+    const originalCenter = {
+      x: clipboard.nodes.reduce((sum, node) => sum + node.position.x, 0) / clipboard.nodes.length,
+      y: clipboard.nodes.reduce((sum, node) => sum + node.position.y, 0) / clipboard.nodes.length
+    }
+    
+    // Use cursor position if provided, otherwise use stored paste position or default offset
+    let targetPosition: { x: number, y: number }
+    if (cursorPosition) {
+      targetPosition = cursorPosition
+    } else if (pastePosition) {
+      targetPosition = pastePosition
+    } else {
+      targetPosition = { x: originalCenter.x + 50, y: originalCenter.y + 50 }
+    }
+    
+    // Create new nodes with updated IDs and positions relative to cursor
+    const newNodes = clipboard.nodes.map(node => {
+      const newNodeId = `${node.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      nodeIdMap.set(node.id, newNodeId)
+      
+      // Calculate offset from original center to this node
+      const offsetFromCenter = {
+        x: node.position.x - originalCenter.x,
+        y: node.position.y - originalCenter.y
+      }
+      
+      return {
+        ...node,
+        id: newNodeId,
+        position: {
+          x: targetPosition.x + offsetFromCenter.x,
+          y: targetPosition.y + offsetFromCenter.y
+        },
+        data: {
+          ...node.data,
+          id: newNodeId
+        }
+      }
+    })
+    
+    // Create new edges with updated node IDs
+    const newEdges = clipboard.edges.map(edge => {
+      const newSourceId = nodeIdMap.get(edge.source)
+      const newTargetId = nodeIdMap.get(edge.target)
+      
+      if (!newSourceId || !newTargetId) return null
+      
+      return {
+        ...edge,
+        id: `e${newSourceId}-${newTargetId}-${Date.now()}`,
+        source: newSourceId,
+        target: newTargetId
+      }
+    }).filter(Boolean) as Edge[]
+    
+    // Add new nodes and edges
+    setNodes(nds => [...nds, ...newNodes])
+    setEdges(eds => [...eds, ...newEdges])
+    
+    // Select the newly pasted nodes
+    setSelectedNodes(newNodes)
+    setSelectedNode(newNodes[0] || null)
+    setIsPropertiesPanelOpen(true)
+    
+    // Focus on the first pasted node
+    if (newNodes.length > 0) {
+      setNodeToFocus(newNodes[0].id)
+    }
+    
+    // No toast for paste - user requested only copy, delete, and multiple selection
+    
+    console.log("[v0] Pasted nodes:", newNodes.length, "edges:", newEdges.length, "at position:", targetPosition)
+  }, [clipboard, setNodes, setEdges, pastePosition])
+
+  const selectAllNodes = useCallback(() => {
+    const allNodes = getNodes()
+    setSelectedNodes(allNodes)
+    setSelectedNode(allNodes[0] || null)
+    setIsPropertiesPanelOpen(true)
+    
+    // No toast for select all - user requested only copy, delete, and multiple selection
+  }, [getNodes])
+
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -445,6 +539,8 @@ export default function MagicFlow() {
         setDraggedNodeType(null)
         // Request focus on the newly created node
         setNodeToFocus(newNodeId)
+        
+        // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
         console.error(`[v0] Error creating dragged node ${draggedNodeType}:`, error)
         setDraggedNodeType(null)
@@ -472,42 +568,50 @@ export default function MagicFlow() {
     setContextMenu({ isOpen: false, x: 0, y: 0 })
   }, [])
 
-  const addComment = useCallback(
-    (x: number, y: number) => {
-      const newNodeId = `comment-${Date.now()}`
-      const position = { x: x - 100, y: y - 50 }
-      
-      const newNode = createCommentNode(
-        platform,
-        position,
-        newNodeId,
-        (updates: any) => {
-          console.log("[v0] Comment inline update:", newNodeId, updates)
-          setNodes((nds) =>
-            nds.map((node) =>
-              node.id === newNodeId ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() } : node,
-            ),
-          )
-        },
-        () => deleteNode(newNodeId)
-      )
-      
-      setNodes((nds) => [...nds, newNode])
-      closeContextMenu()
-      // Request focus on the newly created comment node
-      setNodeToFocus(newNodeId)
-    },
-    [setNodes, closeContextMenu, deleteNode, platform],
-  )
+  const closeNodeContextMenu = useCallback(() => {
+    setNodeContextMenu({ isOpen: false, x: 0, y: 0, nodeId: null })
+  }, [])
 
-  const addNodeFromMenu = useCallback(
-    (nodeType: string, x: number, y: number) => {
-      const position = { x: x - 100, y: y - 50 }
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault()
+    event.stopPropagation()
+    
+    setNodeContextMenu({
+      isOpen: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: node.id,
+    })
+  }, [])
+
+  const addNodeAtPosition = useCallback(
+    (nodeType: string) => {
+      const { x: flowX, y: flowY } = screenToFlowPosition({
+        x: contextMenu.x,
+        y: contextMenu.y,
+      })
+      
+      const position = { x: flowX, y: flowY }
       const newNodeId = `${nodeType}-${Date.now()}`
       let newNode: Node
 
       try {
         switch (nodeType) {
+          case "comment":
+            newNode = createCommentNode(
+              platform,
+              position,
+              newNodeId,
+              (updates: any) => {
+                setNodes((nds) =>
+                  nds.map((node) =>
+                    node.id === newNodeId ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() } : node,
+                  ),
+                )
+              },
+              () => deleteNode(newNodeId)
+            )
+            break
           case "question":
             newNode = createNode("question", platform, position, newNodeId)
             break
@@ -524,13 +628,14 @@ export default function MagicFlow() {
 
         setNodes((nds) => [...nds, newNode])
         closeContextMenu()
-        // Request focus on the newly created node
         setNodeToFocus(newNodeId)
+        
+        // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
         console.error(`[v0] Error creating node ${nodeType}:`, error)
       }
     },
-    [setNodes, closeContextMenu, platform],
+    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, deleteNode],
   )
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -538,10 +643,32 @@ export default function MagicFlow() {
     setIsPropertiesPanelOpen(true)
   }, [])
 
+  const onSelectionChange = useCallback(({ nodes: selectedNodesFromFlow }: { nodes: Node[], edges: Edge[] }) => {
+    // Update our selected nodes state
+    setSelectedNodes(selectedNodesFromFlow)
+    
+    // Handle node selection
+    if (selectedNodesFromFlow.length === 1) {
+      setSelectedNode(selectedNodesFromFlow[0])
+      setIsPropertiesPanelOpen(true)
+    } else if (selectedNodesFromFlow.length > 1) {
+      setSelectedNode(null)
+      setIsPropertiesPanelOpen(true)
+    } else {
+      setSelectedNode(null)
+      setIsPropertiesPanelOpen(false)
+    }
+    
+    // Show toast notification for selection changes (but not for single node clicks)
+    if (selectedNodesFromFlow.length > 1) {
+      toast.info(`${selectedNodesFromFlow.length} nodes selected`)
+    }
+  }, [])
+
   const onPaneClick = useCallback(
     (event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
       setSelectedNode(null)
-      setSelectedEdge(null)
+      setSelectedNodes([])
       setIsPropertiesPanelOpen(false)
 
       const currentTime = Date.now()
@@ -552,10 +679,7 @@ export default function MagicFlow() {
       }
       
       const reactFlowBounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
-      const clickPosition: Coordinates = {
-        x: (event as any).clientX - reactFlowBounds.left,
-        y: (event as any).clientY - reactFlowBounds.top,
-      }
+      const clickPosition: Coordinates = getClientCoordinates(event)
 
       // Double-click detected if within threshold
       if (isDoubleClick(currentTime, lastClickTime, clickPosition, lastClickPosition, 
@@ -563,10 +687,7 @@ export default function MagicFlow() {
                        INTERACTION_THRESHOLDS.doubleClick.distance)) {
         console.log("[v0] Double-click detected at:", clickPosition)
 
-        const position = {
-          x: clickPosition.x - 100, // Center the node
-          y: clickPosition.y - 50, // Center the node
-        }
+        const position = screenToFlowPosition(clickPosition)
 
         const newNodeId = `comment-${Date.now()}`
         const newNode = createCommentNode(
@@ -589,12 +710,14 @@ export default function MagicFlow() {
         console.log("[v0] Added comment node at position:", position)
         // Request focus on the newly created comment node
         setNodeToFocus(newNodeId)
+        
+        // No toast for comment creation - user requested only copy, delete, and multiple selection
       }
 
       setLastClickTime(currentTime)
       setLastClickPosition(clickPosition)
     },
-    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform],
+    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform, setSelectedNodes],
   )
 
   const handleNodeTypeSelection = useCallback(
@@ -661,6 +784,8 @@ export default function MagicFlow() {
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
       // Request focus on the newly created node
       setNodeToFocus(newNodeId)
+      
+      // No toast for node connection - user requested only copy, delete, and multiple selection
     },
     [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform],
   )
@@ -768,12 +893,6 @@ export default function MagicFlow() {
     [isConnecting, connectingFrom],
   )
 
-  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
-    event.stopPropagation()
-    setSelectedEdge(edge)
-    setSelectedNode(null)
-    setIsPropertiesPanelOpen(false)
-  }, [])
 
   useEffect(() => {
     const handleResizeObserverError = (e: ErrorEvent) => {
@@ -791,21 +910,71 @@ export default function MagicFlow() {
     }
   }, [])
 
+  // Keyboard shortcuts for copy-paste
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Delete" || event.key === "Backspace") {
-        if (selectedEdge) {
-          event.preventDefault()
-          deleteEdge(selectedEdge.id)
+      // Check if we're in an input field or textarea
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+        return
+      }
+
+      const isCtrlOrCmd = event.ctrlKey || event.metaKey
+      
+      if (isCtrlOrCmd) {
+        switch (event.key.toLowerCase()) {
+          case 'c':
+            event.preventDefault()
+            copyNodes()
+            break
+          case 'v':
+            event.preventDefault()
+            // Get current mouse position for paste
+            const reactFlowElement = document.querySelector('.react-flow')
+            if (reactFlowElement) {
+              const rect = reactFlowElement.getBoundingClientRect()
+              const centerX = rect.left + rect.width / 2
+              const centerY = rect.top + rect.height / 2
+              const flowPosition = screenToFlowPosition({ x: centerX, y: centerY })
+              pasteNodes(flowPosition)
+            } else {
+              pasteNodes()
+            }
+            break
+          case 'a':
+            event.preventDefault()
+            selectAllNodes()
+            break
         }
       }
     }
 
-    document.addEventListener("keydown", handleKeyDown)
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener("keydown", handleKeyDown)
+      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedEdge, deleteEdge])
+  }, [copyNodes, pasteNodes, selectAllNodes, screenToFlowPosition])
+
+  // Close context menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenu.isOpen) {
+        closeContextMenu()
+      }
+      if (nodeContextMenu.isOpen) {
+        closeNodeContextMenu()
+      }
+    }
+
+    if (contextMenu.isOpen || nodeContextMenu.isOpen) {
+      document.addEventListener("click", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("click", handleClickOutside)
+    }
+  }, [contextMenu.isOpen, nodeContextMenu.isOpen, closeContextMenu, closeNodeContextMenu])
+
 
   const convertNodesToPlatform = useCallback(
     (newPlatform: Platform) => {
@@ -939,51 +1108,26 @@ export default function MagicFlow() {
   // Handle focusing on newly created nodes
   useEffect(() => {
     if (nodeToFocus) {
-      // Try to get the node from ReactFlow's internal state first
-      const reactFlowNode = getNode(nodeToFocus)
-      const stateNode = nodes.find(n => n.id === nodeToFocus)
-      const node = reactFlowNode || stateNode
+      const node = nodes.find(n => n.id === nodeToFocus)
       
       if (node) {
-        // Use a small delay to ensure the node is fully rendered
+        // Small delay to ensure the node is fully rendered
         setTimeout(() => {
-          // Use fitView to optimally show the specific node
           fitView({ 
             nodes: [{ id: nodeToFocus }], 
             duration: 1200,
-            padding: 0.2, // 20% padding around the node
-            minZoom: 0.5,  // Minimum zoom level
-            maxZoom: 2.0   // Maximum zoom level
+            padding: 0.2,
+            minZoom: 0.5,
+            maxZoom: 2.0
           })
           setSelectedNode(node)
           setIsPropertiesPanelOpen(true)
         }, 100)
-        setNodeToFocus(null) // Reset the focus request
-      } else {
-        // If node not found, try again after a short delay
-        setTimeout(() => {
-          const retryReactFlowNode = getNode(nodeToFocus)
-          const retryStateNode = nodes.find(n => n.id === nodeToFocus)
-          const retryNode = retryReactFlowNode || retryStateNode
-          
-          if (retryNode) {
-            fitView({ 
-              nodes: [{ id: nodeToFocus }], 
-              duration: 1200,
-              padding: 0.2,
-              minZoom: 0.5,
-              maxZoom: 2.0
-            })
-            setSelectedNode(retryNode)
-            setIsPropertiesPanelOpen(true)
-            setNodeToFocus(null)
-          } else {
-            setNodeToFocus(null) // Clear the focus request to prevent infinite retries
-          }
-        }, 200)
       }
+      
+      setNodeToFocus(null)
     }
-  }, [nodes, nodeToFocus, setCenter, setSelectedNode, setIsPropertiesPanelOpen, getNode])
+  }, [nodes, nodeToFocus, fitView, setSelectedNode, setIsPropertiesPanelOpen])
 
   return (
     <div className="h-screen flex bg-background">
@@ -1032,7 +1176,6 @@ export default function MagicFlow() {
               .map((node) => {
                 return {
                   ...node,
-                  selected: selectedNode?.id === node.id,
                   data: {
                     ...node.data,
                     id: node.id,
@@ -1054,22 +1197,22 @@ export default function MagicFlow() {
               })
               .map((edge) => ({
                 ...edge,
-                selected: selectedEdge?.id === edge.id,
                 style: {
                   ...edge.style,
-                  strokeWidth: selectedEdge?.id === edge.id ? 3 : 2,
-                  stroke: selectedEdge?.id === edge.id ? "#ef4444" : "#6366f1",
+                  strokeWidth: 2,
+                  stroke: "#6366f1",
                 },
               }))}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
-            onEdgeClick={onEdgeClick}
+            onNodeContextMenu={onNodeContextMenu}
             onPaneClick={onPaneClick}
             onPaneContextMenu={onPaneContextMenu}
             onDragOver={onDragOver}
             onDrop={onDrop}
+            onSelectionChange={onSelectionChange}
             nodeTypes={nodeTypes}
             fitView
             className="bg-background"
@@ -1083,6 +1226,8 @@ export default function MagicFlow() {
             }}
             onConnectStart={onConnectStart}
             onConnectEnd={onConnectEnd}
+            deleteKeyCode={["Backspace", "Delete"]}
+            multiSelectionKeyCode={["Control", "Meta"]}
           >
             <Controls className="bg-card border-border shadow-lg" />
             <MiniMap
@@ -1114,15 +1259,59 @@ export default function MagicFlow() {
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onMouseLeave={closeContextMenu}
           >
+            {selectedNodes.length > 0 && (
+              <>
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    copyNodes()
+                    closeContextMenu()
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy {selectedNodes.length > 1 ? `(${selectedNodes.length})` : ''}
+                </button>
+                <div className="border-t border-border my-1" />
+              </>
+            )}
+            {clipboard && (
+              <button
+                className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                onClick={() => {
+                  const flowPosition = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y })
+                  pasteNodes(flowPosition)
+                  closeContextMenu()
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Paste Here
+              </button>
+            )}
+            {selectedNodes.length > 0 && (
+              <>
+                <div className="border-t border-border my-1" />
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    selectAllNodes()
+                    closeContextMenu()
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Select All
+                </button>
+                <div className="border-t border-border my-1" />
+              </>
+            )}
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => {
-                const { x: flowX, y: flowY } = screenToFlowPosition({
-                  x: contextMenu.x,
-                  y: contextMenu.y,
-                })
-                addComment(flowX, flowY)
-              }}
+              onClick={() => addNodeAtPosition("comment")}
             >
               <MessageSquareText className="w-4 h-4" />
               Add Comment
@@ -1130,24 +1319,82 @@ export default function MagicFlow() {
             <div className="border-t border-border my-1" />
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeFromMenu("question", contextMenu.x, contextMenu.y)}
+              onClick={() => addNodeAtPosition("question")}
             >
               <MessageCircle className="w-4 h-4" />
               Add Question
             </button>
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeFromMenu("quickReply", contextMenu.x, contextMenu.y)}
+              onClick={() => addNodeAtPosition("quickReply")}
             >
               <MessageSquare className="w-4 h-4" />
               Add Quick Reply
             </button>
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeFromMenu("whatsappList", contextMenu.x, contextMenu.y)}
+              onClick={() => addNodeAtPosition("whatsappList")}
             >
               <List className="w-4 h-4" />
               Add WhatsApp List
+            </button>
+          </div>
+        )}
+
+        {nodeContextMenu.isOpen && (
+          <div
+            className="fixed bg-card border border-border rounded-md shadow-lg py-2 z-50 min-w-[160px]"
+            style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
+            onMouseLeave={closeNodeContextMenu}
+          >
+            <button
+              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+              onClick={() => {
+                const node = nodes.find(n => n.id === nodeContextMenu.nodeId)
+                if (node) {
+                  setSelectedNodes([node])
+                  copyNodes()
+                }
+                closeNodeContextMenu()
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Copy Node
+            </button>
+            {clipboard && (
+              <>
+                <div className="border-t border-border my-1" />
+                <button
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    const flowPosition = screenToFlowPosition({ x: nodeContextMenu.x, y: nodeContextMenu.y })
+                    pasteNodes(flowPosition)
+                    closeNodeContextMenu()
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Paste Here
+                </button>
+              </>
+            )}
+            <div className="border-t border-border my-1" />
+            <button
+              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2 text-destructive"
+              onClick={() => {
+                if (nodeContextMenu.nodeId) {
+                  deleteNode(nodeContextMenu.nodeId)
+                }
+                closeNodeContextMenu()
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete Node
             </button>
           </div>
         )}
@@ -1165,7 +1412,7 @@ export default function MagicFlow() {
 
       <div
         className={`transition-all duration-300 ease-in-out ${
-          isPropertiesPanelOpen && selectedNode ? "w-80" : selectedEdge ? "w-80" : "w-0"
+          isPropertiesPanelOpen ? "w-80" : "w-0"
         } overflow-hidden bg-background border-l border-border`}
       >
         {selectedNode && (
@@ -1179,22 +1426,77 @@ export default function MagicFlow() {
             <PropertiesPanel selectedNode={selectedNode} platform={platform} onNodeUpdate={updateNodeData} />
           </div>
         )}
-        {selectedEdge && !selectedNode && (
+        {!selectedNode && isPropertiesPanelOpen && (
           <div className="w-80">
             <div className="p-4 border-b border-border flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Edge Selected</h2>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedEdge(null)} className="h-8 w-8 p-0">
-                <span className="sr-only">Close edge panel</span>×
+              <h2 className="text-lg font-semibold text-foreground">Multiple Selection</h2>
+              <Button variant="ghost" size="sm" onClick={() => setIsPropertiesPanelOpen(false)} className="h-8 w-8 p-0">
+                <span className="sr-only">Close properties panel</span>×
               </Button>
             </div>
             <div className="p-4 space-y-4">
               <div className="text-sm text-muted-foreground">
-                Connection selected. Press <kbd className="px-2 py-1 bg-muted rounded text-xs">Delete</kbd> or{" "}
-                <kbd className="px-2 py-1 bg-muted rounded text-xs">Backspace</kbd> to remove this connection.
+                {selectedNodes.length} nodes selected
               </div>
-              <Button variant="destructive" size="sm" onClick={() => deleteEdge(selectedEdge.id)} className="w-full">
-                Delete Connection
-              </Button>
+              
+              <div className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={copyNodes}
+                  className="w-full justify-start"
+                  disabled={selectedNodes.length === 0}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy Selected
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    const reactFlowElement = document.querySelector('.react-flow')
+                    if (reactFlowElement) {
+                      const rect = reactFlowElement.getBoundingClientRect()
+                      const centerX = rect.left + rect.width / 2
+                      const centerY = rect.top + rect.height / 2
+                      const flowPosition = screenToFlowPosition({ x: centerX, y: centerY })
+                      pasteNodes(flowPosition)
+                    } else {
+                      pasteNodes()
+                    }
+                  }}
+                  className="w-full justify-start"
+                  disabled={!clipboard}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Paste at Center
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={selectAllNodes}
+                  className="w-full justify-start"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Select All
+                </Button>
+              </div>
+              
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div>Keyboard shortcuts:</div>
+                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+C</kbd> Copy</div>
+                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+V</kbd> Paste</div>
+                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+A</kbd> Select All</div>
+                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Delete</kbd> Delete Selected</div>
+              </div>
             </div>
           </div>
         )}

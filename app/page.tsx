@@ -99,6 +99,8 @@ const initialNodes: Node[] = [
     type: "start",
     position: { x: 250, y: 25 },
     data: { label: "Start", platform: "web" },
+    draggable: false,
+    selectable: false,
   },
 ]
 
@@ -113,7 +115,7 @@ const initialEdges: Edge[] = [
 ]
 
 export default function MagicFlow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
@@ -153,10 +155,34 @@ export default function MagicFlow() {
 
   const { screenToFlowPosition, fitView, getNodes, getEdges } = useReactFlow();
 
+  // Custom onNodesChange to prevent deletion of start nodes
+  const onNodesChange = useCallback((changes: any[]) => {
+    // Filter out deletion changes for start nodes
+    const filteredChanges = changes.filter(change => {
+      if (change.type === 'remove') {
+        const nodeToRemove = nodes.find(n => n.id === change.id)
+        if (nodeToRemove?.type === 'start') {
+          toast.error("Start node cannot be deleted")
+          return false
+        }
+      }
+      return true
+    })
+    
+    // Apply the filtered changes
+    onNodesChangeOriginal(filteredChanges)
+  }, [nodes, onNodesChangeOriginal])
 
   const deleteNode = useCallback(
     (nodeId: string) => {
       const nodeToDelete = nodes.find(n => n.id === nodeId)
+      
+      // Prevent deletion of start nodes
+      if (nodeToDelete?.type === "start") {
+        toast.error("Start node cannot be deleted")
+        return
+      }
+      
       setNodes((nds) => nds.filter((n) => n.id !== nodeId))
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
       if (selectedNode?.id === nodeId) {
@@ -175,21 +201,33 @@ export default function MagicFlow() {
   const copyNodes = useCallback(() => {
     if (selectedNodes.length === 0) return
     
-    // Get all edges that connect the selected nodes
-    const selectedNodeIds = selectedNodes.map(node => node.id)
+    // Filter out start nodes from copying
+    const copyableNodes = selectedNodes.filter(node => node.type !== "start")
+    
+    if (copyableNodes.length === 0) {
+      toast.error("Start nodes cannot be copied")
+      return
+    }
+    
+    if (copyableNodes.length !== selectedNodes.length) {
+      toast.warning("Start nodes were excluded from copy operation")
+    }
+    
+    // Get all edges that connect the copyable nodes
+    const copyableNodeIds = copyableNodes.map(node => node.id)
     const connectedEdges = edges.filter(edge => 
-      selectedNodeIds.includes(edge.source) && selectedNodeIds.includes(edge.target)
+      copyableNodeIds.includes(edge.source) && copyableNodeIds.includes(edge.target)
     )
     
     setClipboard({
-      nodes: selectedNodes.map(node => ({ ...node })),
+      nodes: copyableNodes.map(node => ({ ...node })),
       edges: connectedEdges.map(edge => ({ ...edge }))
     })
     
     // Show toast notification for copy
-    toast.success(`${selectedNodes.length} node${selectedNodes.length > 1 ? 's' : ''} copied to clipboard`)
+    toast.success(`${copyableNodes.length} node${copyableNodes.length > 1 ? 's' : ''} copied to clipboard`)
     
-    console.log("[v0] Copied nodes:", selectedNodes.length, "edges:", connectedEdges.length)
+    console.log("[v0] Copied nodes:", copyableNodes.length, "edges:", connectedEdges.length)
   }, [selectedNodes, edges])
 
   const pasteNodes = useCallback((cursorPosition?: { x: number, y: number }) => {
@@ -274,8 +312,10 @@ export default function MagicFlow() {
 
   const selectAllNodes = useCallback(() => {
     const allNodes = getNodes()
-    setSelectedNodes(allNodes)
-    setSelectedNode(allNodes[0] || null)
+    // Filter out start nodes from selection
+    const selectableNodes = allNodes.filter(node => node.type !== "start")
+    setSelectedNodes(selectableNodes)
+    setSelectedNode(selectableNodes[0] || null)
     setIsPropertiesPanelOpen(true)
     
     // No toast for select all - user requested only copy, delete, and multiple selection
@@ -339,6 +379,7 @@ export default function MagicFlow() {
                     type: newType,
                     data: {
                       ...n.data,
+                      label: "Quick Reply",
                       buttons: [{ text: "Option 1" }],
                     },
                   }
@@ -365,6 +406,7 @@ export default function MagicFlow() {
                       type: newType,
                       data: {
                         ...n.data,
+                        label: "Whatsapp List",
                         options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
                       },
                     }
@@ -639,19 +681,27 @@ export default function MagicFlow() {
   )
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    // Prevent selection of start nodes
+    if (node.type === "start") {
+      return
+    }
+    
     setSelectedNode(node)
     setIsPropertiesPanelOpen(true)
   }, [])
 
   const onSelectionChange = useCallback(({ nodes: selectedNodesFromFlow }: { nodes: Node[], edges: Edge[] }) => {
-    // Update our selected nodes state
-    setSelectedNodes(selectedNodesFromFlow)
+    // Filter out start nodes from selection
+    const filteredNodes = selectedNodesFromFlow.filter(node => node.type !== "start")
+    
+    // Update our selected nodes state with filtered nodes
+    setSelectedNodes(filteredNodes)
     
     // Handle node selection
-    if (selectedNodesFromFlow.length === 1) {
-      setSelectedNode(selectedNodesFromFlow[0])
+    if (filteredNodes.length === 1) {
+      setSelectedNode(filteredNodes[0])
       setIsPropertiesPanelOpen(true)
-    } else if (selectedNodesFromFlow.length > 1) {
+    } else if (filteredNodes.length > 1) {
       setSelectedNode(null)
       setIsPropertiesPanelOpen(true)
     } else {
@@ -660,8 +710,8 @@ export default function MagicFlow() {
     }
     
     // Show toast notification for selection changes (but not for single node clicks)
-    if (selectedNodesFromFlow.length > 1) {
-      toast.info(`${selectedNodesFromFlow.length} nodes selected`)
+    if (filteredNodes.length > 1) {
+      toast.info(`${filteredNodes.length} nodes selected`)
     }
   }, [])
 

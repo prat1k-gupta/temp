@@ -1,19 +1,24 @@
 "use client"
 
 import { Handle, Position } from "@xyflow/react"
-import { Play } from "lucide-react"
+import { Play, Lock } from "lucide-react"
 
 export function StartNode({ data, selected }: { data: any; selected?: boolean }) {
   return (
     <div className="relative">
       <div
-        className={`min-w-[150px] rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl border-2 bg-teal-600 border-teal-600 ${
+        className={`min-w-[150px] rounded-lg shadow-lg border-2 bg-teal-600 border-teal-600 cursor-default select-none ${
           selected ? "ring-2 ring-teal-500/50 shadow-xl" : ""
         }`}
+        style={{ 
+          pointerEvents: 'none',
+          userSelect: 'none'
+        }}
       >
         <div className="p-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white/20">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white/20 relative">
             <Play className="w-4 h-4 text-white fill-white" />
+            <Lock className="w-3 h-3 text-white/80 absolute -top-1 -right-1" />
           </div>
           <div className="flex-1">
             <span className="font-semibold text-sm text-white">
@@ -30,6 +35,7 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
             type="source"
             position={Position.Right}
             className="w-4 h-4 bg-white hover:scale-110 transition-transform shadow-sm border-2 border-teal-600"
+            style={{ pointerEvents: 'auto' }}
           />
         </div>
       </div>

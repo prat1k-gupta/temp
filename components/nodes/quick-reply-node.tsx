@@ -8,12 +8,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Plus, Edit3, X } from "lucide-react"
 import { useState, useEffect } from "react"
+import { CHARACTER_LIMITS } from "@/constants/platform-limits"
 
-const PLATFORM_LIMITS = {
-  web: { question: 500, button: 50 },
-  whatsapp: { question: 160, button: 20 },
-  instagram: { question: 100, button: 15 },
-}
+const PLATFORM_LIMITS = CHARACTER_LIMITS
 
 export function QuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
@@ -51,6 +48,9 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
   const finishEditingLabel = () => {
     if (data.onNodeUpdate) {
       console.log("[v0] Updating label:", editingLabelValue)
+      if (editingLabelValue.length > limits.button) {
+        return
+      }
       data.onNodeUpdate(data.id, { ...data, label: editingLabelValue })
     }
     setIsEditingLabel(false)
@@ -69,6 +69,9 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
   const finishEditingQuestion = () => {
     if (data.onNodeUpdate) {
       console.log("[v0] Updating question:", editingQuestionValue)
+      if (editingQuestionValue.length > limits.question) {
+        return
+      }
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
     setIsEditingQuestion(false)
@@ -89,8 +92,11 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
       const updatedButtons = [...buttons]
       updatedButtons[editingButtonIndex] = { ...updatedButtons[editingButtonIndex], text: editingButtonValue }
       console.log("[v0] Updating button", editingButtonIndex, "with text:", editingButtonValue)
+      if (editingButtonValue.length > limits.button) {
+        return
+      }
       data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
-    }
+    } 
     setEditingButtonIndex(null)
   }
 

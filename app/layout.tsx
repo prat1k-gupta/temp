@@ -3,11 +3,12 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { ReactFlowProvider } from '@xyflow/react'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'Magic Flow',
+  description: 'Created with Magic Flow',
+  generator: 'Magic Flow',
 }
 
 export default function RootLayout({
@@ -18,7 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        {children}
+        <ReactFlowProvider>
+          {children}
+        </ReactFlowProvider>
         <Analytics />
       </body>
     </html>

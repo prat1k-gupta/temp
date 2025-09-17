@@ -47,20 +47,81 @@ const nodeTemplates = [
 
 interface NodeSidebarProps {
   onNodeDragStart: (event: React.DragEvent, nodeType: string) => void
+  platform?: "web" | "whatsapp" | "instagram"
 }
 
-export function NodeSidebar({ onNodeDragStart }: NodeSidebarProps) {
+export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarProps) {
+  // Filter nodes based on platform
+  const getAvailableNodes = () => {
+    let availableNodes = [...nodeTemplates]
+    
+    if (platform === "whatsapp") {
+      // Show WhatsApp-specific nodes
+      availableNodes = nodeTemplates.filter(node => 
+        node.type === "start" || 
+        node.type === "question" || 
+        node.type === "quickReply" || 
+        node.type === "whatsappList" || 
+        node.type === "comment"
+      )
+    } else if (platform === "instagram") {
+      // Show Instagram-specific nodes (Instagram doesn't have list traditionally, but we created one)
+      availableNodes = nodeTemplates.filter(node => 
+        node.type === "start" || 
+        node.type === "question" || 
+        node.type === "quickReply" || 
+        node.type === "whatsappList" || // We'll rename this dynamically
+        node.type === "comment"
+      )
+    }
+    
+    return availableNodes
+  }
+
+  const availableNodes = getAvailableNodes()
+
   return (
     <div className="w-64 bg-background border-r border-border p-4 overflow-y-auto">
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground mb-2">Node Types</h2>
-          <p className="text-sm text-muted-foreground mb-4">Drag and drop to add nodes to your flow</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Drag and drop to add nodes to your flow
+            {platform !== "web" && (
+              <span className="block text-xs mt-1 capitalize text-accent">
+                {platform} optimized
+              </span>
+            )}
+          </p>
         </div>
 
         <div className="space-y-2">
-          {nodeTemplates.map((template) => {
+          {availableNodes.map((template) => {
             const Icon = template.icon
+            
+            // Dynamically adjust labels and descriptions based on platform
+            let displayLabel = template.label
+            let displayDescription = template.description
+            
+            if (template.type === "whatsappList") {
+              if (platform === "instagram") {
+                displayLabel = "Instagram List"
+                displayDescription = "List of options (IG only)"
+              }
+            } else if (template.type === "question") {
+              if (platform === "whatsapp") {
+                displayDescription = "Send WhatsApp message"
+              } else if (platform === "instagram") {
+                displayDescription = "Send Instagram message"
+              }
+            } else if (template.type === "quickReply") {
+              if (platform === "whatsapp") {
+                displayDescription = "WhatsApp quick replies"
+              } else if (platform === "instagram") {
+                displayDescription = "Instagram quick replies"
+              }
+            }
+            
             return (
               <Card
                 key={template.type}
@@ -77,14 +138,19 @@ export function NodeSidebar({ onNodeDragStart }: NodeSidebarProps) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-card-foreground text-sm">{template.label}</h3>
+                        <h3 className="font-medium text-card-foreground text-sm">{displayLabel}</h3>
                         {template.disabled && (
                           <Badge variant="secondary" className="text-xs">
                             Auto
                           </Badge>
                         )}
+                        {platform !== "web" && template.type !== "start" && template.type !== "comment" && (
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {platform}
+                          </Badge>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{displayDescription}</p>
                     </div>
                   </div>
                 </CardContent>

@@ -16,13 +16,13 @@ export function ConnectionMenu({ isOpen, position, onClose, onSelectNodeType, pl
     const baseItems = [
       { type: "question", label: "Message", icon: MessageCircle, color: "text-blue-600" },
       { type: "quickReply", label: "Quick Reply", icon: Zap, color: "text-green-600" },
+      { type: "whatsappList", label: "List Message", icon: GitBranch, color: "text-green-600" }
     ]
 
     switch (platform) {
       case "whatsapp":
         return [
           ...baseItems,
-          { type: "whatsappList", label: "List Message", icon: GitBranch, color: "text-green-600" },
           { type: "ai-step", label: "AI Step", icon: Bot, color: "text-purple-600", badge: "AI" },
           { type: "condition", label: "Condition", icon: GitBranch, color: "text-orange-600" },
           { type: "delay", label: "Smart Delay", icon: Clock, color: "text-indigo-600" },
@@ -62,9 +62,9 @@ export function ConnectionMenu({ isOpen, position, onClose, onSelectNodeType, pl
         >
           <item.icon className={`w-4 h-4 ${item.color}`} />
           <span className="flex-1 text-gray-700 group-hover:text-gray-900">+ {item.label}</span>
-          {item.badge && (
+          {/* {item.badge && (
             <span className="bg-gray-900 text-white text-xs px-2 py-1 rounded font-medium">{item.badge}</span>
-          )}
+          )} */}
         </button>
       ))}
       <div className="border-t border-gray-200 mt-2 pt-2">

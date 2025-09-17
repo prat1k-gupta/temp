@@ -7,27 +7,19 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   return (
     <div className="relative">
       <div
-        className={`min-w-[150px] rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl border-2 ${
+        className={`min-w-[150px] rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl border-2 bg-teal-600 border-teal-600 ${
           selected ? "ring-2 ring-teal-500/50 shadow-xl" : ""
         }`}
-        style={{
-          backgroundColor: "#0d9488 !important",
-          borderColor: "#0d9488 !important",
-          background: "#0d9488 !important",
-        }}
       >
-        <div className="p-4 flex items-center gap-3" style={{ backgroundColor: "#0d9488 !important" }}>
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: "rgba(255, 255, 255, 0.2)" }}
-          >
-            <Play className="w-4 h-4" style={{ color: "#ffffff", fill: "#ffffff" }} />
+        <div className="p-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-white/20">
+            <Play className="w-4 h-4 text-white fill-white" />
           </div>
           <div className="flex-1">
-            <span className="font-semibold text-sm" style={{ color: "#ffffff !important" }}>
+            <span className="font-semibold text-sm text-white">
               Start
             </span>
-            <p className="text-xs mt-1" style={{ color: "rgba(255, 255, 255, 0.9) !important" }}>
+            <p className="text-xs mt-1 text-white/90">
               Flow entry point
             </p>
           </div>
@@ -37,8 +29,7 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
           <Handle
             type="source"
             position={Position.Right}
-            className="w-4 h-4 bg-white hover:scale-110 transition-transform shadow-sm"
-            style={{ borderColor: "#0d9488", borderWidth: "2px" }}
+            className="w-4 h-4 bg-white hover:scale-110 transition-transform shadow-sm border-2 border-teal-600"
           />
         </div>
       </div>

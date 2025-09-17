@@ -34,11 +34,14 @@ import { CSS } from "@dnd-kit/utilities"
 interface PropertiesPanelProps {
   selectedNode: Node & {
     data : {
-      buttons: any,
-      options: any,
-      label: string,
-      question: string,
-      comment: string,
+      buttons?: any,
+      options?: any,
+      label?: string,
+      question?: string,
+      comment?: string,
+      text?: string,
+      platform?: string,
+      [key: string]: any,
     }
   } | null
   platform: "web" | "whatsapp" | "instagram"
@@ -46,9 +49,9 @@ interface PropertiesPanelProps {
 }
 
 const PLATFORM_LIMITS = {
-  web: { question: 500, button: 50 },
-  whatsapp: { question: 160, button: 20 },
-  instagram: { question: 100, button: 15 },
+  web: { question: 200, button: 24 },
+  whatsapp: { question: 160, button: 24 },
+  instagram: { question: 100, button: 24 },
 }
 
 const NODE_ICONS = {
@@ -57,6 +60,16 @@ const NODE_ICONS = {
   quickReply: MessageSquare,
   whatsappList: List,
   comment: MessageSquareText,
+  // Platform-specific nodes
+  whatsappQuestion: MessageCircle,
+  whatsappQuickReply: MessageSquare,
+  whatsappListSpecific: List,
+  whatsappMessage: MessageCircle,
+  instagramQuestion: MessageCircle,
+  instagramQuickReply: MessageSquare,
+  instagramList: List,
+  instagramDM: MessageCircle,
+  instagramStory: MessageCircle,
 }
 
 const NODE_COLORS = {
@@ -65,6 +78,16 @@ const NODE_COLORS = {
   quickReply: "bg-chart-1 text-white",
   whatsappList: "bg-chart-4 text-white",
   comment: "bg-yellow-400 text-yellow-900",
+  // Platform-specific nodes
+  whatsappQuestion: "bg-green-500 text-white",
+  whatsappQuickReply: "bg-green-600 text-white",
+  whatsappListSpecific: "bg-green-700 text-white",
+  whatsappMessage: "bg-green-400 text-white",
+  instagramQuestion: "bg-pink-500 text-white",
+  instagramQuickReply: "bg-pink-600 text-white",
+  instagramList: "bg-pink-700 text-white",
+  instagramDM: "bg-pink-400 text-white",
+  instagramStory: "bg-purple-500 text-white",
 }
 
 function SortableButtonItem({
@@ -207,6 +230,8 @@ function SortableOptionItem({
 }
 
 export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: PropertiesPanelProps) {
+  console.log("[v0] Selected node:", selectedNode)
+  console.log("[v0] Platform:", platform)
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -308,6 +333,25 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
         return "WhatsApp List Node"
       case "comment":
         return "Comment Node"
+      // Platform-specific nodes
+      case "whatsappQuestion":
+        return "WhatsApp Question Node"
+      case "whatsappQuickReply":
+        return "WhatsApp Quick Reply Node"
+      case "whatsappListSpecific":
+        return "WhatsApp List Node"
+      case "whatsappMessage":
+        return "WhatsApp Message Node"
+      case "instagramQuestion":
+        return "Instagram Question Node"
+      case "instagramQuickReply":
+        return "Instagram Quick Reply Node"
+      case "instagramList":
+        return "Instagram List Node"
+      case "instagramDM":
+        return "Instagram DM Node"
+      case "instagramStory":
+        return "Instagram Story Node"
       default:
         return "Node Properties"
     }
@@ -321,6 +365,11 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
   const handleQuestionChange = (value: string) => {
     console.log("[v0] Updating question:", value)
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, question: value })
+  }
+
+  const handleTextChange = (value: string) => {
+    console.log("[v0] Updating text:", value)
+    onNodeUpdate(selectedNode.id, { ...selectedNode.data, text: value })
   }
 
   const handleCommentChange = (value: string) => {
@@ -373,7 +422,16 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
           {/* Interactive Nodes */}
           {(selectedNode.type === "question" ||
             selectedNode.type === "quickReply" ||
-            selectedNode.type === "whatsappList") && (
+            selectedNode.type === "whatsappList" ||
+            selectedNode.type === "whatsappQuestion" ||
+            selectedNode.type === "whatsappQuickReply" ||
+            selectedNode.type === "whatsappListSpecific" ||
+            selectedNode.type === "whatsappMessage" ||
+            selectedNode.type === "instagramQuestion" ||
+            selectedNode.type === "instagramQuickReply" ||
+            selectedNode.type === "instagramList" ||
+            selectedNode.type === "instagramDM" ||
+            selectedNode.type === "instagramStory") && (
             <>
               {/* Node Label */}
               <div>
@@ -394,32 +452,65 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
 
               <Separator />
 
-              {/* Question Text */}
+              {/* Question/Message Text */}
               <div>
                 <Label htmlFor="question-text" className="text-sm font-medium">
-                  Question Text
+                  {(selectedNode.type === "whatsappMessage" || 
+                    selectedNode.type === "instagramDM" || 
+                    selectedNode.type === "instagramStory") ? "Message Text" : "Question Text"}
                 </Label>
                 <Textarea
                   id="question-text"
-                  value={selectedNode.data.question || ""}
-                  onChange={(e) => handleQuestionChange(e.target.value)}
-                  placeholder="Enter your question..."
+                  value={(selectedNode.type === "whatsappMessage" || 
+                          selectedNode.type === "instagramDM" || 
+                          selectedNode.type === "instagramStory") 
+                          ? (selectedNode.data.text || "") 
+                          : (selectedNode.data.question || "")}
+                  onChange={(e) => {
+                    if (selectedNode.type === "whatsappMessage" || 
+                        selectedNode.type === "instagramDM" || 
+                        selectedNode.type === "instagramStory") {
+                      handleTextChange(e.target.value)
+                    } else {
+                      handleQuestionChange(e.target.value)
+                    }
+                  }}
+                  placeholder={(selectedNode.type === "whatsappMessage" || 
+                               selectedNode.type === "instagramDM" || 
+                               selectedNode.type === "instagramStory") 
+                               ? "Enter your message..." : "Enter your question..."}
                   className={`mt-2 min-h-[80px] ${
-                    isOverLimit(selectedNode.data.question || "", "question") ? "border-destructive" : ""
+                    isOverLimit((selectedNode.type === "whatsappMessage" || 
+                                selectedNode.type === "instagramDM" || 
+                                selectedNode.type === "instagramStory") 
+                                ? (selectedNode.data.text || "") 
+                                : (selectedNode.data.question || ""), "question") ? "border-destructive" : ""
                   }`}
                   rows={3}
                 />
                 <div className="flex justify-between items-center mt-2">
                   <span
                     className={`text-xs ${
-                      isOverLimit(selectedNode.data.question || "", "question")
+                      isOverLimit((selectedNode.type === "whatsappMessage" || 
+                                  selectedNode.type === "instagramDM" || 
+                                  selectedNode.type === "instagramStory") 
+                                  ? (selectedNode.data.text || "") 
+                                  : (selectedNode.data.question || ""), "question")
                         ? "text-destructive"
                         : "text-muted-foreground"
                     }`}
                   >
-                    {(selectedNode.data.question || "").length}/{limits.question} characters
+                    {((selectedNode.type === "whatsappMessage" || 
+                       selectedNode.type === "instagramDM" || 
+                       selectedNode.type === "instagramStory") 
+                       ? (selectedNode.data.text || "") 
+                       : (selectedNode.data.question || "")).length}/{limits.question} characters
                   </span>
-                  {isOverLimit(selectedNode.data.question || "", "question") && (
+                  {isOverLimit((selectedNode.type === "whatsappMessage" || 
+                               selectedNode.type === "instagramDM" || 
+                               selectedNode.type === "instagramStory") 
+                               ? (selectedNode.data.text || "") 
+                               : (selectedNode.data.question || ""), "question") && (
                     <Badge variant="destructive" className="text-xs">
                       Limit exceeded
                     </Badge>
@@ -428,13 +519,17 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
               </div>
 
               {/* Quick Reply Buttons */}
-              {selectedNode.type === "quickReply" && (
+              {(selectedNode.type === "quickReply" || 
+                selectedNode.type === "whatsappQuickReply" || 
+                selectedNode.type === "instagramQuickReply") && (
                 <>
                   <Separator />
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <Label className="text-sm font-medium">Buttons (Max 3)</Label>
-                      {(selectedNode.data.buttons || []).length < 3 && (
+                      <Label className="text-sm font-medium">
+                        Buttons (Max {selectedNode.type === "quickReply" ? "3" : "10"})
+                      </Label>
+                      {(selectedNode.data.buttons || []).length < (selectedNode.type === "quickReply" ? 3 : 10) && (
                         <Button size="sm" variant="outline" onClick={addButton} className="h-7 px-2 bg-transparent">
                           <Plus className="w-3 h-3 mr-1" />
                           Add
@@ -465,8 +560,10 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                 </>
               )}
 
-              {/* WhatsApp List Options */}
-              {selectedNode.type === "whatsappList" && (
+              {/* List Options */}
+              {(selectedNode.type === "whatsappList" || 
+                selectedNode.type === "whatsappListSpecific" || 
+                selectedNode.type === "instagramList") && (
                 <>
                   <Separator />
                   <div>

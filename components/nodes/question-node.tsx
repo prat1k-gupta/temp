@@ -8,12 +8,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { MessageCircle, Plus, Edit3 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { CHARACTER_LIMITS } from "@/constants/platform-limits"
 
-const PLATFORM_LIMITS = {
-  web: { question: 500, button: 50 },
-  whatsapp: { question: 160, button: 20 },
-  instagram: { question: 100, button: 15 },
-}
+const PLATFORM_LIMITS = CHARACTER_LIMITS
 
 export function QuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -82,6 +79,12 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
         className={`min-w-[260px] max-w-[300px] bg-card border-border shadow-lg transition-all duration-200 hover:shadow-xl hover:border-accent/50 ${
           selected ? "ring-2 ring-accent/50" : ""
         }`}
+        onMouseEnter={() => {
+          console.log("[v0] Mouse entered question node")
+        }}
+        onMouseLeave={() => {
+          console.log("[v0] Mouse left question node")
+        }}
       >
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
@@ -153,7 +156,7 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
             </div>
           )}
 
-          <Button
+          {selected && <Button
             variant="ghost"
             size="sm"
             className="w-full justify-center text-xs h-8 border-2 border-dashed border-muted-foreground/30 hover:border-accent transition-colors"
@@ -161,7 +164,7 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
           >
             <Plus className="w-3 h-3 mr-1" />
             Add Button
-          </Button>
+          </Button>}
         </CardContent>
 
         <Handle

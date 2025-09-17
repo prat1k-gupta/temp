@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { MessageCircle, Plus, Edit3 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 const INSTAGRAM_LIMITS = {
   question: 100,
@@ -19,6 +19,18 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
+
+  useEffect(() => {
+    if (!isEditingLabel) {
+      setEditingLabelValue(data.label || "")
+    }
+  }, [data.label, isEditingLabel])
+
+  useEffect(() => {
+    if (!isEditingQuestion) {
+      setEditingQuestionValue(data.question || "")
+    }
+  }, [data.question, isEditingQuestion])
 
   const isOverLimit = (text: string, type: "question" | "button") => {
     return text.length > INSTAGRAM_LIMITS[type]

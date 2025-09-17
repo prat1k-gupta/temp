@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useCallback, useEffect } from "react"
 import {
   ReactFlow,
@@ -15,9 +14,11 @@ import {
   type Edge,
   type Node,
   BackgroundVariant,
+  useReactFlow,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
+// Component imports
 import { StartNode } from "@/components/nodes/start-node"
 import { QuestionNode } from "@/components/nodes/question-node"
 import { QuickReplyNode } from "@/components/nodes/quick-reply-node"
@@ -25,8 +26,13 @@ import { WhatsAppListNode } from "@/components/nodes/whatsapp-list-node"
 import { CommentNode } from "@/components/nodes/comment-node"
 import { WhatsAppQuestionNode } from "@/components/nodes/whatsapp/whatsapp-question-node"
 import { WhatsAppQuickReplyNode } from "@/components/nodes/whatsapp/whatsapp-quick-reply-node"
+import { WhatsAppListNode as WhatsAppListNodeSpecific } from "@/components/nodes/whatsapp/whatsapp-list-node"
+import { WhatsAppMessageNode } from "@/components/nodes/whatsapp/whatsapp-message-node"
 import { InstagramQuestionNode } from "@/components/nodes/instagram/instagram-question-node"
 import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-quick-reply-node"
+import { InstagramListNode } from "@/components/nodes/instagram/instagram-list-node"
+import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
+import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
 import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
@@ -34,6 +40,36 @@ import { Button } from "@/components/ui/button"
 import { Download, Save, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
+
+// Modular imports
+import type { 
+  Platform, 
+  NodeData, 
+  ButtonData, 
+  OptionData, 
+  ContextMenuState, 
+  ConnectionMenuState, 
+  Coordinates 
+} from "@/types"
+import { 
+  BUTTON_LIMITS, 
+  OPTION_LIMITS, 
+  INTERACTION_THRESHOLDS 
+} from "@/constants"
+import { 
+  getClientCoordinates,
+  isDoubleClick,
+  getPlatformSpecificNodeType,
+  getPlatformSpecificLabel,
+  getPlatformSpecificContent,
+  isValidNodeId,
+  isValidPlatform,
+  createButtonData,
+  createOptionData,
+  canAddMoreButtons,
+  createNode,
+  createCommentNode
+} from "@/utils"
 
 const nodeTypes = {
   start: StartNode,
@@ -44,9 +80,14 @@ const nodeTypes = {
   // WhatsApp specific nodes
   whatsappQuestion: WhatsAppQuestionNode,
   whatsappQuickReply: WhatsAppQuickReplyNode,
+  whatsappListSpecific: WhatsAppListNodeSpecific,
+  whatsappMessage: WhatsAppMessageNode,
   // Instagram specific nodes
   instagramQuestion: InstagramQuestionNode,
   instagramQuickReply: InstagramQuickReplyNode,
+  instagramList: InstagramListNode,
+  instagramDM: InstagramDMNode,
+  instagramStory: InstagramStoryNode,
 }
 
 const initialNodes: Node[] = [
@@ -54,7 +95,7 @@ const initialNodes: Node[] = [
     id: "1",
     type: "start",
     position: { x: 250, y: 25 },
-    data: { label: "Start" },
+    data: { label: "Start", platform: "web" },
   },
   {
     id: "2",
@@ -64,6 +105,7 @@ const initialNodes: Node[] = [
       label: "Welcome Question",
       question: "Hello! How can I help you today?",
       characterLimit: 160,
+      platform: "web",
     },
   },
 ]
@@ -83,25 +125,15 @@ export default function MagicFlow() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
-  const [platform, setPlatform] = useState<"web" | "whatsapp" | "instagram">("web")
+  const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
-  const [contextMenu, setContextMenu] = useState<{
-    isOpen: boolean
-    x: number
-    y: number
-  }>({
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
     y: 0,
   })
   const [draggedNodeType, setDraggedNodeType] = useState<string | null>(null)
-  const [connectionMenu, setConnectionMenu] = useState<{
-    isOpen: boolean
-    x: number
-    y: number
-    sourceNodeId: string | null
-    sourceHandleId: string | null
-  }>({
+  const [connectionMenu, setConnectionMenu] = useState<ConnectionMenuState>({
     isOpen: false,
     x: 0,
     y: 0,
@@ -109,9 +141,32 @@ export default function MagicFlow() {
     sourceHandleId: null,
   })
   const [lastClickTime, setLastClickTime] = useState<number>(0)
-  const [lastClickPosition, setLastClickPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [lastClickPosition, setLastClickPosition] = useState<Coordinates>({ x: 0, y: 0 })
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
+  const [nodeToFocus, setNodeToFocus] = useState<string | null>(null)
+
+  const { screenToFlowPosition, fitView, setCenter, getViewport, getNode } = useReactFlow();
+
+  const focusNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node) {
+        // Use fitView to optimally show the specific node
+        fitView({ 
+          nodes: [{ id: nodeId }], 
+          duration: 1200,
+          padding: 0.2,
+          minZoom: 0.5,
+          maxZoom: 2.0
+        });
+        // Also select the node to highlight it
+        setSelectedNode(node);
+        setIsPropertiesPanelOpen(true);
+      }
+    },
+    [nodes, fitView, setSelectedNode, setIsPropertiesPanelOpen]
+  );
 
   const deleteNode = useCallback(
     (nodeId: string) => {
@@ -170,73 +225,98 @@ export default function MagicFlow() {
 
   const addButtonToNode = useCallback(
     (nodeId: string) => {
-      const node = nodes.find((n) => n.id === nodeId)
-      if (!node) return
+      try {
+        const node = nodes.find((n) => n.id === nodeId)
+        if (!node) {
+          console.warn(`[v0] Node with id ${nodeId} not found`)
+          return
+        }
 
-      if (node.type === "question") {
-        setNodes((nds) =>
-          nds.map((n) =>
-            n.id === nodeId
-              ? {
-                  ...n,
-                  type: "quickReply",
-                  data: {
-                    ...n.data,
-                    buttons: [{ text: "Option 1" }],
-                  },
-                }
-              : n,
-          ),
-        )
-      } else if (node.type === "quickReply") {
-        const currentButtons = node.data.buttons || []
-        if (currentButtons.length >= 3) {
+        // Handle question nodes (convert to quick reply)
+        if (node.type === "question" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
+          const platform = (node.data.platform as Platform) || "web"
+          const newType = getPlatformSpecificNodeType("quickReply", platform)
+          
           setNodes((nds) =>
             nds.map((n) =>
               n.id === nodeId
                 ? {
                     ...n,
-                    type: "whatsappList",
+                    type: newType,
                     data: {
                       ...n.data,
-                      options: [...currentButtons, { text: `Option ${currentButtons.length + 1}` }],
+                      buttons: [{ text: "Option 1" }],
                     },
                   }
                 : n,
             ),
           )
-        } else {
-          setNodes((nds) =>
-            nds.map((n) =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      buttons: [...currentButtons, { text: `Option ${currentButtons.length + 1}` }],
-                    },
-                  }
-                : n,
-            ),
-          )
+          // Request focus on the converted node
+          setNodeToFocus(nodeId)
+        } 
+        // Handle quick reply nodes (add button or convert to list)
+        else if (node.type === "quickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
+          const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
+          const platform = (node.data.platform as Platform) || "web"
+          
+          if (!canAddMoreButtons(currentButtons, platform)) {
+            // Convert to list node if at max buttons
+            const newType = getPlatformSpecificNodeType("whatsappList", platform)
+            
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      type: newType,
+                      data: {
+                        ...n.data,
+                        options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
+                      },
+                    }
+                  : n,
+              ),
+            )
+            // Request focus on the converted node
+            setNodeToFocus(nodeId)
+          } else {
+            // Add button
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        buttons: [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[],
+                      },
+                    }
+                  : n,
+              ),
+            )
+          }
+        } 
+        // Handle list nodes (add option)
+        else if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
+          const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
+          if (currentOptions.length < OPTION_LIMITS.all) {
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        options: [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[],
+                      },
+                    }
+                  : n,
+              ),
+            )
+          }
         }
-      } else if (node.type === "whatsappList") {
-        const currentOptions = node.data.options || []
-        if (currentOptions.length < 10) {
-          setNodes((nds) =>
-            nds.map((n) =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      options: [...currentOptions, { text: `Option ${currentOptions.length + 1}` }],
-                    },
-                  }
-                : n,
-            ),
-          )
-        }
+      } catch (error) {
+        console.error(`[v0] Error adding button to node ${nodeId}:`, error)
       }
     },
     [nodes, setNodes],
@@ -271,6 +351,8 @@ export default function MagicFlow() {
 
       setNodes((nds) => [...nds, newNode])
       setEdges((eds) => [...eds, newEdge])
+      // Request focus on the newly created connected node
+      setNodeToFocus(newNodeId)
     },
     [nodes, setNodes, setEdges],
   )
@@ -307,89 +389,41 @@ export default function MagicFlow() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault()
+      console.log("[v0] Dropping node at position:", getClientCoordinates(event))
 
       if (!draggedNodeType) return
 
       const reactFlowBounds = event.currentTarget.getBoundingClientRect()
+      const { x: clientX, y: clientY } = getClientCoordinates(event)
+      console.log("[v0] React flow bounds:", reactFlowBounds)
+
       const position = {
-        x: event.clientX - reactFlowBounds.left - 100,
-        y: event.clientY - reactFlowBounds.top - 50,
+        x: clientX ,
+        y: clientY,
       }
+
+      console.log("[v0] Dragging node at position:", position)
 
       const newNodeId = `${draggedNodeType}-${Date.now()}`
       let newNode: Node
 
-      switch (draggedNodeType) {
-        case "question":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuestion"
-                : platform === "instagram"
-                  ? "instagramQuestion"
-                  : "question",
-            position,
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Message"
-                  : platform === "instagram"
-                    ? "Instagram Message"
-                    : "Question",
-              question:
-                platform === "whatsapp"
-                  ? "Send a WhatsApp message"
-                  : platform === "instagram"
-                    ? "Send an Instagram message"
-                    : "What would you like to know?",
-            },
-          }
-          break
-        case "quickReply":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuickReply"
-                : platform === "instagram"
-                  ? "instagramQuickReply"
-                  : "quickReply",
-            position,
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Actions"
-                  : platform === "instagram"
-                    ? "Instagram Actions"
-                    : "Quick Reply",
-              question: "Choose an action:",
-              buttons: [{ text: "Action 1" }],
-            },
-          }
-          break
-        case "whatsappList":
-          newNode = {
-            id: newNodeId,
-            type: "whatsappList",
-            position,
-            data: {
-              label: "WhatsApp List",
-              question: "Select from the list:",
-              options: [{ text: "Option 1" }],
-            },
-          }
-          break
-        case "comment":
-          newNode = {
-            id: newNodeId,
-            type: "comment",
-            position,
-            data: {
-              comment: "Add your comment here...",
-              createdBy: "You",
-              createdAt: new Date().toISOString(),
-              onUpdate: (updates: any) => {
+      try {
+        switch (draggedNodeType) {
+          case "question":
+            newNode = createNode("question", platform, position, newNodeId)
+            break
+          case "quickReply":
+            newNode = createNode("quickReply", platform, position, newNodeId)
+            break
+          case "whatsappList":
+            newNode = createNode("whatsappList", platform, position, newNodeId)
+            break
+          case "comment":
+            newNode = createCommentNode(
+              platform,
+              position,
+              newNodeId,
+              (updates: any) => {
                 console.log("[v0] Comment inline update:", newNodeId, updates)
                 setNodes((nds) =>
                   nds.map((node) =>
@@ -399,26 +433,38 @@ export default function MagicFlow() {
                   ),
                 )
               },
-              onDelete: () => deleteNode(newNodeId),
-            },
-          }
-          break
-        default:
-          return
-      }
+              () => deleteNode(newNodeId)
+            )
+            break
+          default:
+            console.warn(`[v0] Unknown dragged node type: ${draggedNodeType}`)
+            return
+        }
 
-      setNodes((nds) => [...nds, newNode])
-      setDraggedNodeType(null)
+        setNodes((nds) => [...nds, newNode])
+        setDraggedNodeType(null)
+        // Request focus on the newly created node
+        setNodeToFocus(newNodeId)
+      } catch (error) {
+        console.error(`[v0] Error creating dragged node ${draggedNodeType}:`, error)
+        setDraggedNodeType(null)
+      }
     },
     [draggedNodeType, setNodes, deleteNode, platform],
   )
 
-  const onPaneContextMenu = useCallback((event: React.MouseEvent) => {
+  const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
     event.preventDefault()
+    
+    // Type guard to check if event has React properties
+    if (!('clientX' in event) || !('clientY' in event)) {
+      return
+    }
+    
     setContextMenu({
       isOpen: true,
-      x: event.clientX,
-      y: event.clientY,
+      x: (event as any).clientX,
+      y: (event as any).clientY,
     })
   }, [])
 
@@ -429,103 +475,60 @@ export default function MagicFlow() {
   const addComment = useCallback(
     (x: number, y: number) => {
       const newNodeId = `comment-${Date.now()}`
-      const newNode: Node = {
-        id: newNodeId,
-        type: "comment",
-        position: { x: x - 100, y: y - 50 },
-        data: {
-          comment: "Add your comment here...",
-          createdBy: "You",
-          createdAt: new Date().toISOString(),
-          onUpdate: (updates: any) => {
-            console.log("[v0] Comment inline update:", newNodeId, updates)
-            setNodes((nds) =>
-              nds.map((node) =>
-                node.id === newNodeId ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() } : node,
-              ),
-            )
-          },
-          onDelete: () => deleteNode(newNodeId),
+      const position = { x: x - 100, y: y - 50 }
+      
+      const newNode = createCommentNode(
+        platform,
+        position,
+        newNodeId,
+        (updates: any) => {
+          console.log("[v0] Comment inline update:", newNodeId, updates)
+          setNodes((nds) =>
+            nds.map((node) =>
+              node.id === newNodeId ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() } : node,
+            ),
+          )
         },
-      }
+        () => deleteNode(newNodeId)
+      )
+      
       setNodes((nds) => [...nds, newNode])
       closeContextMenu()
+      // Request focus on the newly created comment node
+      setNodeToFocus(newNodeId)
     },
-    [setNodes, closeContextMenu, deleteNode],
+    [setNodes, closeContextMenu, deleteNode, platform],
   )
 
   const addNodeFromMenu = useCallback(
     (nodeType: string, x: number, y: number) => {
+      const position = { x: x - 100, y: y - 50 }
       const newNodeId = `${nodeType}-${Date.now()}`
       let newNode: Node
 
-      switch (nodeType) {
-        case "question":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuestion"
-                : platform === "instagram"
-                  ? "instagramQuestion"
-                  : "question",
-            position: { x: x - 100, y: y - 50 },
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Message"
-                  : platform === "instagram"
-                    ? "Instagram Message"
-                    : "Question",
-              question:
-                platform === "whatsapp"
-                  ? "Send a WhatsApp message"
-                  : platform === "instagram"
-                    ? "Send an Instagram message"
-                    : "What would you like to know?",
-            },
-          }
-          break
-        case "quickReply":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuickReply"
-                : platform === "instagram"
-                  ? "instagramQuickReply"
-                  : "quickReply",
-            position: { x: x - 100, y: y - 50 },
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Actions"
-                  : platform === "instagram"
-                    ? "Instagram Actions"
-                    : "Quick Reply",
-              question: "Choose an action:",
-              buttons: [{ text: "Action 1" }],
-            },
-          }
-          break
-        case "whatsappList":
-          newNode = {
-            id: newNodeId,
-            type: "whatsappList",
-            position: { x: x - 100, y: y - 50 },
-            data: {
-              label: "WhatsApp List",
-              question: "Select from the list:",
-              options: [{ text: "Option 1" }],
-            },
-          }
-          break
-        default:
-          return
-      }
+      try {
+        switch (nodeType) {
+          case "question":
+            newNode = createNode("question", platform, position, newNodeId)
+            break
+          case "quickReply":
+            newNode = createNode("quickReply", platform, position, newNodeId)
+            break
+          case "whatsappList":
+            newNode = createNode("whatsappList", platform, position, newNodeId)
+            break
+          default:
+            console.warn(`[v0] Unknown node type: ${nodeType}`)
+            return
+        }
 
-      setNodes((nds) => [...nds, newNode])
-      closeContextMenu()
+        setNodes((nds) => [...nds, newNode])
+        closeContextMenu()
+        // Request focus on the newly created node
+        setNodeToFocus(newNodeId)
+      } catch (error) {
+        console.error(`[v0] Error creating node ${nodeType}:`, error)
+      }
     },
     [setNodes, closeContextMenu, platform],
   )
@@ -536,24 +539,28 @@ export default function MagicFlow() {
   }, [])
 
   const onPaneClick = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
       setSelectedNode(null)
       setSelectedEdge(null)
       setIsPropertiesPanelOpen(false)
 
       const currentTime = Date.now()
-      const reactFlowBounds = event.currentTarget.getBoundingClientRect()
-      const clickPosition = {
-        x: event.clientX - reactFlowBounds.left,
-        y: event.clientY - reactFlowBounds.top,
+      
+      // Type guard to check if event has React properties
+      if (!('currentTarget' in event) || !('clientX' in event) || !('clientY' in event)) {
+        return
+      }
+      
+      const reactFlowBounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      const clickPosition: Coordinates = {
+        x: (event as any).clientX - reactFlowBounds.left,
+        y: (event as any).clientY - reactFlowBounds.top,
       }
 
-      const timeDiff = currentTime - lastClickTime
-      const positionDiff =
-        Math.abs(clickPosition.x - lastClickPosition.x) + Math.abs(clickPosition.y - lastClickPosition.y)
-
-      // Double-click detected if within 300ms and within 5px of last click
-      if (timeDiff < 300 && positionDiff < 5) {
+      // Double-click detected if within threshold
+      if (isDoubleClick(currentTime, lastClickTime, clickPosition, lastClickPosition, 
+                       INTERACTION_THRESHOLDS.doubleClick.time, 
+                       INTERACTION_THRESHOLDS.doubleClick.distance)) {
         console.log("[v0] Double-click detected at:", clickPosition)
 
         const position = {
@@ -562,35 +569,32 @@ export default function MagicFlow() {
         }
 
         const newNodeId = `comment-${Date.now()}`
-        const newNode: Node = {
-          id: newNodeId,
-          type: "comment",
+        const newNode = createCommentNode(
+          platform,
           position,
-          data: {
-            comment: "Add your comment here...",
-            createdBy: "You",
-            createdAt: new Date().toISOString(),
-            onUpdate: (updates: any) => {
-              console.log("[v0] Comment inline update:", newNodeId, updates)
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node,
-                ),
-              )
-            },
-            onDelete: () => deleteNode(newNodeId),
+          newNodeId,
+          (updates: any) => {
+            console.log("[v0] Comment inline update:", newNodeId, updates)
+            setNodes((nds) =>
+              nds.map((node) =>
+                node.id === newNodeId
+                  ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
+                  : node,
+              ),
+            )
           },
-        }
+          () => deleteNode(newNodeId)
+        )
         setNodes((nds) => [...nds, newNode])
         console.log("[v0] Added comment node at position:", position)
+        // Request focus on the newly created comment node
+        setNodeToFocus(newNodeId)
       }
 
       setLastClickTime(currentTime)
       setLastClickPosition(clickPosition)
     },
-    [lastClickTime, lastClickPosition, setNodes, deleteNode],
+    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform],
   )
 
   const handleNodeTypeSelection = useCallback(
@@ -610,86 +614,37 @@ export default function MagicFlow() {
       const reactFlowElement = document.querySelector(".react-flow")
       const reactFlowBounds = reactFlowElement?.getBoundingClientRect()
 
-      let nodePosition
-      if (reactFlowBounds) {
-        nodePosition = {
-          x: connectionMenu.x - reactFlowBounds.left - 100,
-          y: connectionMenu.y - reactFlowBounds.top - 50,
-        }
-      } else {
-        // Fallback to relative positioning if bounds can't be determined
-        nodePosition = {
-          x: sourceNode.position.x + 300,
-          y: sourceNode.position.y,
-        }
-      }
+      let nodePosition = screenToFlowPosition({
+        x: connectionMenu.x,
+        y: connectionMenu.y,
+      })
+
+      console.log("[v0] creating node", {
+        nodeType,
+        nodePosition,
+        newNodeId,
+        sourceNode,
+        connectionMenu,
+      })
 
       let newNode: Node
 
       switch (nodeType) {
         case "question":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuestion"
-                : platform === "instagram"
-                  ? "instagramQuestion"
-                  : "question",
-            position: nodePosition,
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Message"
-                  : platform === "instagram"
-                    ? "Instagram Message"
-                    : "Question",
-              question:
-                platform === "whatsapp"
-                  ? "Send a WhatsApp message"
-                  : platform === "instagram"
-                    ? "Send an Instagram message"
-                    : "What would you like to know?",
-            },
-          }
+          newNode = createNode("question", platform, nodePosition, newNodeId)
           break
         case "quickReply":
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuickReply"
-                : platform === "instagram"
-                  ? "instagramQuickReply"
-                  : "quickReply",
-            position: nodePosition,
-            data: {
-              label:
-                platform === "whatsapp"
-                  ? "WhatsApp Actions"
-                  : platform === "instagram"
-                    ? "Instagram Actions"
-                    : "Quick Reply",
-              question: "Choose an action:",
-              buttons: [{ text: "Action 1" }],
-            },
-          }
+          newNode = createNode("quickReply", platform, nodePosition, newNodeId)
+          break
+        case "whatsappList":
+          newNode = createNode("whatsappList", platform, nodePosition, newNodeId)
           break
         default:
-          newNode = {
-            id: newNodeId,
-            type:
-              platform === "whatsapp"
-                ? "whatsappQuestion"
-                : platform === "instagram"
-                  ? "instagramQuestion"
-                  : "question",
-            position: nodePosition,
-            data: {
-              label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1),
-              question: `${nodeType} step`,
-            },
-          }
+          // Default to question node for unknown types
+          newNode = createNode("question", platform, nodePosition, newNodeId, {
+            label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1),
+            question: `${nodeType} step`,
+          })
       }
 
       const newEdge: Edge = {
@@ -704,28 +659,44 @@ export default function MagicFlow() {
       setNodes((nds) => [...nds, newNode])
       setEdges((eds) => [...eds, newEdge])
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
+      // Request focus on the newly created node
+      setNodeToFocus(newNodeId)
     },
     [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform],
   )
 
   const updateNodeData = useCallback(
-    (nodeId: string, updates: any) => {
-      console.log("[v0] Updating node data:", nodeId, updates)
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === nodeId) {
-            const updatedNode = {
-              ...node,
-              data: { ...node.data, ...updates },
-              _timestamp: Date.now(),
+    (nodeId: string, updates: any, shouldFocus: boolean = false) => {
+      try {
+        if (!isValidNodeId(nodeId)) {
+          console.error("[v0] Invalid nodeId provided to updateNodeData:", nodeId)
+          return
+        }
+        
+        console.log("[v0] Updating node data:", nodeId, updates)
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id === nodeId) {
+              const updatedNode = {
+                ...node,
+                data: { ...node.data, ...updates },
+                _timestamp: Date.now(),
+              }
+              console.log("[v0] Updated node:", updatedNode)
+              return updatedNode
             }
-            console.log("[v0] Updated node:", updatedNode)
-            return updatedNode
-          }
-          return node
-        }),
-      )
-      setSelectedNode((prev) => (prev && prev.id === nodeId ? { ...prev, data: { ...prev.data, ...updates } } : prev))
+            return node
+          }),
+        )
+        setSelectedNode((prev) => (prev && prev.id === nodeId ? { ...prev, data: { ...prev.data, ...updates } } : prev))
+        
+        // Request focus on the node if requested (for significant updates)
+        if (shouldFocus) {
+          setNodeToFocus(nodeId)
+        }
+      } catch (error) {
+        console.error(`[v0] Error updating node data for ${nodeId}:`, error)
+      }
     },
     [setNodes, setSelectedNode],
   )
@@ -734,7 +705,7 @@ export default function MagicFlow() {
     setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
   }, [])
 
-  const onConnectStart = useCallback((event: React.MouseEvent, params: any) => {
+  const onConnectStart = useCallback((event: MouseEvent | TouchEvent | React.MouseEvent, params: any) => {
     console.log("[v0] Connection start:", params)
     setIsConnecting(true)
     setConnectingFrom(params.nodeId)
@@ -742,7 +713,7 @@ export default function MagicFlow() {
   }, [])
 
   const onConnectEnd = useCallback(
-    (event: React.MouseEvent, connectionState: any) => {
+    (event: MouseEvent | TouchEvent | React.MouseEvent, connectionState: any) => {
       console.log("[v0] Connection end - event:", event.type, "connectionState:", connectionState)
       console.log(
         "[v0] Connection end - current state - isConnecting:",
@@ -767,18 +738,19 @@ export default function MagicFlow() {
           isOnHandle: !!isOnHandle,
           isOnEdge: !!isOnEdge,
           targetElement: target.className,
-          clientX: event.clientX,
-          clientY: event.clientY,
+          ...getClientCoordinates(event),
           fromNode: connectionState.fromNode.id,
         })
 
+        const { x: clientX, y: clientY } = getClientCoordinates(event)
+
         // Show menu only when dropping in empty space (not on nodes, handles, or edges)
         if (!isOnNode && !isOnHandle && !isOnEdge) {
-          console.log("[v0] Showing connection menu at:", event.clientX, event.clientY)
+          console.log("[v0] Showing connection menu at:", clientX, clientY)
           setConnectionMenu({
             isOpen: true,
-            x: event.clientX,
-            y: event.clientY,
+            x: clientX,
+            y: clientY,
             sourceNodeId: connectionState.fromNode.id,
             sourceHandleId: connectionState.fromHandle?.id || null,
           })
@@ -836,18 +808,21 @@ export default function MagicFlow() {
   }, [selectedEdge, deleteEdge])
 
   const convertNodesToPlatform = useCallback(
-    (newPlatform: "web" | "whatsapp" | "instagram") => {
+    (newPlatform: Platform) => {
       console.log("[v0] Converting nodes to platform:", newPlatform)
 
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
           // Skip start and comment nodes as they don't need platform conversion
           if (node.type === "start" || node.type === "comment") {
-            return node
+            return {
+              ...node,
+              data: { ...node.data, platform: newPlatform } as NodeData
+            }
           }
 
           let newType = node.type
-          const newData = { ...node.data }
+          const newData: any = { ...node.data, platform: newPlatform }
 
           // Convert question nodes
           if (node.type === "question" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
@@ -883,6 +858,54 @@ export default function MagicFlow() {
             }
           }
 
+          // Convert list nodes
+          if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
+            switch (newPlatform) {
+              case "whatsapp":
+                newType = "whatsappListSpecific"
+                newData.label = "WhatsApp List"
+                break
+              case "instagram":
+                newType = "instagramList"
+                newData.label = "Instagram List"
+                break
+              default:
+                newType = "whatsappList"
+                newData.label = "WhatsApp List"
+            }
+          }
+
+          // Convert message/DM/story nodes
+          if (node.type === "whatsappMessage" || node.type === "instagramDM" || node.type === "instagramStory") {
+            switch (newPlatform) {
+              case "whatsapp":
+                newType = "whatsappMessage"
+                newData.label = "WhatsApp Message"
+                // Ensure text field exists for BaseNode components
+                if (!newData.text && newData.question) {
+                  newData.text = newData.question
+                }
+                break
+              case "instagram":
+                // Convert to Instagram DM by default
+                newType = "instagramDM"
+                newData.label = "Instagram DM"
+                // Ensure text field exists for BaseNode components
+                if (!newData.text && newData.question) {
+                  newData.text = newData.question
+                }
+                break
+              default:
+                // Convert to question node for web platform
+                newType = "question"
+                newData.label = "Question"
+                // Ensure question field exists for custom nodes
+                if (!newData.question && newData.text) {
+                  newData.question = newData.text
+                }
+            }
+          }
+
           return {
             ...node,
             type: newType,
@@ -895,7 +918,7 @@ export default function MagicFlow() {
   )
 
   const handlePlatformChange = useCallback(
-    (newPlatform: "web" | "whatsapp" | "instagram") => {
+    (newPlatform: Platform) => {
       console.log("[v0] Platform changed to:", newPlatform)
       setPlatform(newPlatform)
       convertNodesToPlatform(newPlatform)
@@ -903,9 +926,68 @@ export default function MagicFlow() {
     [convertNodesToPlatform],
   )
 
+  // Update selected node when nodes change (e.g., after platform conversion)
+  useEffect(() => {
+    if (selectedNode) {
+      const updatedNode = nodes.find(n => n.id === selectedNode.id)
+      if (updatedNode && updatedNode !== selectedNode) {
+        setSelectedNode(updatedNode)
+      }
+    }
+  }, [nodes, selectedNode])
+
+  // Handle focusing on newly created nodes
+  useEffect(() => {
+    if (nodeToFocus) {
+      // Try to get the node from ReactFlow's internal state first
+      const reactFlowNode = getNode(nodeToFocus)
+      const stateNode = nodes.find(n => n.id === nodeToFocus)
+      const node = reactFlowNode || stateNode
+      
+      if (node) {
+        // Use a small delay to ensure the node is fully rendered
+        setTimeout(() => {
+          // Use fitView to optimally show the specific node
+          fitView({ 
+            nodes: [{ id: nodeToFocus }], 
+            duration: 1200,
+            padding: 0.2, // 20% padding around the node
+            minZoom: 0.5,  // Minimum zoom level
+            maxZoom: 2.0   // Maximum zoom level
+          })
+          setSelectedNode(node)
+          setIsPropertiesPanelOpen(true)
+        }, 100)
+        setNodeToFocus(null) // Reset the focus request
+      } else {
+        // If node not found, try again after a short delay
+        setTimeout(() => {
+          const retryReactFlowNode = getNode(nodeToFocus)
+          const retryStateNode = nodes.find(n => n.id === nodeToFocus)
+          const retryNode = retryReactFlowNode || retryStateNode
+          
+          if (retryNode) {
+            fitView({ 
+              nodes: [{ id: nodeToFocus }], 
+              duration: 1200,
+              padding: 0.2,
+              minZoom: 0.5,
+              maxZoom: 2.0
+            })
+            setSelectedNode(retryNode)
+            setIsPropertiesPanelOpen(true)
+            setNodeToFocus(null)
+          } else {
+            setNodeToFocus(null) // Clear the focus request to prevent infinite retries
+          }
+        }, 200)
+      }
+    }
+  }, [nodes, nodeToFocus, setCenter, setSelectedNode, setIsPropertiesPanelOpen, getNode])
+
   return (
     <div className="h-screen flex bg-background">
-      <NodeSidebar onNodeDragStart={onNodeDragStart} />
+      <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
       <div className="flex-1 relative">
         <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border p-4">
@@ -1034,7 +1116,13 @@ export default function MagicFlow() {
           >
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addComment(contextMenu.x, contextMenu.y)}
+              onClick={() => {
+                const { x: flowX, y: flowY } = screenToFlowPosition({
+                  x: contextMenu.x,
+                  y: contextMenu.y,
+                })
+                addComment(flowX, flowY)
+              }}
             >
               <MessageSquareText className="w-4 h-4" />
               Add Comment

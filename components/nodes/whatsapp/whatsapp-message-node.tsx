@@ -1,0 +1,101 @@
+"use client"
+
+import { memo, useState, useEffect } from "react"
+import { BaseNode } from "../core/base-node"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Edit2, Check, X, MessageCircle } from "lucide-react"
+import { nodeRegistry } from "@/lib/node-registry"
+
+interface WhatsAppMessageNodeData {
+  text: string
+  platform: string
+  id: string
+  onNodeUpdate: (id: string, data: any) => void
+}
+
+export const WhatsAppMessageNode = memo(({ data }: { data: WhatsAppMessageNodeData }) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingValue, setEditingValue] = useState(data.text)
+
+  const platform = nodeRegistry.getPlatform(data.platform)
+  const maxLength = platform?.constraints.messageMaxLength || 160
+
+  useEffect(() => {
+    setEditingValue(data.text)
+  }, [data.text])
+
+  const handleSave = () => {
+    data.onNodeUpdate(data.id, { text: editingValue })
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditingValue(data.text)
+    setIsEditing(false)
+  }
+
+  const isOverLimit = editingValue.length > maxLength
+  const remainingChars = maxLength - editingValue.length
+
+  return (
+    <BaseNode data={data}>
+      <div className="min-w-[280px] max-w-[350px] p-4">
+        <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ backgroundColor: "#25d366" }}>
+          <MessageCircle className="w-4 h-4 text-white" />
+          <span className="text-xs font-medium text-white">WhatsApp Message</span>
+        </div>
+
+        {/* Message Content */}
+        {isEditing ? (
+          <div className="space-y-2">
+            <Textarea
+              value={editingValue}
+              onChange={(e) => setEditingValue(e.target.value)}
+              className={`text-sm resize-none ${isOverLimit ? "border-red-500" : ""}`}
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.ctrlKey) handleSave()
+                if (e.key === "Escape") handleCancel()
+              }}
+              autoFocus
+            />
+
+            {/* Character count */}
+            <div className="flex items-center justify-between">
+              <span className={`text-xs ${isOverLimit ? "text-red-500" : "text-gray-500"}`}>
+                {editingValue.length}/{maxLength}
+                {isOverLimit && <span className="ml-1 bg-red-100 text-red-600 px-1 rounded text-xs">Over limit</span>}
+              </span>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={handleSave} disabled={isOverLimit}>
+                  <Check className="w-3 h-3" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCancel}>
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="cursor-pointer hover:bg-gray-50 p-2 rounded border border-gray-200 min-h-[60px] flex items-center"
+            onClick={() => setIsEditing(true)}
+          >
+            <div className="flex-1">
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">{data.text || "Click to add message..."}</p>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-gray-500">
+                  {data.text.length}/{maxLength} characters
+                </span>
+                <Edit2 className="w-3 h-3 text-gray-400" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </BaseNode>
+  )
+})
+
+WhatsAppMessageNode.displayName = "WhatsAppMessageNode"

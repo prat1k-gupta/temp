@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Updated design tokens for Magic Flow chatbot builder */
+  --background: oklch(1 0 0); /* Canvas background */
+  --foreground: oklch(0.145 0 0); /* Main text color */
+  --card: oklch(0.985 0 0); /* Node background */
+  --card-foreground: oklch(0.145 0 0); /* Node text color */
+  --popover: oklch(1 0 0); /* Tooltip background */
+  --popover-foreground: oklch(0.145 0 0); /* Tooltip text color */
+  --primary: oklch(0.269 0 0); /* Sidebar and main actions */
+  --primary-foreground: oklch(1 0 0); /* Text on primary background */
+  --secondary: oklch(0.556 0.222 264.376); /* Accent elements */
+  --secondary-foreground: oklch(1 0 0); /* Text on secondary background */
+  --muted: oklch(0.985 0 0); /* Muted backgrounds */
+  --muted-foreground: oklch(0.269 0 0); /* Muted text color */
+  --accent: oklch(0.556 0.222 264.376); /* Connection lines and active elements */
+  --accent-foreground: oklch(1 0 0); /* Text on accent background */
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.922 0 0); /* General borders */
+  --input: oklch(0.985 0 0); /* Input fields */
+  --ring: oklch(0.556 0.222 264.376); /* Focus rings */
+  --chart-1: oklch(0.556 0.222 264.376);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.577 0.245 27.325);
+  --chart-4: oklch(0.398 0.07 227.392);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.5rem; /* Corner rounding */
+  --sidebar: oklch(0.269 0 0); /* Sidebar background */
+  --sidebar-foreground: oklch(1 0 0); /* Sidebar text */
+  --sidebar-primary: oklch(0.556 0.222 264.376); /* Sidebar accent */
+  --sidebar-primary-foreground: oklch(1 0 0); /* Text on sidebar accent */
+  --sidebar-accent: oklch(0.556 0.222 264.376); /* Sidebar active elements */
+  --sidebar-accent-foreground: oklch(1 0 0); /* Text on sidebar active */
+  --sidebar-border: oklch(0.922 0 0); /* Sidebar borders */
+  --sidebar-ring: oklch(0.556 0.222 264.376); /* Focus ring for sidebar */
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.488 0.243 264.376);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.488 0.243 264.376);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.488 0.243 264.376);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.488 0.243 264.376);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.488 0.243 264.376);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Adding React Flow curved edge styles */
+.react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.react-flow__edge.react-flow__edge-default .react-flow__edge-path {
+  stroke-dasharray: none;
+  stroke-width: 2px;
+  stroke: #6366f1;
+}
+
+.react-flow__connectionline {
+  stroke: #6366f1;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Curved edge styling */
+.react-flow__edge-default {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.react-flow__edge-default .react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Enhanced handle styling for better usability */
+.react-flow__handle {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  border: 3px solid white !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  transition: all 0.2s ease !important;
+  opacity: 1 !important;
+}
+
+.react-flow__handle:hover {
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+  border-color: #6366f1 !important;
+}
+
+.react-flow__handle-connecting {
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6) !important;
+  border-color: #6366f1 !important;
+}
+
+/* Handle positioning adjustments for better visibility */
+.react-flow__handle-left {
+  left: -8px !important;
+}
+
+.react-flow__handle-right {
+  right: -8px !important;
+}
+
+.react-flow__handle-top {
+  top: -8px !important;
+}
+
+.react-flow__handle-bottom {
+  bottom: -8px !important;
+}

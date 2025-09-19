@@ -129,15 +129,20 @@ export default function MagicFlow() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
+  const [draftStateLoaded, setDraftStateLoaded] = useState(false)
+  const [isLoadingVersion, setIsLoadingVersion] = useState(false)
+  const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
   
   // Version management
   const {
     editModeState,
     toggleEditMode,
+    toggleViewDraft,
     enterEditMode,
     exitEditMode,
     autoEnterEditMode,
     createNewVersion,
+    createAndPublishVersion,
     publishCurrentVersion,
     loadVersion,
     getAllVersions,
@@ -147,6 +152,9 @@ export default function MagicFlow() {
     hasActualChanges,
     getChangesSummary,
     getChangesCount,
+    loadDraftState,
+    saveCurrentStateAsDraft,
+    debugLocalStorageState,
     isEditMode,
     currentVersion,
     draftChanges
@@ -845,13 +853,26 @@ export default function MagicFlow() {
         }
 
         // Track node creation
+        console.log('[App] Creating node in view mode:', {
+          isEditMode,
+          draggedNodeType,
+          newNodeId,
+          currentNodes: nodes.length
+        })
+        
         if (!isEditMode) {
+          console.log('[App] Auto-entering edit mode before adding node')
           autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
         }
         changeTracker.trackNodeAdd(newNode)
         updateDraftChanges()
 
-        setNodes((nds) => [...nds, newNode])
+        console.log('[App] Adding node to React state:', newNodeId)
+        setNodes((nds) => {
+          const newNodes = [...nds, newNode]
+          console.log('[App] New nodes array length:', newNodes.length)
+          return newNodes
+        })
         setDraggedNodeType(null)
         // Request focus on the newly created node (skip for comment)
         if (draggedNodeType !== "comment") {
@@ -1135,15 +1156,33 @@ export default function MagicFlow() {
       }
 
       // Track node and edge creation
+      console.log('[App] Creating connected node in view mode:', {
+        isEditMode,
+        nodeType,
+        newNodeId,
+        currentNodes: nodes.length
+      })
+      
       if (!isEditMode) {
+        console.log('[App] Auto-entering edit mode before adding connected node')
+        setIsAutoEnteringEditMode(true)
         autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
       }
       changeTracker.trackNodeAdd(newNode)
       changeTracker.trackEdgeAdd(newEdge)
       updateDraftChanges()
 
-      setNodes((nds) => [...nds, newNode])
-      setEdges((eds) => [...eds, newEdge])
+      console.log('[App] Adding connected node to React state:', newNodeId)
+      setNodes((nds) => {
+        const newNodes = [...nds, newNode]
+        console.log('[App] New connected nodes array length:', newNodes.length)
+        return newNodes
+      })
+      setEdges((eds) => {
+        const newEdges = [...eds, newEdge]
+        console.log('[App] New connected edges array length:', newEdges.length)
+        return newEdges
+      })
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
       // Request focus on the newly created node
       setNodeToFocus(newNodeId)
@@ -1479,6 +1518,27 @@ export default function MagicFlow() {
     [convertNodesToPlatform, isEditMode, platform, updateDraftChanges, autoEnterEditMode, setNodes, setEdges, nodes, edges],
   )
 
+  const handleModeToggle = useCallback(() => {
+    const publishedVersion = getAllVersions().find(v => v.isPublished)
+    if (publishedVersion) {
+      // We have a published version - use view/draft toggle
+      toggleViewDraft(setNodes, setEdges, setPlatform)
+      setDraftStateLoaded(false) // Reset flag when toggling modes
+    } else {
+      // No published version - use regular edit mode toggle
+      toggleEditMode(setNodes, setEdges, setPlatform)
+      setDraftStateLoaded(false) // Reset flag when toggling modes
+    }
+  }, [getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
+
+  // Reset auto-entering edit mode flag when edit mode state changes
+  useEffect(() => {
+    if (isAutoEnteringEditMode && editModeState.isEditMode) {
+      console.log('[App] Resetting auto-entering edit mode flag')
+      setIsAutoEnteringEditMode(false)
+    }
+  }, [editModeState.isEditMode, isAutoEnteringEditMode])
+
   // Update selected node when nodes change (e.g., after platform conversion)
   useEffect(() => {
     if (selectedNode) {
@@ -1489,31 +1549,79 @@ export default function MagicFlow() {
     }
   }, [nodes, selectedNode])
 
-  // Load published version on startup if in view mode (only run once on mount)
+  // Load published version on startup if in view mode, or draft state if in edit mode (only run once on mount)
   useEffect(() => {
-    if (!isEditMode && currentVersion) {
-      // In view mode, load the current version
-      console.log('[App] Loading current version in view mode:', currentVersion.name)
-      const formattedNodes = currentVersion.nodes.map(node => ({
-        ...node,
-        data: node.data || {}
-      }))
-      
-      const formattedEdges = currentVersion.edges.map(edge => ({
-        ...edge,
-        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
-      }))
-      
-      setNodes(formattedNodes)
-      setEdges(formattedEdges)
-      setPlatform(currentVersion.platform)
+    console.log('[App] Initialization effect triggered:', {
+      editModeStateReady: editModeState.isEditMode !== undefined,
+      isEditMode,
+      hasCurrentVersion: !!currentVersion,
+      currentVersionName: currentVersion?.name
+    })
+    
+    // Only run this effect once when the component mounts and version manager is ready
+    if (editModeState.isEditMode !== undefined) {
+      if (!isEditMode && currentVersion) {
+        // In view mode, load the current version
+        console.log('[App] Loading current version in view mode:', currentVersion.name)
+        const formattedNodes = currentVersion.nodes.map(node => ({
+          ...node,
+          data: node.data || {}
+        }))
+        
+        const formattedEdges = currentVersion.edges.map(edge => ({
+          ...edge,
+          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+        }))
+        
+        console.log('[App] Setting nodes and edges in view mode:', {
+          nodes: formattedNodes.length,
+          edges: formattedEdges.length,
+          platform: currentVersion.platform
+        })
+        
+        setNodes(formattedNodes)
+        setEdges(formattedEdges)
+        setPlatform(currentVersion.platform)
+      } else if (isEditMode && !isAutoEnteringEditMode) {
+        // In edit mode, try to load draft state first, otherwise use current version
+        console.log('[App] In edit mode, attempting to load draft state')
+        const draftLoaded = loadDraftState(setNodes, setEdges, setPlatform)
+        if (!draftLoaded && currentVersion) {
+          console.log('[App] No draft state found, loading current version in edit mode:', currentVersion.name)
+          const formattedNodes = currentVersion.nodes.map(node => ({
+            ...node,
+            data: node.data || {}
+          }))
+          
+          const formattedEdges = currentVersion.edges.map(edge => ({
+            ...edge,
+            style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+          }))
+          
+          console.log('[App] Setting nodes and edges from current version in edit mode:', {
+            nodes: formattedNodes.length,
+            edges: formattedEdges.length,
+            platform: currentVersion.platform
+          })
+          
+          setNodes(formattedNodes)
+          setEdges(formattedEdges)
+          setPlatform(currentVersion.platform)
+        } else if (draftLoaded) {
+          console.log('[App] Successfully loaded draft state')
+          setDraftStateLoaded(true)
+        } else {
+          console.log('[App] No draft state found and no current version')
+        }
+      }
     }
-  }, [isEditMode]) // Only depend on isEditMode, not currentVersion
+  }, [editModeState.isEditMode, isEditMode, currentVersion, loadDraftState]) // Include editModeState.isEditMode to ensure it's initialized
 
   // Load version when currentVersion changes (e.g., when loading from version history)
+  // BUT only if we're not in edit mode or if we're explicitly loading a version
   useEffect(() => {
-    if (currentVersion) {
-      console.log('[App] Current version changed, loading:', currentVersion.name)
+    if (currentVersion && (!isEditMode || isLoadingVersion)) {
+      console.log('[App] Current version changed, loading:', currentVersion.name, 'isLoadingVersion:', isLoadingVersion, 'isEditMode:', isEditMode, 'isPublished:', currentVersion.isPublished)
       const formattedNodes = currentVersion.nodes.map(node => ({
         ...node,
         data: node.data || {}
@@ -1527,8 +1635,47 @@ export default function MagicFlow() {
       setNodes(formattedNodes)
       setEdges(formattedEdges)
       setPlatform(currentVersion.platform)
+      setDraftStateLoaded(false) // Reset flag when loading published version
+      setIsLoadingVersion(false) // Reset the loading flag
+    } else if (currentVersion && isEditMode && !draftStateLoaded && !isLoadingVersion) {
+      console.log('[App] Current version changed but in edit mode - skipping load to preserve draft state')
     }
-  }, [currentVersion]) // Only depend on currentVersion
+  }, [currentVersion, isEditMode, draftStateLoaded, isLoadingVersion]) // Include isLoadingVersion
+
+  // Debug: Log when currentVersion changes
+  useEffect(() => {
+    console.log('[App] Current version changed:', {
+      name: currentVersion?.name,
+      isPublished: currentVersion?.isPublished,
+      nodes: currentVersion?.nodes?.length,
+      edges: currentVersion?.edges?.length,
+      platform: currentVersion?.platform
+    })
+  }, [currentVersion])
+
+  // Debug: Log when edit mode state changes
+  useEffect(() => {
+    console.log('[App] Edit mode state changed:', {
+      isEditMode: editModeState.isEditMode,
+      hasUnsavedChanges: editModeState.hasUnsavedChanges,
+      currentVersion: editModeState.currentVersion?.name,
+      draftChanges: editModeState.draftChanges?.length
+    })
+  }, [editModeState])
+
+  // Save draft state whenever nodes, edges, or platform change in edit mode
+  useEffect(() => {
+    if (isEditMode && (nodes.length > 0 || edges.length > 0)) {
+      // Add a small delay to avoid saving too frequently during rapid changes
+      const timeoutId = setTimeout(() => {
+        console.log('[App] Saving draft state - nodes:', nodes.length, 'edges:', edges.length, 'platform:', platform)
+        saveCurrentStateAsDraft(nodes, edges, platform)
+      }, 100)
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
+
 
   // Handle focusing on newly created nodes
   useEffect(() => {
@@ -1646,7 +1793,7 @@ export default function MagicFlow() {
                 <Button 
                   variant={isEditMode ? "default" : "ghost"} 
                   size="sm"
-                  onClick={() => toggleEditMode(setNodes, setEdges, setPlatform)}
+                  onClick={handleModeToggle}
                   className="flex items-center gap-2 h-8"
                 >
                   <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
@@ -1724,6 +1871,8 @@ export default function MagicFlow() {
                   versions={getAllVersions()}
                   currentVersion={currentVersion}
                   onLoadVersion={(version) => {
+                    console.log('[App] Loading version from history:', version.name)
+                    setIsLoadingVersion(true) // Set flag to allow loading even in edit mode
                     loadVersion(version, setNodes, setEdges, setPlatform)
                     
                     setSelectedNode(null)
@@ -1752,17 +1901,53 @@ export default function MagicFlow() {
                   changes={draftChanges}
                   hasUnsavedChanges={editModeState.hasUnsavedChanges}
                   onCreateVersion={async (name, description) => {
-                    await createNewVersion(nodes, edges, platform, name, description)
+                    console.log('[App] Creating and publishing new version:', name)
+                    setIsLoadingVersion(true) // Set flag to ensure the published version loads
+                    const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
+                    if (publishedVersion) {
+                      console.log('[App] Successfully created and published version:', publishedVersion.name)
+                    }
                   }}
                   onPublishVersion={async (versionId, versionName, description) => {
-                    await publishCurrentVersion(nodes, edges, platform, versionName, description)
+                    console.log('[App] Publishing version and switching to view mode', {
+                      versionId,
+                      versionName,
+                      description,
+                      currentNodes: nodes.length,
+                      currentEdges: edges.length,
+                      currentPlatform: platform,
+                      isEditMode,
+                      currentVersion: currentVersion?.name
+                    })
+                    setIsLoadingVersion(true) // Set flag to ensure the published version loads
+                    const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
+                    if (publishedVersion) {
+                      console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
+                    } else {
+                      console.log('[App] Failed to publish version')
+                    }
                   }}
                   currentVersion={currentVersion}
                 >
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    disabled={!isEditMode || !hasActualChanges(nodes, edges, platform) || getChangesCount() === 0}
+                    disabled={(() => {
+                      const hasChanges = hasActualChanges(nodes, edges, platform)
+                      const changesCount = getChangesCount()
+                      const isDisabled = !isEditMode || !hasChanges || changesCount === 0
+                      console.log('[App] Publish button state:', {
+                        isEditMode,
+                        hasChanges,
+                        changesCount,
+                        isDisabled,
+                        nodes: nodes.length,
+                        edges: edges.length,
+                        currentVersion: currentVersion?.name,
+                        isPublished: currentVersion?.isPublished
+                      })
+                      return isDisabled
+                    })()}
                     className="h-8"
                     title={
                       !isEditMode 
@@ -1782,6 +1967,25 @@ export default function MagicFlow() {
                     Screenshot
                   </Button>
                 </ScreenshotModal>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    console.log('=== MANUAL DEBUG TRIGGERED ===')
+                    debugLocalStorageState()
+                    console.log('Current app state:', {
+                      isEditMode,
+                      currentVersion: currentVersion?.name,
+                      nodes: nodes.length,
+                      edges: edges.length,
+                      platform
+                    })
+                    console.log('=== END MANUAL DEBUG ===')
+                  }}
+                  className="h-8"
+                >
+                  Debug
+                </Button>
               </div>
             </div>
             {/* Right Section - Theme and Platform */}

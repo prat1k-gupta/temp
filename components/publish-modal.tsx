@@ -45,10 +45,16 @@ export function PublishModal({
 
   // Initialize with default name when modal opens
   useEffect(() => {
-    if (isOpen && publishMode === 'create') {
-      setVersionName(generateDefaultVersionName())
+    if (isOpen) {
+      if (publishMode === 'create') {
+        setVersionName(generateDefaultVersionName())
+      } else if (publishMode === 'publish') {
+        // For publish mode, use a default name based on current version
+        const defaultName = currentVersion ? `v${(currentVersion.version || 1) + 1} - Published Flow` : 'v1 - Published Flow'
+        setVersionName(defaultName)
+      }
     }
-  }, [isOpen, publishMode])
+  }, [isOpen, publishMode, currentVersion])
 
   // Generate default version name
   const generateDefaultVersionName = () => {

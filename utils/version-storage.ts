@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   VERSIONS: 'magic-flow-versions',
   CURRENT_VERSION: 'magic-flow-current-version',
   DRAFT_CHANGES: 'magic-flow-draft-changes',
-  EDIT_MODE: 'magic-flow-edit-mode'
+  EDIT_MODE: 'magic-flow-edit-mode',
+  DRAFT_STATE: 'magic-flow-draft-state'
 } as const
 
 /**
@@ -211,4 +212,77 @@ export function getLatestPublishedVersion(): FlowVersion | null {
   }
   
   return publishedVersions.sort((a, b) => b.version - a.version)[0]
+}
+
+/**
+ * Save draft state (nodes, edges, platform) to localStorage
+ */
+export function saveDraftState(nodes: any[], edges: any[], platform: Platform): void {
+  try {
+    const draftState = {
+      nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
+      edges: edges.map(({ style, ...edge }) => edge),
+      platform,
+      timestamp: new Date().toISOString()
+    }
+    console.log('[Draft Storage] Saving draft state:', {
+      nodes: draftState.nodes.length,
+      edges: draftState.edges.length,
+      platform: draftState.platform,
+      timestamp: draftState.timestamp
+    })
+    localStorage.setItem(STORAGE_KEYS.DRAFT_STATE, JSON.stringify(draftState))
+    console.log('[Draft Storage] Draft state saved successfully')
+  } catch (error) {
+    console.error('Error saving draft state to localStorage:', error)
+  }
+}
+
+/**
+ * Get draft state from localStorage
+ */
+export function getDraftState(): { nodes: any[], edges: any[], platform: Platform, timestamp: string } | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.DRAFT_STATE)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      console.log('[Draft Storage] Loading draft state:', {
+        nodes: parsed.nodes?.length || 0,
+        edges: parsed.edges?.length || 0,
+        platform: parsed.platform,
+        timestamp: parsed.timestamp
+      })
+      return parsed
+    } else {
+      console.log('[Draft Storage] No draft state found in localStorage')
+      return null
+    }
+  } catch (error) {
+    console.error('Error loading draft state from localStorage:', error)
+    return null
+  }
+}
+
+/**
+ * Clear draft state from localStorage
+ */
+export function clearDraftState(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.DRAFT_STATE)
+    console.log('[Draft Storage] Draft state cleared from localStorage')
+  } catch (error) {
+    console.error('Error clearing draft state from localStorage:', error)
+  }
+}
+
+/**
+ * Debug function to check all localStorage state
+ */
+export function debugLocalStorageState(): void {
+  console.log('[Draft Storage] === LOCALSTORAGE DEBUG ===')
+  console.log('[Draft Storage] Edit Mode:', getEditModeState())
+  console.log('[Draft Storage] Current Version:', getCurrentVersion()?.name || 'None')
+  console.log('[Draft Storage] Draft State:', getDraftState())
+  console.log('[Draft Storage] All Versions:', getStoredVersions().map(v => ({ name: v.name, isPublished: v.isPublished })))
+  console.log('[Draft Storage] === END DEBUG ===')
 }

@@ -37,6 +37,20 @@ export class ChangeTracker {
   }
 
   /**
+   * Pause tracking (preserve changes but stop tracking new ones)
+   */
+  pauseTracking(): void {
+    this.isTracking = false
+  }
+
+  /**
+   * Resume tracking (continue tracking from where we left off)
+   */
+  resumeTracking(): void {
+    this.isTracking = true
+  }
+
+  /**
    * Check if currently tracking
    */
   isCurrentlyTracking(): boolean {
@@ -65,7 +79,17 @@ export class ChangeTracker {
     data: any,
     description: string
   ): void {
-    if (!this.isTracking) return
+    console.log('[Change Tracker] addChange called:', {
+      type,
+      description,
+      isTracking: this.isTracking,
+      currentChangesCount: this.changes.length
+    })
+    
+    if (!this.isTracking) {
+      console.log('[Change Tracker] Not tracking, skipping change')
+      return
+    }
 
     const change: FlowChange = {
       id: generateId(),
@@ -373,13 +397,16 @@ export class ChangeTracker {
    * Get changes count
    */
   getChangesCount(): number {
-    return this.changes.length
+    const count = this.changes.length
+    console.log('[Change Tracker] getChangesCount called, returning:', count)
+    return count
   }
 
   /**
    * Clear all changes
    */
   clearChanges(): void {
+    console.log('[Change Tracker] clearChanges called, clearing', this.changes.length, 'changes')
     this.changes = []
     this.saveChanges()
   }

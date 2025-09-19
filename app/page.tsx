@@ -518,6 +518,28 @@ export default function MagicFlow() {
     linkElement.click()
   }, [nodes, edges, platform])
 
+  const importFlow = useCallback((importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
+    console.log("[v0] Importing flow:", { 
+      nodes: importedNodes.length, 
+      edges: importedEdges.length, 
+      platform: importedPlatform 
+    })
+
+    // Clear current flow
+    setNodes([])
+    setEdges([])
+    setSelectedNode(null)
+    setSelectedNodes([])
+    setIsPropertiesPanelOpen(false)
+
+    // Set new flow data
+    setNodes(importedNodes)
+    setEdges(importedEdges)
+    setPlatform(importedPlatform)
+
+    toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
+  }, [setNodes, setEdges, setPlatform, setSelectedNode, setSelectedNodes, setIsPropertiesPanelOpen])
+
   const onNodeDragStart = useCallback((event: React.DragEvent, nodeType: string) => {
     setDraggedNodeType(nodeType)
     event.dataTransfer.effectAllowed = "move"
@@ -1211,10 +1233,11 @@ export default function MagicFlow() {
                     platform,
                     timestamp: new Date().toISOString(),
                   }}
+                  onImportFlow={importFlow}
                 >
                   <Button variant="ghost" size="sm">
                     <Eye className="w-4 h-4 mr-2" />
-                    View JSON
+                    Export/Import
                   </Button>
                 </ExportModal>
                 <ScreenshotModal flowElementRef={flowElementRef}>

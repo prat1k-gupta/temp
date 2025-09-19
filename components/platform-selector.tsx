@@ -16,9 +16,9 @@ export function PlatformSelector({ platform, onPlatformChange }: PlatformSelecto
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="web">WhatsApp</SelectItem>
-          {/* <SelectItem value="whatsapp">WhatsApp</SelectItem>
-          <SelectItem value="instagram">Instagram</SelectItem> */}
+          <SelectItem value="web">Web</SelectItem>
+          <SelectItem value="whatsapp">WhatsApp</SelectItem>
+          <SelectItem value="instagram">Instagram</SelectItem>
         </SelectContent>
       </Select>
     </div>

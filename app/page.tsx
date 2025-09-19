@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import {
   ReactFlow,
   MiniMap,
@@ -39,9 +39,11 @@ import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
-import { Download, Save, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText } from "lucide-react"
+import { Download, Save, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { ExportModal } from "@/components/export-modal"
+import { ScreenshotModal } from "@/components/screenshot-modal"
 import { toast } from "sonner"
 
 // Modular imports
@@ -120,6 +122,7 @@ export default function MagicFlow() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
+  const flowElementRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -1201,10 +1204,25 @@ export default function MagicFlow() {
                   <Save className="w-4 h-4 mr-2" />
                   Save
                 </Button>
-                <Button variant="ghost" size="sm" onClick={exportFlow}>
-                  <Download className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
+                <ExportModal
+                  flowData={{
+                    nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
+                    edges: edges.map(({ style, ...edge }) => edge),
+                    platform,
+                    timestamp: new Date().toISOString(),
+                  }}
+                >
+                  <Button variant="ghost" size="sm">
+                    <Eye className="w-4 h-4 mr-2" />
+                    View JSON
+                  </Button>
+                </ExportModal>
+                <ScreenshotModal flowElementRef={flowElementRef}>
+                  <Button variant="ghost" size="sm">
+                    <Camera className="w-4 h-4 mr-2" />
+                    Screenshot
+                  </Button>
+                </ScreenshotModal>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -1216,6 +1234,7 @@ export default function MagicFlow() {
 
         <div className="h-full pt-20">
           <ReactFlow
+            ref={flowElementRef}
             key="flow"
             nodes={nodes
               .filter((node) => {

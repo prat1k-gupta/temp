@@ -68,3 +68,33 @@ export interface Coordinates {
   x: number
   y: number
 }
+
+// Version history types
+export interface FlowVersion {
+  id: string
+  version: number
+  name: string
+  description?: string
+  nodes: any[]
+  edges: any[]
+  platform: Platform
+  createdAt: string
+  publishedAt?: string
+  isPublished: boolean
+  changes: FlowChange[]
+}
+
+export interface FlowChange {
+  id: string
+  type: 'node_add' | 'node_delete' | 'node_update' | 'edge_add' | 'edge_delete' | 'edge_update' | 'platform_change' | 'flow_import'
+  timestamp: string
+  data: any
+  description: string
+}
+
+export interface EditModeState {
+  isEditMode: boolean
+  hasUnsavedChanges: boolean
+  currentVersion: FlowVersion | null
+  draftChanges: FlowChange[]
+}

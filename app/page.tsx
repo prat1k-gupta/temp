@@ -39,11 +39,16 @@ import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
-import { Download, Save, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Plus } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
 import { ScreenshotModal } from "@/components/screenshot-modal"
+import { VersionHistoryModal } from "@/components/version-history-modal"
+import { PublishModal } from "@/components/publish-modal"
+import { useVersionManager } from "@/hooks/use-version-manager"
+import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
 
 // Modular imports
@@ -122,6 +127,27 @@ export default function MagicFlow() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
+  
+  // Version management
+  const {
+    editModeState,
+    toggleEditMode,
+    enterEditMode,
+    exitEditMode,
+    autoEnterEditMode,
+    createNewVersion,
+    publishCurrentVersion,
+    loadVersion,
+    getAllVersions,
+    getLatestVersion,
+    updateDraftChanges,
+    discardChanges,
+    hasActualChanges,
+    getChangesSummary,
+    isEditMode,
+    currentVersion,
+    draftChanges
+  } = useVersionManager()
   const flowElementRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -186,6 +212,15 @@ export default function MagicFlow() {
         return
       }
       
+      // Track the deletion
+      if (nodeToDelete) {
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeDelete(nodeId, nodeToDelete.type, nodeToDelete.data?.label as string | undefined)
+        updateDraftChanges()
+      }
+      
       setNodes((nds) => nds.filter((n) => n.id !== nodeId))
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
       if (selectedNode?.id === nodeId) {
@@ -198,7 +233,7 @@ export default function MagicFlow() {
         toast.success(`"${nodeToDelete.data.label || nodeToDelete.type}" deleted`)
       }
     },
-    [setNodes, setEdges, selectedNode, setIsPropertiesPanelOpen, nodes],
+    [setNodes, setEdges, selectedNode, setIsPropertiesPanelOpen, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges, platform],
   )
 
   const copyNodes = useCallback(() => {
@@ -348,19 +383,23 @@ export default function MagicFlow() {
         return
       }
 
+      const newEdge = {
+        ...params,
+        type: "default",
+        style: { stroke: "#6366f1", strokeWidth: 2 },
+      }
+
+      // Track the connection
+      if (!isEditMode) {
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+      }
+      changeTracker.trackEdgeAdd(newEdge)
+      updateDraftChanges()
+
       console.log("[v0] Creating new connection:", params)
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...params,
-            type: "default",
-            style: { stroke: "#6366f1", strokeWidth: 2 },
-          },
-          eds,
-        ),
-      )
+      setEdges((eds) => addEdge(newEdge, eds))
     },
-    [setEdges, edges],
+    [setEdges, edges, isEditMode, updateDraftChanges, autoEnterEditMode, setNodes, setPlatform, nodes, platform],
   )
 
   const addButtonToNode = useCallback(
@@ -491,12 +530,20 @@ export default function MagicFlow() {
         style: { stroke: "#6366f1", strokeWidth: 2 },
       }
 
+      // Track node and edge creation
+      if (!isEditMode) {
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+      }
+      changeTracker.trackNodeAdd(newNode)
+      changeTracker.trackEdgeAdd(newEdge)
+      updateDraftChanges()
+
       setNodes((nds) => [...nds, newNode])
       setEdges((eds) => [...eds, newEdge])
       // Request focus on the newly created connected node
       setNodeToFocus(newNodeId)
     },
-    [nodes, setNodes, setEdges],
+    [nodes, setNodes, setEdges, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges, platform],
   )
 
   const exportFlow = useCallback(() => {
@@ -525,6 +572,13 @@ export default function MagicFlow() {
       platform: importedPlatform 
     })
 
+    // Track flow import
+    if (!isEditMode) {
+      autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+    }
+    changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
+    updateDraftChanges()
+
     // Clear current flow
     setNodes([])
     setEdges([])
@@ -538,7 +592,7 @@ export default function MagicFlow() {
     setPlatform(importedPlatform)
 
     toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
-  }, [setNodes, setEdges, setPlatform, setSelectedNode, setSelectedNodes, setIsPropertiesPanelOpen])
+  }, [setNodes, setEdges, setPlatform, setSelectedNode, setSelectedNodes, setIsPropertiesPanelOpen, isEditMode, updateDraftChanges, autoEnterEditMode, nodes, edges, platform])
 
   const onNodeDragStart = useCallback((event: React.DragEvent, nodeType: string) => {
     setDraggedNodeType(nodeType)
@@ -602,6 +656,13 @@ export default function MagicFlow() {
             return
         }
 
+        // Track node creation
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeAdd(newNode)
+        updateDraftChanges()
+
         setNodes((nds) => [...nds, newNode])
         setDraggedNodeType(null)
         // Request focus on the newly created node (skip for comment)
@@ -615,7 +676,7 @@ export default function MagicFlow() {
         setDraggedNodeType(null)
       }
     },
-    [draggedNodeType, setNodes, deleteNode, platform],
+    [draggedNodeType, setNodes, deleteNode, platform, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
   )
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
@@ -695,6 +756,13 @@ export default function MagicFlow() {
             return
         }
 
+        // Track node creation
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeAdd(newNode)
+        updateDraftChanges()
+
         setNodes((nds) => [...nds, newNode])
         closeContextMenu()
         if (nodeType !== "comment") {
@@ -706,7 +774,7 @@ export default function MagicFlow() {
         console.error(`[v0] Error creating node ${nodeType}:`, error)
       }
     },
-    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, deleteNode],
+    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, deleteNode, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
   )
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
@@ -785,6 +853,13 @@ export default function MagicFlow() {
           },
           () => deleteNode(newNodeId)
         )
+        // Track comment node creation
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeAdd(newNode)
+        updateDraftChanges()
+
         setNodes((nds) => [...nds, newNode])
         console.log("[v0] Added comment node at position:", position)
         
@@ -794,7 +869,7 @@ export default function MagicFlow() {
       setLastClickTime(currentTime)
       setLastClickPosition(clickPosition)
     },
-    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform, setSelectedNodes],
+    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform, setSelectedNodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
   )
 
   const handleNodeTypeSelection = useCallback(
@@ -856,6 +931,14 @@ export default function MagicFlow() {
         style: { stroke: "#6366f1", strokeWidth: 2 },
       }
 
+      // Track node and edge creation
+      if (!isEditMode) {
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+      }
+      changeTracker.trackNodeAdd(newNode)
+      changeTracker.trackEdgeAdd(newEdge)
+      updateDraftChanges()
+
       setNodes((nds) => [...nds, newNode])
       setEdges((eds) => [...eds, newEdge])
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
@@ -864,7 +947,7 @@ export default function MagicFlow() {
       
       // No toast for node connection - user requested only copy, delete, and multiple selection
     },
-    [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform],
+    [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges],
   )
 
   const updateNodeData = useCallback(
@@ -876,6 +959,19 @@ export default function MagicFlow() {
         }
         
         console.log("[v0] Updating node data:", nodeId, updates)
+        
+        // Track node update
+        const oldNode = nodes.find(n => n.id === nodeId)
+        if (oldNode) {
+          if (!isEditMode) {
+            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+          }
+          const oldData = { ...oldNode.data }
+          const newData = { ...oldData, ...updates }
+          changeTracker.trackNodeUpdate(nodeId, oldData, newData)
+          updateDraftChanges()
+        }
+        
         setNodes((nds) =>
           nds.map((node) => {
             if (node.id === nodeId) {
@@ -900,7 +996,7 @@ export default function MagicFlow() {
         console.error(`[v0] Error updating node data for ${nodeId}:`, error)
       }
     },
-    [setNodes, setSelectedNode],
+    [setNodes, setSelectedNode, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform],
   )
 
   const closeConnectionMenu = useCallback(() => {
@@ -1166,10 +1262,18 @@ export default function MagicFlow() {
   const handlePlatformChange = useCallback(
     (newPlatform: Platform) => {
       console.log("[v0] Platform changed to:", newPlatform)
+      
+      // Track platform change
+      if (!isEditMode) {
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+      }
+      changeTracker.trackPlatformChange(platform, newPlatform)
+      updateDraftChanges()
+      
       setPlatform(newPlatform)
       convertNodesToPlatform(newPlatform)
     },
-    [convertNodesToPlatform],
+    [convertNodesToPlatform, isEditMode, platform, updateDraftChanges, autoEnterEditMode, setNodes, setEdges, nodes, edges],
   )
 
   // Update selected node when nodes change (e.g., after platform conversion)
@@ -1181,6 +1285,37 @@ export default function MagicFlow() {
       }
     }
   }, [nodes, selectedNode])
+
+  // Load published version on startup if in view mode
+  useEffect(() => {
+    if (!isEditMode) {
+      // In view mode, always load the published version
+      if (currentVersion && currentVersion.isPublished) {
+        // Current version is published, load it
+        console.log('[App] Loading current published version:', currentVersion.name)
+        const formattedNodes = currentVersion.nodes.map(node => ({
+          ...node,
+          data: node.data || {}
+        }))
+        
+        const formattedEdges = currentVersion.edges.map(edge => ({
+          ...edge,
+          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+        }))
+        
+        setNodes(formattedNodes)
+        setEdges(formattedEdges)
+        setPlatform(currentVersion.platform)
+      } else {
+        // No published version or current version is not published, load latest published
+        const publishedVersion = getLatestVersion()
+        if (publishedVersion) {
+          console.log('[App] Loading latest published version on startup:', publishedVersion.name)
+          loadVersion(publishedVersion, setNodes, setEdges, setPlatform)
+        }
+      }
+    }
+  }, [isEditMode, currentVersion, getLatestVersion, loadVersion, setNodes, setEdges, setPlatform])
 
   // Handle focusing on newly created nodes
   useEffect(() => {
@@ -1206,6 +1341,64 @@ export default function MagicFlow() {
     }
   }, [nodes, nodeToFocus, fitView, setSelectedNode, setIsPropertiesPanelOpen])
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check if we're in an input field or textarea
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+        return
+      }
+
+      // Delete key - delete selected nodes
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedNodes.length > 0) {
+          event.preventDefault()
+          console.log('[Keyboard] Delete key pressed - deleting selected nodes')
+          
+          // Track deletions and auto-enter edit mode
+          selectedNodes.forEach(node => {
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeDelete(node.id, node.type, node.data?.label as string | undefined)
+          })
+          updateDraftChanges()
+          
+          // Delete the nodes
+          const nodeIds = selectedNodes.map(n => n.id)
+          setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)))
+          setEdges((eds) => eds.filter((e) => !nodeIds.includes(e.source) && !nodeIds.includes(e.target)))
+          
+          // Clear selection
+          setSelectedNodes([])
+          setSelectedNode(null)
+          setIsPropertiesPanelOpen(false)
+          
+          // Show toast
+          toast.success(`${selectedNodes.length} node(s) deleted`)
+        }
+      }
+      
+      // Copy key - copy selected nodes
+      if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+        if (selectedNodes.length > 0) {
+          event.preventDefault()
+          console.log('[Keyboard] Copy key pressed - copying selected nodes')
+          copyNodes()
+        }
+      }
+    }
+
+    // Add event listener
+    document.addEventListener('keydown', handleKeyDown)
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedNodes, isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, updateDraftChanges, copyNodes, setSelectedNodes, setSelectedNode, setIsPropertiesPanelOpen, nodes, edges, platform])
+
   return (
     <div className="h-screen flex bg-background">
       <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
@@ -1216,15 +1409,25 @@ export default function MagicFlow() {
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-foreground">Magic Flow</h1>
               <div className="flex items-center gap-2">
+                <Button 
+                  variant={isEditMode ? "default" : "ghost"} 
+                  size="sm"
+                  onClick={() => toggleEditMode(setNodes, setEdges, setPlatform)}
+                  className="flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 rounded-full bg-current"></span>
+                  {isEditMode ? "Edit Mode" : "View Mode"}
+                </Button>
+                {isEditMode && hasActualChanges(nodes, edges, platform) && (
+                  <Badge variant="outline" className="text-orange-600 border-orange-600">
+                    {getChangesSummary()}
+                  </Badge>
+                )}
                 <Button variant="ghost" size="sm" disabled>
                   <Undo2 className="w-4 h-4" />
                 </Button>
                 <Button variant="ghost" size="sm" disabled>
                   <Redo2 className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="sm">
-                  <Save className="w-4 h-4 mr-2" />
-                  Save
                 </Button>
                 <ExportModal
                   flowData={{
@@ -1240,6 +1443,83 @@ export default function MagicFlow() {
                     Export/Import
                   </Button>
                 </ExportModal>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  disabled={!isEditMode || !hasActualChanges(nodes, edges, platform)}
+                  onClick={async () => {
+                    const versions = getAllVersions()
+                    const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1
+                    const defaultName = `v${nextVersion} - Flow`
+                    await createNewVersion(nodes, edges, platform, defaultName)
+                    toast.success(`Version ${defaultName} created!`)
+                  }}
+                  className="flex items-center gap-2"
+                  title={
+                    !isEditMode 
+                      ? "Enter edit mode to save changes" 
+                      : !hasActualChanges(nodes, edges, platform) 
+                        ? "No changes to save" 
+                        : "Save current changes as new version"
+                  }
+                >
+                  <Plus className="w-4 h-4" />
+                  Quick Save
+                </Button>
+                <VersionHistoryModal
+                  versions={getAllVersions()}
+                  currentVersion={currentVersion}
+                  onLoadVersion={(version) => {
+                    loadVersion(version, setNodes, setEdges, setPlatform)
+                    setSelectedNode(null)
+                    setSelectedNodes([])
+                    setIsPropertiesPanelOpen(false)
+                  }}
+                  onDeleteVersion={(versionId) => {
+                    // TODO: Implement delete version
+                    console.log("Delete version:", versionId)
+                  }}
+                  onCreateVersion={async (name, description) => {
+                    await createNewVersion(nodes, edges, platform, name, description)
+                  }}
+                  onPublishVersion={async (versionId) => {
+                    await publishCurrentVersion(nodes, edges, platform)
+                  }}
+                  isEditMode={isEditMode}
+                  hasChanges={hasActualChanges(nodes, edges, platform)}
+                >
+                  <Button variant="ghost" size="sm">
+                    <History className="w-4 h-4 mr-2" />
+                    Versions
+                  </Button>
+                </VersionHistoryModal>
+                <PublishModal
+                  changes={draftChanges}
+                  hasUnsavedChanges={editModeState.hasUnsavedChanges}
+                  onCreateVersion={async (name, description) => {
+                    await createNewVersion(nodes, edges, platform, name, description)
+                  }}
+                  onPublishVersion={async (versionId, versionName, description) => {
+                    await publishCurrentVersion(nodes, edges, platform, versionName, description)
+                  }}
+                  currentVersion={currentVersion}
+                >
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    disabled={!isEditMode || !hasActualChanges(nodes, edges, platform)}
+                    title={
+                      !isEditMode 
+                        ? "Enter edit mode to publish changes" 
+                        : !hasActualChanges(nodes, edges, platform) 
+                          ? "No changes to publish" 
+                          : "Publish current changes as new version"
+                    }
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Publish
+                  </Button>
+                </PublishModal>
                 <ScreenshotModal flowElementRef={flowElementRef}>
                   <Button variant="ghost" size="sm">
                     <Camera className="w-4 h-4 mr-2" />
@@ -1258,7 +1538,7 @@ export default function MagicFlow() {
         <div className="h-full pt-20">
           <ReactFlow
             ref={flowElementRef}
-            key="flow"
+            key={`flow-${currentVersion?.id || 'default'}`}
             nodes={nodes
               .filter((node) => {
                 if (!node || !node.id || !node.type || !node.position || !node.data) {

@@ -94,10 +94,237 @@ export class ChangeTracker {
   }
 
   /**
-   * Track node update
+   * Track node update with smart change detection
    */
-  trackNodeUpdate(nodeId: string, oldData: any, newData: any): void {
-    this.addChange('node_update', { nodeId, oldData, newData }, `Updated node: ${nodeId}`)
+  trackNodeUpdate(nodeId: string, oldData: any, newData: any, oldType?: string, newType?: string): void {
+    console.log('[Change Tracker] Checking node update for:', nodeId)
+    console.log('[Change Tracker] Old data:', oldData)
+    console.log('[Change Tracker] New data:', newData)
+    console.log('[Change Tracker] Type change:', oldType, '→', newType)
+    
+    // First check if there's any difference at all
+    const hasAnyChange = JSON.stringify(oldData) !== JSON.stringify(newData)
+    const hasTypeChange = oldType && newType && oldType !== newType
+    console.log('[Change Tracker] Has any change:', hasAnyChange, 'Has type change:', hasTypeChange)
+    
+    if (!hasAnyChange && !hasTypeChange) {
+      console.log('[Change Tracker] No changes detected - data is identical')
+      return
+    }
+    
+    // Check for node type transitions first
+    if (hasTypeChange) {
+      const transitionReason = this.detectTransitionReason(oldType!, newType!, oldData, newData)
+      if (transitionReason) {
+        console.log('[Change Tracker] Detected node type transition:', transitionReason)
+        this.addChange('node_update', { 
+          nodeId, 
+          oldData, 
+          newData, 
+          changes: [{ property: 'nodeType', oldValue: oldType, newValue: newType }],
+          transitionReason
+        }, transitionReason)
+        return
+      }
+    }
+    
+    // Try to detect specific changes
+    const changes = this.detectNodeChanges(oldData, newData)
+    console.log('[Change Tracker] Detected specific changes:', changes)
+    
+    if (changes.length > 0) {
+      // Use smart change description
+      const changeDescription = this.formatNodeChangeDescription(changes, nodeId)
+      console.log('[Change Tracker] Smart change description:', changeDescription)
+      this.addChange('node_update', { 
+        nodeId, 
+        oldData, 
+        newData, 
+        changes 
+      }, changeDescription)
+    } else {
+      // If no meaningful changes detected, don't track anything
+      console.log('[Change Tracker] No meaningful changes detected - not tracking update')
+      return
+    }
+  }
+
+  /**
+   * Detect the reason for node type transitions
+   */
+  private detectTransitionReason(oldType: string, newType: string, oldData: any, newData: any): string | null {
+    // Question → Quick Reply (first button added)
+    if (this.isQuestionType(oldType) && this.isQuickReplyType(newType)) {
+      return "Added first button - converted to Quick Reply"
+    }
+    
+    // Quick Reply → WhatsApp List (max buttons reached)
+    if (this.isQuickReplyType(oldType) && this.isListType(newType)) {
+      const oldButtons = oldData?.buttons || []
+      const newOptions = newData?.options || []
+      
+      // Check if we hit the button limit
+      if (oldButtons.length >= 3 && newOptions.length > 0) {
+        return `Reached ${oldButtons.length} button limit - converted to List`
+      }
+    }
+    
+    return null
+  }
+
+  /**
+   * Check if a node type is a question type
+   */
+  private isQuestionType(type: string): boolean {
+    return type === 'question' || type === 'whatsappQuestion' || type === 'instagramQuestion'
+  }
+
+  /**
+   * Check if a node type is a quick reply type
+   */
+  private isQuickReplyType(type: string): boolean {
+    return type === 'quickReply' || type === 'whatsappQuickReply' || type === 'instagramQuickReply'
+  }
+
+  /**
+   * Check if a node type is a list type
+   */
+  private isListType(type: string): boolean {
+    return type === 'whatsappList' || type === 'whatsappListSpecific' || type === 'instagramList'
+  }
+
+  /**
+   * Detect meaningful changes between old and new node data
+   */
+  private detectNodeChanges(oldData: any, newData: any): Array<{property: string, oldValue: any, newValue: any}> {
+    const changes: Array<{property: string, oldValue: any, newValue: any}> = []
+    
+    // Properties that are meaningful to users
+    const userFacingProperties = [
+      'label', 'text', 'message', 'question', 'title', 'description', 
+      'placeholder', 'buttonText', 'options', 'buttons', 'validation',
+      'required', 'type', 'style', 'color', 'size', 'nodeType'
+    ]
+    
+    // Properties to ignore (technical/internal)
+    const ignoredProperties = [
+      'id', 'onNodeUpdate', 'onAddButton', 'onAddOption', 'onAddConnection', 
+      'onDelete', 'onConnect', 'onDisconnect', '_timestamp', '__id', 
+      'position', 'selected', 'dragging', 'data', 'sourcePosition', 
+      'targetPosition', 'sourceHandle', 'targetHandle', 'animated',
+      'hidden', 'deletable', 'selectable', 'dragHandle', 'dragHandleClass'
+    ]
+    
+    // Get all properties from both objects
+    const allKeys = new Set([...Object.keys(oldData || {}), ...Object.keys(newData || {})])
+    console.log('[Change Tracker] All properties to check:', Array.from(allKeys))
+    
+    for (const prop of allKeys) {
+      // Skip ignored properties
+      if (ignoredProperties.includes(prop)) {
+        console.log(`[Change Tracker] Skipping ignored property: ${prop}`)
+        continue
+      }
+      
+      const oldValue = oldData?.[prop]
+      const newValue = newData?.[prop]
+      
+      console.log(`[Change Tracker] Checking ${prop}:`, { oldValue, newValue })
+      
+      // More thorough comparison
+      let hasChanged = false
+      
+      if (oldValue !== newValue) {
+        // Handle arrays specially
+        if (Array.isArray(oldValue) && Array.isArray(newValue)) {
+          hasChanged = JSON.stringify(oldValue) !== JSON.stringify(newValue)
+        } else {
+          hasChanged = true
+        }
+      }
+      
+      if (hasChanged) {
+        changes.push({
+          property: prop,
+          oldValue,
+          newValue
+        })
+        console.log(`[Change Tracker] Added change for ${prop}`)
+      } else {
+        console.log(`[Change Tracker] No change for ${prop}`)
+      }
+    }
+    
+    console.log('[Change Tracker] Total meaningful changes detected:', changes.length)
+    return changes
+  }
+
+
+  /**
+   * Format a human-readable description of node changes
+   */
+  private formatNodeChangeDescription(changes: Array<{property: string, oldValue: any, newValue: any}>, nodeId: string): string {
+    if (changes.length === 1) {
+      const change = changes[0]
+      return this.formatSingleChange(change, nodeId)
+    } else if (changes.length <= 3) {
+      const changeDescriptions = changes.map(change => this.formatSingleChange(change, nodeId, false))
+      return `Updated node: ${changeDescriptions.join(', ')}`
+    } else {
+      return `Updated node: ${changes.length} properties changed`
+    }
+  }
+
+  /**
+   * Format a single property change
+   */
+  private formatSingleChange(change: {property: string, oldValue: any, newValue: any}, nodeId: string, includeNodeId: boolean = true): string {
+    const { property, oldValue, newValue } = change
+    
+    // Handle special cases for better readability
+    if (property === 'label' || property === 'text' || property === 'message' || property === 'question') {
+      const prefix = includeNodeId ? `Updated ${property}` : `Updated ${property}`
+      return `${prefix}: "${oldValue || 'empty'}" → "${newValue || 'empty'}"`
+    }
+    
+    if (property === 'buttons') {
+      const oldCount = Array.isArray(oldValue) ? oldValue.length : 0
+      const newCount = Array.isArray(newValue) ? newValue.length : 0
+      if (newCount > oldCount) {
+        return `Added ${newCount - oldCount} button${newCount - oldCount > 1 ? 's' : ''}`
+      } else if (newCount < oldCount) {
+        return `Removed ${oldCount - newCount} button${oldCount - newCount > 1 ? 's' : ''}`
+      } else {
+        return `Updated buttons`
+      }
+    }
+    
+    if (property === 'options') {
+      const oldCount = Array.isArray(oldValue) ? oldValue.length : 0
+      const newCount = Array.isArray(newValue) ? newValue.length : 0
+      if (newCount > oldCount) {
+        return `Added ${newCount - oldCount} option${newCount - oldCount > 1 ? 's' : ''}`
+      } else if (newCount < oldCount) {
+        return `Removed ${oldCount - newCount} option${oldCount - newCount > 1 ? 's' : ''}`
+      } else {
+        return `Updated options`
+      }
+    }
+    
+    if (property === 'required') {
+      return `${oldValue ? 'Made required' : 'Made optional'}`
+    }
+    
+    if (property === 'nodeType') {
+      return `Changed type: ${oldValue || 'unknown'} → ${newValue || 'unknown'}`
+    }
+    
+    if (property === 'type') {
+      return `Changed type: ${oldValue || 'unknown'} → ${newValue || 'unknown'}`
+    }
+    
+    // Generic change
+    return `Updated ${property}: ${oldValue || 'empty'} → ${newValue || 'empty'}`
   }
 
   /**

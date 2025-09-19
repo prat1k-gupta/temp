@@ -207,7 +207,8 @@ export function VersionHistoryModal({
     console.log('[Version History Modal] Loading version:', version)
     onLoadVersion(version)
     setIsOpen(false)
-    toast.success(`Loaded version ${version.version}: ${version.name}`)
+    const versionType = version.isPublished ? "published version" : "draft version"
+    toast.success(`${versionType} "${version.name}" loaded successfully!`)
   }
 
   const handleDeleteVersion = (versionId: string, versionName: string) => {
@@ -217,8 +218,10 @@ export function VersionHistoryModal({
     }
   }
 
-  const handlePublishVersion = (versionId: string) => {
-    onPublishVersion(versionId)
+  const handlePublishVersion = (version: FlowVersion) => {
+    console.log('[Version History Modal] Publishing version:', version)
+    onLoadVersion(version)
+    onPublishVersion(version.id)
     toast.success("Version published successfully!")
   }
 
@@ -242,7 +245,7 @@ export function VersionHistoryModal({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+      <DialogContent className="min-w-2xl h-[80vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <History className="w-5 h-5" />
@@ -368,7 +371,7 @@ export function VersionHistoryModal({
 
           {/* Versions List */}
           <ScrollArea className="flex-1 min-h-0">
-            <div className="space-y-3 pr-4">
+            <div className="space-y-3 p-2">
               {versions.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <GitBranch className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -377,7 +380,7 @@ export function VersionHistoryModal({
                 </div>
               ) : (
                 sortedVersions.map((version) => (
-                  <Card key={version.id} className={`${isCurrentVersion(version) ? 'ring-2 ring-blue-500' : ''}`}>
+                  <Card key={version.id} className={`${isCurrentVersion(version) ? 'shadow-lg ring ring-blue-500' : ''}`}>
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -439,7 +442,7 @@ export function VersionHistoryModal({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handlePublishVersion(version.id)}
+                              onClick={() => handlePublishVersion(version)}
                               className="flex items-center gap-1"
                             >
                               <CheckCircle className="w-4 h-4" />

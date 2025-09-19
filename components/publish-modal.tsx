@@ -146,6 +146,7 @@ export function PublishModal({
               <Button
                 variant={publishMode === 'create' ? 'default' : 'outline'}
                 size="sm"
+                disabled={isPublishing || changes.length === 0}
                 onClick={() => setPublishMode('create')}
                 className="flex items-center gap-2"
               >
@@ -265,7 +266,7 @@ export function PublishModal({
             </Button>
             <Button
               onClick={handlePublish}
-              disabled={isPublishing}
+              disabled={isPublishing || changes.length === 0}
               className="flex items-center gap-2"
             >
               {isPublishing && <Loader2 className="w-4 h-4 animate-spin" />}

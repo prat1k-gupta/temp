@@ -40,13 +40,14 @@ import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Plus } from "lucide-react"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Plus, Clock } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
 import { ScreenshotModal } from "@/components/screenshot-modal"
 import { VersionHistoryModal } from "@/components/version-history-modal"
 import { PublishModal } from "@/components/publish-modal"
+import { ChangesModal } from "@/components/changes-modal"
 import { useVersionManager } from "@/hooks/use-version-manager"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
@@ -80,6 +81,7 @@ import {
   createNode,
   createCommentNode
 } from "@/utils"
+import { publishVersion } from "@/utils/version-storage"
 
 const nodeTypes = {
   start: StartNode,
@@ -144,6 +146,7 @@ export default function MagicFlow() {
     discardChanges,
     hasActualChanges,
     getChangesSummary,
+    getChangesCount,
     isEditMode,
     currentVersion,
     draftChanges
@@ -416,6 +419,17 @@ export default function MagicFlow() {
           const platform = (node.data.platform as Platform) || "web"
           const newType = getPlatformSpecificNodeType("quickReply", platform)
           
+          // Track the type transition
+          if (!isEditMode) {
+            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+          }
+          changeTracker.trackNodeUpdate(nodeId, node.data, {
+            ...node.data,
+            label: "Quick Reply",
+            buttons: [{ text: "Option 1" }],
+          }, node.type, newType)
+          updateDraftChanges()
+          
           setNodes((nds) =>
             nds.map((n) =>
               n.id === nodeId
@@ -443,6 +457,17 @@ export default function MagicFlow() {
             // Convert to list node if at max buttons
             const newType = getPlatformSpecificNodeType("whatsappList", platform)
             
+            // Track the type transition
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              label: "Whatsapp List",
+              options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
+            }, node.type, newType)
+            updateDraftChanges()
+            
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
@@ -462,6 +487,18 @@ export default function MagicFlow() {
             setNodeToFocus(nodeId)
           } else {
             // Add button
+            const newButtons = [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[]
+            
+            // Track button addition
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              buttons: newButtons,
+            }, node.type, node.type)
+            updateDraftChanges()
+            
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
@@ -469,7 +506,7 @@ export default function MagicFlow() {
                       ...n,
                       data: {
                         ...n.data,
-                        buttons: [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[],
+                        buttons: newButtons,
                       },
                     }
                   : n,
@@ -481,6 +518,18 @@ export default function MagicFlow() {
         else if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
           const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
           if (currentOptions.length < OPTION_LIMITS.all) {
+            const newOptions = [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[]
+            
+            // Track option addition
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              options: newOptions,
+            }, node.type, node.type)
+            updateDraftChanges()
+            
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
@@ -488,7 +537,7 @@ export default function MagicFlow() {
                       ...n,
                       data: {
                         ...n.data,
-                        options: [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[],
+                        options: newOptions,
                       },
                     }
                   : n,
@@ -498,6 +547,145 @@ export default function MagicFlow() {
         }
       } catch (error) {
         console.error(`[v0] Error adding button to node ${nodeId}:`, error)
+      }
+    },
+    [nodes, setNodes],
+  )
+
+  const removeButtonFromNode = useCallback(
+    (nodeId: string, buttonIndex: number) => {
+      try {
+        const node = nodes.find((n) => n.id === nodeId)
+        if (!node) {
+          console.warn(`[v0] Node with id ${nodeId} not found`)
+          return
+        }
+
+        const platform = (node.data.platform as Platform) || "web"
+        const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
+        const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
+
+        // Handle list nodes (remove option and potentially convert back to quick reply)
+        if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
+          const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
+          
+          // If we have 3 or fewer options, convert back to quick reply
+          if (newOptions.length <= 3) {
+            const newType = getPlatformSpecificNodeType("quickReply", platform)
+            const buttonsFromOptions = newOptions.map(opt => ({ text: opt.text || "" }))
+            
+            // Track the reverse transition
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              label: "Quick Reply",
+              buttons: buttonsFromOptions,
+            }, node.type, newType)
+            updateDraftChanges()
+            
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      type: newType,
+                      data: {
+                        ...n.data,
+                        label: "Quick Reply",
+                        buttons: buttonsFromOptions,
+                      },
+                    }
+                  : n,
+              ),
+            )
+          } else {
+            // Just remove the option
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              options: newOptions,
+            }, node.type, node.type)
+            updateDraftChanges()
+            
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        options: newOptions,
+                      },
+                    }
+                  : n,
+              ),
+            )
+          }
+        }
+        // Handle quick reply nodes (remove button and potentially convert back to question)
+        else if (node.type === "quickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
+          const newButtons = currentButtons.filter((_, i) => i !== buttonIndex)
+          
+          // If no buttons left, convert back to question
+          if (newButtons.length === 0) {
+            const newType = getPlatformSpecificNodeType("question", platform)
+            
+            // Track the reverse transition
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              label: "Question",
+            }, node.type, newType)
+            updateDraftChanges()
+            
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      type: newType,
+                      data: {
+                        ...n.data,
+                        label: "Question",
+                      },
+                    }
+                  : n,
+              ),
+            )
+          } else {
+            // Just remove the button
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            changeTracker.trackNodeUpdate(nodeId, node.data, {
+              ...node.data,
+              buttons: newButtons,
+            }, node.type, node.type)
+            updateDraftChanges()
+            
+            setNodes((nds) =>
+              nds.map((n) =>
+                n.id === nodeId
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        buttons: newButtons,
+                      },
+                    }
+                  : n,
+              ),
+            )
+          }
+        }
+      } catch (error) {
+        console.error(`[v0] Error removing button from node ${nodeId}:`, error)
       }
     },
     [nodes, setNodes],
@@ -843,6 +1031,21 @@ export default function MagicFlow() {
           newNodeId,
           (updates: any) => {
             console.log("[v0] Comment inline update:", newNodeId, updates)
+            
+            // Track the comment update
+            if (!isEditMode) {
+              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+            }
+            
+            // Find the current node to get old data for change tracking
+            const currentNode = nodes.find(n => n.id === newNodeId)
+            if (currentNode) {
+              const oldData = { ...currentNode.data }
+              const newData = { ...oldData, ...updates }
+              changeTracker.trackNodeUpdate(newNodeId, oldData, newData, currentNode.type, currentNode.type)
+              updateDraftChanges()
+            }
+            
             setNodes((nds) =>
               nds.map((node) =>
                 node.id === newNodeId
@@ -968,7 +1171,7 @@ export default function MagicFlow() {
           }
           const oldData = { ...oldNode.data }
           const newData = { ...oldData, ...updates }
-          changeTracker.trackNodeUpdate(nodeId, oldData, newData)
+          changeTracker.trackNodeUpdate(nodeId, oldData, newData, oldNode.type, oldNode.type)
           updateDraftChanges()
         }
         
@@ -1286,36 +1489,46 @@ export default function MagicFlow() {
     }
   }, [nodes, selectedNode])
 
-  // Load published version on startup if in view mode
+  // Load published version on startup if in view mode (only run once on mount)
   useEffect(() => {
-    if (!isEditMode) {
-      // In view mode, always load the published version
-      if (currentVersion && currentVersion.isPublished) {
-        // Current version is published, load it
-        console.log('[App] Loading current published version:', currentVersion.name)
-        const formattedNodes = currentVersion.nodes.map(node => ({
-          ...node,
-          data: node.data || {}
-        }))
-        
-        const formattedEdges = currentVersion.edges.map(edge => ({
-          ...edge,
-          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
-        }))
-        
-        setNodes(formattedNodes)
-        setEdges(formattedEdges)
-        setPlatform(currentVersion.platform)
-      } else {
-        // No published version or current version is not published, load latest published
-        const publishedVersion = getLatestVersion()
-        if (publishedVersion) {
-          console.log('[App] Loading latest published version on startup:', publishedVersion.name)
-          loadVersion(publishedVersion, setNodes, setEdges, setPlatform)
-        }
-      }
+    if (!isEditMode && currentVersion) {
+      // In view mode, load the current version
+      console.log('[App] Loading current version in view mode:', currentVersion.name)
+      const formattedNodes = currentVersion.nodes.map(node => ({
+        ...node,
+        data: node.data || {}
+      }))
+      
+      const formattedEdges = currentVersion.edges.map(edge => ({
+        ...edge,
+        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+      }))
+      
+      setNodes(formattedNodes)
+      setEdges(formattedEdges)
+      setPlatform(currentVersion.platform)
     }
-  }, [isEditMode, currentVersion, getLatestVersion, loadVersion, setNodes, setEdges, setPlatform])
+  }, [isEditMode]) // Only depend on isEditMode, not currentVersion
+
+  // Load version when currentVersion changes (e.g., when loading from version history)
+  useEffect(() => {
+    if (currentVersion) {
+      console.log('[App] Current version changed, loading:', currentVersion.name)
+      const formattedNodes = currentVersion.nodes.map(node => ({
+        ...node,
+        data: node.data || {}
+      }))
+      
+      const formattedEdges = currentVersion.edges.map(edge => ({
+        ...edge,
+        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+      }))
+      
+      setNodes(formattedNodes)
+      setEdges(formattedEdges)
+      setPlatform(currentVersion.platform)
+    }
+  }, [currentVersion]) // Only depend on currentVersion
 
   // Handle focusing on newly created nodes
   useEffect(() => {
@@ -1404,31 +1617,72 @@ export default function MagicFlow() {
       <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
       <div className="flex-1 relative">
-        <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-foreground">Magic Flow</h1>
-              <div className="flex items-center gap-2">
+        <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
+          <div className="flex items-center justify-between px-6 py-4">
+            {/* Left Section - App Title and Version */}
+            <div className="flex items-center gap-6">
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold text-foreground">Magic Flow</h1>
+                {currentVersion && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="font-medium">Version: {currentVersion.name}</span>
+                    {currentVersion.isPublished ? (
+                      <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
+                    )}
+                    {!isEditMode && !currentVersion.isPublished && (
+                      <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous Version</Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Center Section - Mode and Actions */}
+            <div className="flex items-center gap-3">
+              {/* Mode Toggle */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50">
                 <Button 
                   variant={isEditMode ? "default" : "ghost"} 
                   size="sm"
                   onClick={() => toggleEditMode(setNodes, setEdges, setPlatform)}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 h-8"
                 >
-                  <span className="w-2 h-2 rounded-full bg-current"></span>
+                  <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
                   {isEditMode ? "Edit Mode" : "View Mode"}
                 </Button>
                 {isEditMode && hasActualChanges(nodes, edges, platform) && (
-                  <Badge variant="outline" className="text-orange-600 border-orange-600">
-                    {getChangesSummary()}
-                  </Badge>
+                  <ChangesModal changes={draftChanges}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-orange-600 border-orange-600 hover:bg-orange-50 hover:border-orange-700 transition-colors"
+                    >
+                      <Clock className="w-3 h-3 mr-1" />
+                      {getChangesSummary()}
+                    </Button>
+                  </ChangesModal>
                 )}
-                <Button variant="ghost" size="sm" disabled>
-                  <Undo2 className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="sm" disabled>
-                  <Redo2 className="w-4 h-4" />
-                </Button>
+              </div>
+
+              {/* Separator */}
+              <div className="w-px h-6 bg-border"></div>
+
+              {/* Edit Actions */}
+              {isEditMode && (
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0">
+                    <Undo2 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0">
+                    <Redo2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Main Actions */}
+              <div className="flex items-center gap-1">
                 <ExportModal
                   flowData={{
                     nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
@@ -1438,7 +1692,7 @@ export default function MagicFlow() {
                   }}
                   onImportFlow={importFlow}
                 >
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="h-8">
                     <Eye className="w-4 h-4 mr-2" />
                     Export/Import
                   </Button>
@@ -1454,7 +1708,7 @@ export default function MagicFlow() {
                     await createNewVersion(nodes, edges, platform, defaultName)
                     toast.success(`Version ${defaultName} created!`)
                   }}
-                  className="flex items-center gap-2"
+                  className="h-8"
                   title={
                     !isEditMode 
                       ? "Enter edit mode to save changes" 
@@ -1471,6 +1725,7 @@ export default function MagicFlow() {
                   currentVersion={currentVersion}
                   onLoadVersion={(version) => {
                     loadVersion(version, setNodes, setEdges, setPlatform)
+                    
                     setSelectedNode(null)
                     setSelectedNodes([])
                     setIsPropertiesPanelOpen(false)
@@ -1483,12 +1738,12 @@ export default function MagicFlow() {
                     await createNewVersion(nodes, edges, platform, name, description)
                   }}
                   onPublishVersion={async (versionId) => {
-                    await publishCurrentVersion(nodes, edges, platform)
+                    await publishVersion(versionId)
                   }}
                   isEditMode={isEditMode}
                   hasChanges={hasActualChanges(nodes, edges, platform)}
                 >
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="h-8">
                     <History className="w-4 h-4 mr-2" />
                     Versions
                   </Button>
@@ -1507,7 +1762,8 @@ export default function MagicFlow() {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    disabled={!isEditMode || !hasActualChanges(nodes, edges, platform)}
+                    disabled={!isEditMode || !hasActualChanges(nodes, edges, platform) || getChangesCount() === 0}
+                    className="h-8"
                     title={
                       !isEditMode 
                         ? "Enter edit mode to publish changes" 
@@ -1521,16 +1777,19 @@ export default function MagicFlow() {
                   </Button>
                 </PublishModal>
                 <ScreenshotModal flowElementRef={flowElementRef}>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="h-8">
                     <Camera className="w-4 h-4 mr-2" />
                     Screenshot
                   </Button>
                 </ScreenshotModal>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            {/* Right Section - Theme and Platform */}
+            <div className="flex items-center gap-4">
               <ThemeToggle />
-              <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
+              <div className="px-3 py-2 rounded-lg bg-muted/50">
+                <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
+              </div>
             </div>
           </div>
         </div>

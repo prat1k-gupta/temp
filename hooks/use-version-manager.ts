@@ -329,6 +329,13 @@ export function useVersionManager() {
   }, [])
 
   /**
+   * Get changes count
+   */
+  const getChangesCount = useCallback((): number => {
+    return changeTracker.getChangesCount()
+  }, [])
+
+  /**
    * Get recent changes
    */
   const getRecentChanges = useCallback((count?: number): FlowChange[] => {
@@ -366,6 +373,7 @@ export function useVersionManager() {
     hasActualChanges,
     getChangesSummary,
     getRecentChanges,
+    getChangesCount,
     
     // Computed values
     isEditMode: editModeState.isEditMode,

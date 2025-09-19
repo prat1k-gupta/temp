@@ -13,10 +13,10 @@ export const OPTION_LIMITS = {
 } as const
 
 // Platform-specific character limits
-export const CHARACTER_LIMITS: Record<Platform, { question: number; button: number }> = {
-  web: { question: 500, button: 20 },
-  whatsapp: { question: 160, button: 20 },
-  instagram: { question: 100, button: 15 },
+export const CHARACTER_LIMITS: Record<Platform, { question: number; button: number; comment: number }> = {
+  web: { question: 500, button: 20, comment: 200 },
+  whatsapp: { question: 160, button: 20, comment: 150 },
+  instagram: { question: 100, button: 15, comment: 100 },
 } as const
 
 // UI interaction thresholds

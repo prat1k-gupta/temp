@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { MessageSquareText, Trash2, Edit3 } from "lucide-react"
+import { CHARACTER_LIMITS } from "@/constants/platform-limits"
+import type { Platform } from "@/types"
 
 export function CommentNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isHovered, setIsHovered] = useState(false)
@@ -15,6 +17,8 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const currentUser = "You" // In a real app, this would come from auth context
+  const platform: Platform = data.platform || "web"
+  const maxLength = CHARACTER_LIMITS[platform].comment
 
   useEffect(() => {
     if (!isEditing) {
@@ -26,16 +30,41 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus()
       textareaRef.current.select()
+      // Auto-resize on mount
+      autoResizeTextarea()
     }
   }, [isEditing])
 
+  const autoResizeTextarea = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+    }
+  }
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    if (value.length <= maxLength) {
+      setEditValue(value)
+      // Auto-resize after state update
+      setTimeout(autoResizeTextarea, 0)
+    }
+  }
+
   const handleSave = () => {
+    console.log('[Comment Node] Saving comment:', editValue)
+    console.log('[Comment Node] onUpdate function:', data.onUpdate)
+    
     if (data.onUpdate) {
-      data.onUpdate({
+      const updates = {
         comment: editValue,
         editedBy: currentUser,
         editedAt: new Date().toISOString(),
-      })
+      }
+      console.log('[Comment Node] Calling onUpdate with:', updates)
+      data.onUpdate(updates)
+    } else {
+      console.warn('[Comment Node] No onUpdate function provided')
     }
     setIsEditing(false)
   }
@@ -67,20 +96,31 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
               <MessageSquareText className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 {isEditing ? (
-                  <textarea
-                    ref={textareaRef}
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onBlur={handleSave}
-                    className="w-full text-sm text-yellow-800 bg-transparent border-none outline-none resize-none min-h-[20px] placeholder-yellow-500"
-                    placeholder="Add your comment here..."
-                    rows={Math.max(1, editValue.split("\n").length)}
-                  />
+                  <div className="space-y-1">
+                    <textarea
+                      ref={textareaRef}
+                      value={editValue}
+                      onChange={handleTextareaChange}
+                      onKeyDown={handleKeyDown}
+                      className="w-full text-sm text-yellow-800 bg-transparent border-none outline-none resize-none min-h-[20px] max-h-[120px] placeholder-yellow-500 overflow-y-auto"
+                      placeholder="Add your comment here..."
+                      rows={1}
+                    />
+                    <div className="flex justify-between items-center text-xs text-yellow-600">
+                      <span className="opacity-75">
+                        {editValue.length}/{maxLength} characters
+                      </span>
+                      {editValue.length > maxLength * 0.8 && (
+                        <span className="text-orange-500">
+                          {maxLength - editValue.length} remaining
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div>
                     <p
-                      className="text-sm text-yellow-800 whitespace-pre-wrap break-words cursor-text hover:bg-yellow-100 rounded px-1 py-0.5 transition-colors"
+                      className="text-sm text-yellow-800 whitespace-pre-wrap break-words cursor-text hover:bg-yellow-100 rounded px-1 py-0.5 transition-colors max-h-[100px] overflow-y-auto"
                       onClick={() => setIsEditing(true)}
                     >
                       {data.comment || "Add your comment here..."}
@@ -130,7 +170,10 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
                   size="sm"
                   variant="destructive"
                   className="h-6 w-6 p-0 rounded-full shadow-lg z-10 transition-all duration-200"
-                  onClick={() => data.onDelete?.()}
+                  onClick={() => {
+                    console.log('[Comment Node] Delete clicked, onDelete function:', data.onDelete)
+                    data.onDelete?.()
+                  }}
                 >
                   <Trash2 className="w-3 h-3" />
                 </Button>

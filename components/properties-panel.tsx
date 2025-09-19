@@ -29,6 +29,7 @@ import {
 } from "@dnd-kit/core"
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useSortable } from "@dnd-kit/sortable"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
 
 interface PropertiesPanelProps {
@@ -93,6 +94,7 @@ const NODE_COLORS = {
 function SortableButtonItem({
   button,
   index,
+  itemId,
   onUpdate,
   onRemove,
   isOverLimit,
@@ -100,13 +102,14 @@ function SortableButtonItem({
 }: {
   button: any
   index: number
+  itemId: string
   onUpdate: (index: number, text: string) => void
   onRemove: (index: number) => void
   isOverLimit: (text: string, type: "question" | "button") => boolean
   limits: any
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `button-${index}`,
+    id: itemId,
   })
 
   const style = {
@@ -161,6 +164,7 @@ function SortableButtonItem({
 function SortableOptionItem({
   option,
   index,
+  itemId,
   onUpdate,
   onRemove,
   isOverLimit,
@@ -168,13 +172,14 @@ function SortableOptionItem({
 }: {
   option: any
   index: number
+  itemId: string
   onUpdate: (index: number, text: string) => void
   onRemove: (index: number) => void
   isOverLimit: (text: string, type: "question" | "button") => boolean
   limits: any
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `option-${index}`,
+    id: itemId,
   })
 
   const style = {
@@ -251,73 +256,127 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
   const NodeIcon = NODE_ICONS[selectedNode.type as keyof typeof NODE_ICONS] || Settings
   const nodeColor = NODE_COLORS[selectedNode.type as keyof typeof NODE_COLORS] || "bg-muted text-muted-foreground"
 
+  // Local state to avoid excessive parent rerenders during reorder/drag
+  const idCounterRef = useRef(0)
+  const makeId = () => {
+    idCounterRef.current += 1
+    return `${Date.now().toString(36)}-${idCounterRef.current.toString(36)}-${Math.random().toString(36).slice(2,6)}`
+  }
+  const withIds = (arr: any[], prefix: string) => arr.map((item) => ({ __id: item.__id || makeId(), ...item }))
+  const stripIds = (arr: any[]) => arr.map(({ __id, ...rest }) => rest)
+
+  const [localButtons, setLocalButtons] = useState<any[]>(withIds(selectedNode.data.buttons || [], "button"))
+  const [localOptions, setLocalOptions] = useState<any[]>(withIds(selectedNode.data.options || [], "option"))
+
+  // Sync when node changes
+  useEffect(() => {
+    setLocalButtons(withIds(selectedNode.data.buttons || [], "button"))
+  }, [selectedNode.id, selectedNode.data.buttons])
+
+  useEffect(() => {
+    setLocalOptions(withIds(selectedNode.data.options || [], "option"))
+  }, [selectedNode.id, selectedNode.data.options])
+
   const updateButton = (index: number, text: string) => {
     console.log("[v0] Updating button", index, "with text:", text)
-    const buttons = [...(selectedNode.data.buttons || [])]
-    buttons[index] = { ...(buttons[index] || {}), text }
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+    setLocalButtons((prev) => {
+      const buttons = [...prev]
+      buttons[index] = { ...(buttons[index] || {}), text }
+      return buttons
+    })
+    // Commit immediately for text edits to persist
+    const buttonsCommit = [...stripIds(localButtons)]
+    buttonsCommit[index] = { ...(buttonsCommit[index] || {}), text }
+    onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons: buttonsCommit })
   }
 
   const removeButton = (index: number) => {
     console.log("[v0] Removing button", index)
-    const buttons = [...(selectedNode.data.buttons || [])]
-    buttons.splice(index, 1)
+    setLocalButtons((prev) => prev.filter((_, i) => i !== index))
+    const buttons = [...stripIds(localButtons)].filter((_, i) => i !== index)
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
   }
 
   const addButton = () => {
     console.log("[v0] Adding new button")
-    const buttons = [...(selectedNode.data.buttons || [])]
-    buttons.push({ text: `Button ${buttons.length + 1}` })
+    const next = { text: `Button ${stripIds(localButtons).length + 1}` }
+    setLocalButtons((prev) => [...prev, next])
+    const buttons = [...stripIds(localButtons), next]
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+  }
+
+  const onButtonsDragOver = (event: any) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = localButtons.findIndex((b) => `button-${b.__id}` === active.id)
+    const newIndex = localButtons.findIndex((b) => `button-${b.__id}` === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    setLocalButtons((prev) => arrayMove(prev, oldIndex, newIndex))
   }
 
   const reorderButtons = (event: DragEndEvent) => {
     const { active, over } = event
-
     if (over && active.id !== over.id) {
-      const buttons = [...(selectedNode.data.buttons || [])]
-      const oldIndex = Number.parseInt(active.id.toString().split("-")[1])
-      const newIndex = Number.parseInt(over.id.toString().split("-")[1])
-
-      const reorderedButtons = arrayMove(buttons, oldIndex, newIndex)
+      const oldIndex = localButtons.findIndex((b) => `button-${b.__id}` === active.id)
+      const newIndex = localButtons.findIndex((b) => `button-${b.__id}` === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reorderedButtons = arrayMove(localButtons, oldIndex, newIndex)
       console.log("[v0] Reordering buttons from", oldIndex, "to", newIndex)
-      onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons: reorderedButtons })
+      console.log("[v0] Final buttons order:", reorderedButtons.map((b: any, i: number) => ({ index: i, id: b.__id, text: b.text })))
+      setLocalButtons(reorderedButtons)
+      // Commit once at drag end
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons: stripIds(reorderedButtons) })
     }
   }
 
   const updateOption = (index: number, text: string) => {
     console.log("[v0] Updating option", index, "with text:", text)
-    const options = [...(selectedNode.data.options || [])]
-    options[index] = { ...options[index], text }
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+    setLocalOptions((prev) => {
+      const options = [...prev]
+      options[index] = { ...(options[index] || {}), text }
+      return options
+    })
+    const optionsCommit = [...stripIds(localOptions)]
+    optionsCommit[index] = { ...(optionsCommit[index] || {}), text }
+    onNodeUpdate(selectedNode.id, { ...selectedNode.data, options: optionsCommit })
   }
 
   const removeOption = (index: number) => {
     console.log("[v0] Removing option", index)
-    const options = [...(selectedNode.data.options || [])]
-    options.splice(index, 1)
+    setLocalOptions((prev) => prev.filter((_, i) => i !== index))
+    const options = [...stripIds(localOptions)].filter((_, i) => i !== index)
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
   }
 
   const addOption = () => {
     console.log("[v0] Adding new option")
-    const options = [...(selectedNode.data.options || [])]
-    options.push({ text: `Option ${options.length + 1}` })
+    const next = { text: `Option ${stripIds(localOptions).length + 1}` }
+    setLocalOptions((prev) => [...prev, next])
+    const options = [...stripIds(localOptions), next]
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+  }
+
+  const onOptionsDragOver = (event: any) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = localOptions.findIndex((o) => `option-${o.__id}` === active.id)
+    const newIndex = localOptions.findIndex((o) => `option-${o.__id}` === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    setLocalOptions((prev) => arrayMove(prev, oldIndex, newIndex))
   }
 
   const reorderOptions = (event: DragEndEvent) => {
     const { active, over } = event
-
     if (over && active.id !== over.id) {
-      const options = [...(selectedNode.data.options || [])]
-      const oldIndex = Number.parseInt(active.id.toString().split("-")[1])
-      const newIndex = Number.parseInt(over.id.toString().split("-")[1])
-
-      const reorderedOptions = arrayMove(options, oldIndex, newIndex)
+      const oldIndex = localOptions.findIndex((o) => `option-${o.__id}` === active.id)
+      const newIndex = localOptions.findIndex((o) => `option-${o.__id}` === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reorderedOptions = arrayMove(localOptions, oldIndex, newIndex)
       console.log("[v0] Reordering options from", oldIndex, "to", newIndex)
-      onNodeUpdate(selectedNode.id, { ...selectedNode.data, options: reorderedOptions })
+      console.log("[v0] Final options order:", reorderedOptions.map((o: any, i: number) => ({ index: i, id: o.__id, text: o.text })))
+      setLocalOptions(reorderedOptions)
+      // Commit once at drag end
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, options: stripIds(reorderedOptions) })
     }
   }
 
@@ -536,17 +595,18 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                         </Button>
                       )}
                     </div>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderButtons}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragOver={onButtonsDragOver} onDragEnd={reorderButtons}>
                       <SortableContext
-                        items={(selectedNode.data.buttons || []).map((_: any, index: number) => `button-${index}`)}
+                        items={localButtons.map((b: any) => `button-${b.__id}`)}
                         strategy={verticalListSortingStrategy}
                       >
                         <div className="space-y-3">
-                          {(selectedNode.data.buttons || []).map((button: any, index: number) => (
+                          {localButtons.map((button: any, index: number) => (
                             <SortableButtonItem
-                              key={`button-${index}`}
+                              key={`button-${button.__id}`}
                               button={button}
                               index={index}
+                              itemId={`button-${button.__id}`}
                               onUpdate={updateButton}
                               onRemove={removeButton}
                               isOverLimit={isOverLimit}
@@ -576,17 +636,18 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                         </Button>
                       )}
                     </div>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderOptions}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragOver={onOptionsDragOver} onDragEnd={reorderOptions}>
                       <SortableContext
-                        items={(selectedNode.data.options || []).map((_: any, index: number) => `option-${index}`)}
+                        items={localOptions.map((o: any) => `option-${o.__id}`)}
                         strategy={verticalListSortingStrategy}
                       >
                         <div className="space-y-3">
-                          {(selectedNode.data.options || []).map((option: any, index: number) => (
+                          {localOptions.map((option: any, index: number) => (
                             <SortableOptionItem
-                              key={`option-${index}`}
+                              key={`option-${option.__id}`}
                               option={option}
                               index={index}
+                              itemId={`option-${option.__id}`}
                               onUpdate={updateOption}
                               onRemove={removeOption}
                               isOverLimit={isOverLimit}

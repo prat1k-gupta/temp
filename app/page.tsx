@@ -300,9 +300,12 @@ export default function MagicFlow() {
     setSelectedNode(newNodes[0] || null)
     setIsPropertiesPanelOpen(true)
     
-    // Focus on the first pasted node
+    // Focus on the first pasted non-comment node (skip focusing comment nodes)
     if (newNodes.length > 0) {
-      setNodeToFocus(newNodes[0].id)
+      const firstNonComment = newNodes.find(n => n.type !== "comment")
+      if (firstNonComment) {
+        setNodeToFocus(firstNonComment.id)
+      }
     }
     
     // No toast for paste - user requested only copy, delete, and multiple selection
@@ -533,10 +536,7 @@ export default function MagicFlow() {
       const { x: clientX, y: clientY } = getClientCoordinates(event)
       console.log("[v0] React flow bounds:", reactFlowBounds)
 
-      const position = {
-        x: clientX ,
-        y: clientY,
-      }
+      const position = screenToFlowPosition({ x: clientX, y: clientY })
 
       console.log("[v0] Dragging node at position:", position)
 
@@ -579,8 +579,10 @@ export default function MagicFlow() {
 
         setNodes((nds) => [...nds, newNode])
         setDraggedNodeType(null)
-        // Request focus on the newly created node
-        setNodeToFocus(newNodeId)
+        // Request focus on the newly created node (skip for comment)
+        if (draggedNodeType !== "comment") {
+          setNodeToFocus(newNodeId)
+        }
         
         // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
@@ -670,7 +672,9 @@ export default function MagicFlow() {
 
         setNodes((nds) => [...nds, newNode])
         closeContextMenu()
-        setNodeToFocus(newNodeId)
+        if (nodeType !== "comment") {
+          setNodeToFocus(newNodeId)
+        }
         
         // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
@@ -758,8 +762,6 @@ export default function MagicFlow() {
         )
         setNodes((nds) => [...nds, newNode])
         console.log("[v0] Added comment node at position:", position)
-        // Request focus on the newly created comment node
-        setNodeToFocus(newNodeId)
         
         // No toast for comment creation - user requested only copy, delete, and multiple selection
       }
@@ -1160,7 +1162,7 @@ export default function MagicFlow() {
     if (nodeToFocus) {
       const node = nodes.find(n => n.id === nodeToFocus)
       
-      if (node) {
+      if (node && node.type !== "comment") {
         // Small delay to ensure the node is fully rendered
         setTimeout(() => {
           fitView({ 
@@ -1214,7 +1216,7 @@ export default function MagicFlow() {
 
         <div className="h-full pt-20">
           <ReactFlow
-            key={`flow-${nodes.length}-${edges.length}`}
+            key="flow"
             nodes={nodes
               .filter((node) => {
                 if (!node || !node.id || !node.type || !node.position || !node.data) {

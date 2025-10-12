@@ -20,6 +20,7 @@ export function generateId(): string {
  */
 export function getStoredVersions(): FlowVersion[] {
   try {
+    if (typeof window === 'undefined') return []
     const stored = localStorage.getItem(STORAGE_KEYS.VERSIONS)
     return stored ? JSON.parse(stored) : []
   } catch (error) {
@@ -33,6 +34,7 @@ export function getStoredVersions(): FlowVersion[] {
  */
 export function saveVersions(versions: FlowVersion[]): void {
   try {
+    if (typeof window === 'undefined') return
     localStorage.setItem(STORAGE_KEYS.VERSIONS, JSON.stringify(versions))
   } catch (error) {
     console.error('Error saving versions to localStorage:', error)
@@ -44,6 +46,7 @@ export function saveVersions(versions: FlowVersion[]): void {
  */
 export function getCurrentVersion(): FlowVersion | null {
   try {
+    if (typeof window === 'undefined') return null
     const stored = localStorage.getItem(STORAGE_KEYS.CURRENT_VERSION)
     return stored ? JSON.parse(stored) : null
   } catch (error) {
@@ -57,6 +60,7 @@ export function getCurrentVersion(): FlowVersion | null {
  */
 export function saveCurrentVersion(version: FlowVersion | null): void {
   try {
+    if (typeof window === 'undefined') return
     if (version) {
       localStorage.setItem(STORAGE_KEYS.CURRENT_VERSION, JSON.stringify(version))
     } else {
@@ -72,6 +76,7 @@ export function saveCurrentVersion(version: FlowVersion | null): void {
  */
 export function getDraftChanges(): FlowChange[] {
   try {
+    if (typeof window === 'undefined') return []
     const stored = localStorage.getItem(STORAGE_KEYS.DRAFT_CHANGES)
     return stored ? JSON.parse(stored) : []
   } catch (error) {
@@ -85,6 +90,7 @@ export function getDraftChanges(): FlowChange[] {
  */
 export function saveDraftChanges(changes: FlowChange[]): void {
   try {
+    if (typeof window === 'undefined') return
     localStorage.setItem(STORAGE_KEYS.DRAFT_CHANGES, JSON.stringify(changes))
   } catch (error) {
     console.error('Error saving draft changes to localStorage:', error)
@@ -96,6 +102,7 @@ export function saveDraftChanges(changes: FlowChange[]): void {
  */
 export function getEditModeState(): boolean | null {
   try {
+    if (typeof window === 'undefined') return null
     const stored = localStorage.getItem(STORAGE_KEYS.EDIT_MODE)
     return stored ? JSON.parse(stored) : null
   } catch (error) {
@@ -109,6 +116,7 @@ export function getEditModeState(): boolean | null {
  */
 export function saveEditModeState(isEditMode: boolean): void {
   try {
+    if (typeof window === 'undefined') return
     localStorage.setItem(STORAGE_KEYS.EDIT_MODE, JSON.stringify(isEditMode))
   } catch (error) {
     console.error('Error saving edit mode state to localStorage:', error)
@@ -231,6 +239,7 @@ export function saveDraftState(nodes: any[], edges: any[], platform: Platform): 
       platform: draftState.platform,
       timestamp: draftState.timestamp
     })
+    if (typeof window === 'undefined') return
     localStorage.setItem(STORAGE_KEYS.DRAFT_STATE, JSON.stringify(draftState))
     console.log('[Draft Storage] Draft state saved successfully')
   } catch (error) {
@@ -243,6 +252,7 @@ export function saveDraftState(nodes: any[], edges: any[], platform: Platform): 
  */
 export function getDraftState(): { nodes: any[], edges: any[], platform: Platform, timestamp: string } | null {
   try {
+    if (typeof window === 'undefined') return null
     const stored = localStorage.getItem(STORAGE_KEYS.DRAFT_STATE)
     if (stored) {
       const parsed = JSON.parse(stored)
@@ -268,6 +278,7 @@ export function getDraftState(): { nodes: any[], edges: any[], platform: Platfor
  */
 export function clearDraftState(): void {
   try {
+    if (typeof window === 'undefined') return
     localStorage.removeItem(STORAGE_KEYS.DRAFT_STATE)
     console.log('[Draft Storage] Draft state cleared from localStorage')
   } catch (error) {

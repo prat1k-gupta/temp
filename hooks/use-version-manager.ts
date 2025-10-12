@@ -547,14 +547,14 @@ export function useVersionManager() {
    */
   const toggleViewDraft = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
     const publishedVersion = getLatestPublishedVersion()
-    const hasDraftChanges = changeTracker.getChangesCount() > 0
+    // const hasDraftChanges = changeTracker.getChangesCount() > 0
     
     if (!publishedVersion) {
       console.log('[Version Manager] Cannot toggle view/draft - no published version exists')
       return
     }
     
-    if (editModeState.isEditMode && hasDraftChanges) {
+    if (editModeState.isEditMode) {
       // Currently in edit mode with changes - switch to view mode (published version)
       console.log('[Version Manager] Switching to view mode - showing published version')
       

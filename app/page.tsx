@@ -40,7 +40,7 @@ import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Plus, Clock } from "lucide-react"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
@@ -1766,226 +1766,166 @@ export default function MagicFlow() {
       <div className="flex-1 relative">
         <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
           <div className="flex items-center justify-between px-6 py-4">
-            {/* Left Section - App Title and Version */}
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col">
-                <h1 className="text-2xl font-bold text-foreground">Magic Flow</h1>
-                {currentVersion && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="font-medium">Version: {currentVersion.name}</span>
-                    {currentVersion.isPublished ? (
-                      <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
-                    )}
-                    {!isEditMode && !currentVersion.isPublished && (
-                      <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous Version</Badge>
-                    )}
-                  </div>
-                )}
+            {/* Left Section - App Logo and Title */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <h1 className="text-xl font-bold text-foreground">Magic Flow</h1>
               </div>
+              {currentVersion && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="font-medium">{currentVersion.name}</span>
+                  {currentVersion.isPublished && !isEditMode ? (
+                    <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
+                  )}
+                  {!isEditMode && !currentVersion.isPublished && (
+                    <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Center Section - Mode and Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {/* Mode Toggle */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50">
-                <Button 
-                  variant={isEditMode ? "default" : "ghost"} 
-                  size="sm"
-                  onClick={handleModeToggle}
-                  className="flex items-center gap-2 h-8"
-                >
-                  <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
-                  {isEditMode ? "Edit Mode" : "View Mode"}
-                </Button>
-                {isEditMode && hasActualChanges(nodes, edges, platform) && (
-                  <ChangesModal changes={draftChanges}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-orange-600 border-orange-600 hover:bg-orange-50 hover:border-orange-700 transition-colors"
-                    >
-                      <Clock className="w-3 h-3 mr-1" />
-                      {getChangesSummary()}
-                    </Button>
-                  </ChangesModal>
-                )}
-              </div>
-
-              {/* Separator */}
-              <div className="w-px h-6 bg-border"></div>
-
-              {/* Edit Actions */}
-              {isEditMode && (
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0">
-                    <Undo2 className="w-4 h-4" />
+              <Button 
+                variant={isEditMode ? "default" : "ghost"} 
+                size="sm"
+                onClick={handleModeToggle}
+                className="flex items-center gap-2 h-8 px-3"
+              >
+                <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
+                {isEditMode ? "Edit" : "View"}
+              </Button>
+              
+              {isEditMode && hasActualChanges(nodes, edges, platform) && (
+                <ChangesModal changes={draftChanges}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-orange-600 border-orange-600 hover:bg-orange-50 hover:border-orange-700 transition-colors"
+                  >
+                    <Clock className="w-3 h-3 mr-1" />
+                    {getChangesSummary()}
                   </Button>
-                  <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0">
-                    <Redo2 className="w-4 h-4" />
-                  </Button>
-                </div>
+                </ChangesModal>
               )}
 
-              {/* Main Actions */}
+              {/* Action Icons with Hover Animation */}
               <div className="flex items-center gap-1">
-                <ExportModal
-                  flowData={{
-                    nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
-                    edges: edges.map(({ style, ...edge }) => edge),
-                    platform,
-                    timestamp: new Date().toISOString(),
-                  }}
-                  onImportFlow={importFlow}
-                >
-                  <Button variant="ghost" size="sm" className="h-8">
-                    <Eye className="w-4 h-4 mr-2" />
-                    Export/Import
-                  </Button>
-                </ExportModal>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  disabled={!isEditMode || !hasActualChanges(nodes, edges, platform)}
-                  onClick={async () => {
-                    const versions = getAllVersions()
-                    const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1
-                    const defaultName = `v${nextVersion} - Flow`
-                    await createNewVersion(nodes, edges, platform, defaultName)
-                    toast.success(`Version ${defaultName} created!`)
-                  }}
-                  className="h-8"
-                  title={
-                    !isEditMode 
-                      ? "Enter edit mode to save changes" 
-                      : !hasActualChanges(nodes, edges, platform) 
-                        ? "No changes to save" 
-                        : "Save current changes as new version"
-                  }
-                >
-                  <Plus className="w-4 h-4" />
-                  Quick Save
-                </Button>
-                <VersionHistoryModal
-                  versions={getAllVersions()}
-                  currentVersion={currentVersion}
-                  onLoadVersion={(version) => {
-                    console.log('[App] Loading version from history:', version.name)
-                    setIsLoadingVersion(true) // Set flag to allow loading even in edit mode
-                    loadVersion(version, setNodes, setEdges, setPlatform)
-                    
-                    setSelectedNode(null)
-                    setSelectedNodes([])
-                    setIsPropertiesPanelOpen(false)
-                  }}
-                  onDeleteVersion={(versionId) => {
-                    // TODO: Implement delete version
-                    console.log("Delete version:", versionId)
-                  }}
-                  onCreateVersion={async (name, description) => {
-                    await createNewVersion(nodes, edges, platform, name, description)
-                  }}
-                  onPublishVersion={async (versionId) => {
-                    await publishVersion(versionId)
-                  }}
-                  isEditMode={isEditMode}
-                  hasChanges={hasActualChanges(nodes, edges, platform)}
-                >
-                  <Button variant="ghost" size="sm" className="h-8">
-                    <History className="w-4 h-4 mr-2" />
-                    Versions
-                  </Button>
-                </VersionHistoryModal>
-                <PublishModal
-                  changes={draftChanges}
-                  hasUnsavedChanges={editModeState.hasUnsavedChanges}
-                  onCreateVersion={async (name, description) => {
-                    console.log('[App] Creating and publishing new version:', name)
-                    setIsLoadingVersion(true) // Set flag to ensure the published version loads
-                    const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
-                    if (publishedVersion) {
-                      console.log('[App] Successfully created and published version:', publishedVersion.name)
-                    }
-                  }}
-                  onPublishVersion={async (versionId, versionName, description) => {
-                    console.log('[App] Publishing version and switching to view mode', {
-                      versionId,
-                      versionName,
-                      description,
-                      currentNodes: nodes.length,
-                      currentEdges: edges.length,
-                      currentPlatform: platform,
-                      isEditMode,
-                      currentVersion: currentVersion?.name
-                    })
-                    setIsLoadingVersion(true) // Set flag to ensure the published version loads
-                    const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
-                    if (publishedVersion) {
-                      console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
-                    } else {
-                      console.log('[App] Failed to publish version')
-                    }
-                  }}
-                  currentVersion={currentVersion}
-                >
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    disabled={(() => {
-                      const hasChanges = hasActualChanges(nodes, edges, platform)
-                      const changesCount = getChangesCount()
-                      const isDisabled = !isEditMode || !hasChanges || changesCount === 0
-                      console.log('[App] Publish button state:', {
-                        isEditMode,
-                        hasChanges,
-                        changesCount,
-                        isDisabled,
-                        nodes: nodes.length,
-                        edges: edges.length,
-                        currentVersion: currentVersion?.name,
-                        isPublished: currentVersion?.isPublished
-                      })
-                      return isDisabled
-                    })()}
-                    className="h-8"
-                    title={
-                      !isEditMode 
-                        ? "Enter edit mode to publish changes" 
-                        : !hasActualChanges(nodes, edges, platform) 
-                          ? "No changes to publish" 
-                          : "Publish current changes as new version"
-                    }
+                <div className="relative group">
+                  <ExportModal
+                    flowData={{
+                      nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
+                      edges: edges.map(({ style, ...edge }) => edge),
+                      platform,
+                      timestamp: new Date().toISOString(),
+                    }}
+                    onImportFlow={importFlow}
                   >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Publish
-                  </Button>
-                </PublishModal>
-                <ScreenshotModal flowElementRef={flowElementRef}>
-                  <Button variant="ghost" size="sm" className="h-8">
-                    <Camera className="w-4 h-4 mr-2" />
-                    Screenshot
-                  </Button>
-                </ScreenshotModal>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => {
-                    console.log('=== MANUAL DEBUG TRIGGERED ===')
-                    debugLocalStorageState()
-                    console.log('Current app state:', {
-                      isEditMode,
-                      currentVersion: currentVersion?.name,
-                      nodes: nodes.length,
-                      edges: edges.length,
-                      platform
-                    })
-                    console.log('=== END MANUAL DEBUG ===')
-                  }}
-                  className="h-8"
-                >
-                  Debug
-                </Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  </ExportModal>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    Export/Import Flow
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <VersionHistoryModal
+                    versions={getAllVersions()}
+                    currentVersion={currentVersion}
+                    onLoadVersion={(version) => {
+                      console.log('[App] Loading version from history:', version.name)
+                      setIsLoadingVersion(true)
+                      loadVersion(version, setNodes, setEdges, setPlatform)
+                      setSelectedNode(null)
+                      setSelectedNodes([])
+                      setIsPropertiesPanelOpen(false)
+                    }}
+                    onDeleteVersion={(versionId) => {
+                      console.log("Delete version:", versionId)
+                    }}
+                    onCreateVersion={async (name, description) => {
+                      await createNewVersion(nodes, edges, platform, name, description)
+                    }}
+                    onPublishVersion={async (versionId) => {
+                      await publishVersion(versionId)
+                    }}
+                    isEditMode={isEditMode}
+                    hasChanges={hasActualChanges(nodes, edges, platform)}
+                  >
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
+                      <History className="w-4 h-4" />
+                    </Button>
+                  </VersionHistoryModal>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    Version History
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <PublishModal
+                    changes={draftChanges}
+                    hasUnsavedChanges={editModeState.hasUnsavedChanges}
+                    onCreateVersion={async (name, description) => {
+                      console.log('[App] Creating and publishing new version:', name)
+                      setIsLoadingVersion(true)
+                      const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
+                      if (publishedVersion) {
+                        console.log('[App] Successfully created and published version:', publishedVersion.name)
+                      }
+                    }}
+                    onPublishVersion={async (versionId, versionName, description) => {
+                      console.log('[App] Publishing version and switching to view mode', {
+                        versionId, versionName, description,
+                        currentNodes: nodes.length, currentEdges: edges.length, currentPlatform: platform,
+                        isEditMode, currentVersion: currentVersion?.name
+                      })
+                      setIsLoadingVersion(true)
+                      const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
+                      if (publishedVersion) {
+                        console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
+                      } else {
+                        console.log('[App] Failed to publish version')
+                      }
+                    }}
+                    currentVersion={currentVersion}
+                  >
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      disabled={(() => {
+                        const hasChanges = hasActualChanges(nodes, edges, platform)
+                        const changesCount = getChangesCount()
+                        const isDisabled = !isEditMode || !hasChanges || changesCount === 0
+                        return isDisabled
+                      })()}
+                      className="h-8 w-8 p-0 cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </Button>
+                  </PublishModal>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    Publish Changes
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <ScreenshotModal flowElementRef={flowElementRef}>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
+                      <Camera className="w-4 h-4" />
+                    </Button>
+                  </ScreenshotModal>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    Take Screenshot
+                  </div>
+                </div>
               </div>
             </div>
             {/* Right Section - Theme and Platform */}

@@ -39,7 +39,7 @@ import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal } from "lucide-react"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
@@ -150,6 +150,7 @@ export default function MagicFlow() {
     loadVersion,
     getAllVersions,
     getLatestVersion,
+    resetToPublished,
     updateDraftChanges,
     discardChanges,
     hasActualChanges,
@@ -467,6 +468,7 @@ export default function MagicFlow() {
           if (!canAddMoreButtons(currentButtons, platform)) {
             // Convert to list node if at max buttons
             const newType = getPlatformSpecificNodeType("whatsappList", platform)
+            const newLabel = getPlatformSpecificLabel("whatsappList", platform)
             
             // Track the type transition
             if (!isEditMode) {
@@ -474,7 +476,7 @@ export default function MagicFlow() {
             }
             changeTracker.trackNodeUpdate(nodeId, node.data, {
               ...node.data,
-              label: "Whatsapp List",
+              label: newLabel,
               options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
             }, node.type, newType)
             updateDraftChanges()
@@ -487,7 +489,7 @@ export default function MagicFlow() {
                       type: newType,
                       data: {
                         ...n.data,
-                        label: "Whatsapp List",
+                        label: newLabel,
                         options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
                       },
                     }
@@ -1811,6 +1813,31 @@ export default function MagicFlow() {
               >
                 <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
                 {isEditMode ? "Edit" : "View"}
+              </Button>
+
+              {/* Reset to Published Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (window.confirm(getAllVersions().find(v => v.isPublished) 
+                    ? "Reset to last published version? All unsaved changes will be lost." 
+                    : "No published version exists. Clear everything?"
+                  )) {
+                    resetToPublished(setNodes, setEdges, setPlatform)
+                    setSelectedNode(null)
+                    setSelectedNodes([])
+                    setIsPropertiesPanelOpen(false)
+                    toast.success(getAllVersions().find(v => v.isPublished) 
+                      ? "Reset to published version" 
+                      : "Flow cleared"
+                    )
+                  }
+                }}
+                className="flex items-center gap-2 h-8 px-3"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
               </Button>
               
               {isEditMode && hasActualChanges(nodes, edges, platform) && (

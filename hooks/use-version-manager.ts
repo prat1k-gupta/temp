@@ -633,6 +633,87 @@ export function useVersionManager() {
     }
   }, [editModeState.isEditMode])
 
+  /**
+   * Reset to published version or clear everything if no published version exists
+   */
+  const resetToPublished = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
+    const publishedVersion = getLatestPublishedVersion()
+    
+    if (publishedVersion) {
+      // Load the published version
+      console.log('[Version Manager] Resetting to published version:', publishedVersion.name)
+      
+      const formattedNodes = publishedVersion.nodes.map(node => ({
+        ...node,
+        data: node.data || {}
+      }))
+      
+      const formattedEdges = publishedVersion.edges.map(edge => ({
+        ...edge,
+        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+      }))
+      
+      setNodes(formattedNodes)
+      setEdges(formattedEdges)
+      setPlatform(publishedVersion.platform)
+      
+      // Switch to view mode and clear all changes
+      setEditModeState(prev => ({
+        ...prev,
+        isEditMode: false,
+        currentVersion: publishedVersion,
+        hasUnsavedChanges: false,
+        draftChanges: []
+      }))
+      
+      saveEditModeState(false)
+      
+      // Clear changes and draft state
+      changeTracker.clearChanges()
+      changeTracker.stopTracking()
+      clearDraftState()
+      
+      console.log('[Version Manager] Reset to published version complete')
+      return true
+    } else {
+      // No published version - clear everything
+      console.log('[Version Manager] No published version - clearing everything')
+      
+      const initialNodes: Node[] = [
+        {
+          id: "1",
+          type: "start",
+          position: { x: 250, y: 25 },
+          data: { label: "Start", platform: "web" },
+          draggable: false,
+          selectable: false,
+        },
+      ]
+      
+      setNodes(initialNodes)
+      setEdges([])
+      setPlatform("web")
+      
+      // Stay in edit mode but clear all changes
+      setEditModeState(prev => ({
+        ...prev,
+        isEditMode: true,
+        hasUnsavedChanges: false,
+        draftChanges: []
+      }))
+      
+      saveEditModeState(true)
+      
+      // Clear changes and draft state
+      changeTracker.clearChanges()
+      changeTracker.startTracking()
+      clearDraftState()
+      
+      console.log('[Version Manager] Cleared everything')
+      return true
+    }
+  }, [editModeState])
+
   return {
     // State
     editModeState,
@@ -651,6 +732,7 @@ export function useVersionManager() {
     loadVersion,
     getAllVersions,
     getLatestVersion,
+    resetToPublished,
     
     // Change tracking
     updateDraftChanges,

@@ -589,6 +589,7 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
 
               {/* Quick Reply Buttons */}
               {(selectedNode.type === "quickReply" || 
+                selectedNode.type === "webQuickReply" ||
                 selectedNode.type === "whatsappQuickReply" || 
                 selectedNode.type === "instagramQuickReply") && (
                 <>
@@ -596,14 +597,12 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <Label className="text-sm font-medium">
-                        Buttons (Max {selectedNode.type === "quickReply" ? "3" : "10"})
+                        Buttons (Max {(selectedNode.type === "quickReply" || selectedNode.type === "webQuickReply") ? "3" : "3"})
                       </Label>
-                      {(selectedNode.data.buttons || []).length < (selectedNode.type === "quickReply" ? 3 : 10) && (
-                        <Button size="sm" variant="outline" onClick={addButton} className="h-7 px-2 bg-transparent">
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Button>
-                      )}
+                      <Button size="sm" variant="outline" onClick={addButton} className="h-7 px-2 bg-transparent">
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add
+                      </Button>
                     </div>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragOver={onButtonsDragOver} onDragEnd={reorderButtons}>
                       <SortableContext

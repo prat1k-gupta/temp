@@ -1,15 +1,16 @@
 "use client"
 
 import { memo, useState, useEffect } from "react"
+import type { Platform } from "@/types"
 import { BaseNode } from "../core/base-node"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Edit2, Check, X, Camera } from "lucide-react"
-import { nodeRegistry } from "@/lib/node-registry"
+import { getPlatformConfig } from "@/lib/platform-config"
 
 interface InstagramStoryNodeData {
   text: string
-  platform: string
+  platform: Platform
   id: string
   onNodeUpdate: (id: string, data: any) => void
 }
@@ -18,8 +19,8 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
   const [isEditing, setIsEditing] = useState(false)
   const [editingValue, setEditingValue] = useState(data.text)
 
-  const platform = nodeRegistry.getPlatform(data.platform)
-  const maxLength = platform?.constraints.messageMaxLength || 100
+  const platformConfig = getPlatformConfig(data.platform)
+  const maxLength = platformConfig.messageMaxLength
 
   useEffect(() => {
     setEditingValue(data.text)

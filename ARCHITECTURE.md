@@ -26,22 +26,19 @@ magic-flow/
 │   ├── node-operations.ts   # Node manipulation utilities
 │   ├── node-factory.ts      # Node creation factories
 │   └── index.ts             # Centralized exports
-├── config/               # Configuration files
-│   └── platforms/        # Platform-specific configurations
-│       ├── web.ts        # Web platform config
-│       ├── whatsapp.ts   # WhatsApp platform config
-│       ├── instagram.ts  # Instagram platform config
-│       └── index.ts      # Platform config exports
-└── lib/                  # External library configurations
+├── lib/                  # Library code
+│   ├── node-registry.ts    # Platform registry
+│   └── platforms/          # Platform definitions (minimal usage)
+└── hooks/                # Custom React hooks
 ```
 
 ## 🏗️ Architecture Principles
 
 ### 1. **Separation of Concerns**
 - **Types**: All TypeScript interfaces and types in `/types`
-- **Constants**: Platform limits, mappings, and configurations in `/constants`
+- **Constants**: Platform limits, mappings, and configurations in `/constants` (single source of truth)
 - **Utilities**: Reusable functions in `/utils`
-- **Configuration**: Platform-specific configs in `/config`
+- **Components**: Platform-specific node components in `/components/nodes/`
 
 ### 2. **Modular Imports**
 - Each module has a centralized `index.ts` for clean imports
@@ -133,38 +130,27 @@ const NODE_CONTENT: Record<string, Record<Platform, string>>
 - `createCommentNode()` - Create comment nodes
 - `createNode()` - Generic node factory
 
-## 🎨 Platform Configurations
+## 🎨 Platform Configuration (Simplified)
 
-Each platform has its own configuration file with:
+Platform configurations are defined in `/constants/platform-limits.ts` as the single source of truth:
 
 ```typescript
-interface PlatformConfig {
-  platform: Platform
-  name: string
-  limits: {
-    question: number
-    button: number
-    maxButtons: number
-    maxOptions: number
-  }
-  styling: {
-    primaryColor: string
-    borderColor: string
-    backgroundColor: string
-    // ... other styling properties
-  }
-  features: {
-    supportsRichText: boolean
-    supportsImages: boolean
-    // ... other feature flags
-  }
-  nodeTypes: {
-    question: string
-    quickReply: string
-    // ... platform-specific node types
-  }
+// Character limits per platform
+export const CHARACTER_LIMITS: Record<Platform, { question: number; button: number; comment: number }> = {
+  web: { question: 500, button: 20, comment: 200 },
+  whatsapp: { question: 160, button: 20, comment: 150 },
+  instagram: { question: 100, button: 15, comment: 100 },
+}
+
+// Button limits per platform
+export const BUTTON_LIMITS: Record<Platform, number> = {
+  web: 3,
+  whatsapp: 10,
+  instagram: 10,
 }
 ```
+
+**Note**: The `/lib/platforms/` directory contains platform class definitions that are only used by a few specialized nodes (WhatsApp Message, Instagram DM/Story, Web Form, and Base Node) for runtime constraint validation. Most nodes use constants directly.
 
 ## 📦 Import Examples
 
@@ -183,8 +169,8 @@ import {
   isValidPlatform 
 } from "@/utils"
 
-// Platform Configs
-import { getPlatformConfig } from "@/config/platforms"
+// Platform Limits (Single Source of Truth)
+import { CHARACTER_LIMITS, BUTTON_LIMITS } from "@/constants/platform-limits"
 ```
 
 ### Component Usage
@@ -192,11 +178,11 @@ import { getPlatformConfig } from "@/config/platforms"
 // Create a new node using the factory
 const newNode = createNode("question", platform, position)
 
-// Validate platform
-if (isValidPlatform(userInput)) {
-  const config = getPlatformConfig(userInput)
-  // ... use config
-}
+// Get character limits
+const maxLength = CHARACTER_LIMITS[platform].question
+
+// Check button limits
+const canAddButton = buttons.length < BUTTON_LIMITS[platform]
 
 // Get platform-specific type
 const nodeType = getPlatformSpecificNodeType("question", "whatsapp")
@@ -222,11 +208,12 @@ const nodeType = getPlatformSpecificNodeType("question", "whatsapp")
 ## 🚀 Adding New Features
 
 ### Adding a New Platform
-1. Create config file in `/config/platforms/new-platform.ts`
-2. Add platform type to `/types/index.ts`
-3. Update constants in `/constants/`
-4. Add platform-specific components
-5. Update utilities if needed
+1. Add platform type to `/types/index.ts`
+2. Update constants in `/constants/platform-limits.ts` and `/constants/node-types.ts`
+3. (Optional) Create platform class in `/lib/platforms/` if specialized validation is needed
+4. Create platform-specific node components in `/components/nodes/{platform}/`
+5. Register node types in `app/page.tsx`
+6. Update utilities if needed
 
 ### Adding a New Node Type
 1. Add node data interface to `/types/index.ts`

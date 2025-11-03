@@ -1,12 +1,13 @@
 "use client"
 
 import { memo, useState, useEffect } from "react"
+import type { Platform } from "@/types"
 import { BaseNode } from "../core/base-node"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Plus, X, Edit2, Check, XIcon, Globe } from "lucide-react"
-import { nodeRegistry } from "@/lib/node-registry"
+import { getPlatformConfig } from "@/lib/platform-config"
 
 interface FormField {
   id: string
@@ -22,7 +23,7 @@ interface WebFormNodeData {
   fields: FormField[]
   submitText: string
   onNodeUpdate: (id: string, updates: Partial<WebFormNodeData>) => void
-  platform: string
+  platform: Platform
 }
 
 export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
@@ -31,7 +32,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null)
   const [editingFieldValue, setEditingFieldValue] = useState("")
 
-  const platform = nodeRegistry.getPlatform(data.platform)
+  const platformConfig = getPlatformConfig(data.platform)
 
   useEffect(() => {
     setEditingTitleValue(data.title)

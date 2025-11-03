@@ -1,22 +1,24 @@
 import type React from "react"
 import { memo } from "react"
-import { Handle, Position, type NodeProps } from "reactflow"
-import { nodeRegistry } from "@/lib/node-registry"
+import { Handle, Position } from "reactflow"
+import type { Platform } from "@/types"
+import { getPlatformConfig } from "@/lib/platform-config"
 
 export interface BaseNodeData {
   id: string
-  platform: string
+  platform: Platform
   onNodeUpdate: (nodeId: string, updates: any) => void
   [key: string]: any
 }
 
-export interface BaseNodeProps extends NodeProps {
+export interface BaseNodeProps {
   data: BaseNodeData
+  children: React.ReactNode
 }
 
-export const BaseNode = memo(({ data, children }: BaseNodeProps & { children: React.ReactNode }) => {
-  const platform = nodeRegistry.getPlatform(data.platform)
-  const platformColors = platform?.constraints.colors
+export const BaseNode = memo(({ data, children }: BaseNodeProps) => {
+  const platformConfig = getPlatformConfig(data.platform)
+  const platformColors = platformConfig.colors
 
   return (
     <div

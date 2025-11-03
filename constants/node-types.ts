@@ -3,12 +3,12 @@ import type { Platform } from "@/types"
 // Node type mappings for different platforms
 export const NODE_TYPE_MAPPINGS: Record<string, Record<Platform, string>> = {
   question: {
-    web: "question",
+    web: "webQuestion",
     whatsapp: "whatsappQuestion",
     instagram: "instagramQuestion"
   },
   quickReply: {
-    web: "quickReply", 
+    web: "webQuickReply",
     whatsapp: "whatsappQuickReply",
     instagram: "instagramQuickReply"
   },

@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { MessageCircle, Plus, Edit3 } from "lucide-react"
+import { Plus, Edit3, Globe } from "lucide-react"
 import { useState, useEffect } from "react"
 import { CHARACTER_LIMITS } from "@/constants/platform-limits"
 
 const PLATFORM_LIMITS = CHARACTER_LIMITS
 
-export function QuestionNode({ data, selected }: { data: any; selected?: boolean }) {
+export function WebQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
@@ -44,7 +44,6 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
 
   const finishEditingLabel = () => {
     if (data.onNodeUpdate) {
-      console.log("[v0] Updating label:", editingLabelValue)
       data.onNodeUpdate(data.id, { ...data, label: editingLabelValue })
     }
     setIsEditingLabel(false)
@@ -62,7 +61,6 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
 
   const finishEditingQuestion = () => {
     if (data.onNodeUpdate) {
-      console.log("[v0] Updating question:", editingQuestionValue)
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
     setIsEditingQuestion(false)
@@ -76,19 +74,16 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-card border-border shadow-lg transition-all duration-200 hover:shadow-xl hover:border-accent/50 ${
-          selected ? "ring-2 ring-accent/50" : ""
+        className={`min-w-[260px] max-w-[300px] bg-white border-blue-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 ${
+          selected ? "ring-1 ring-blue-300/50 shadow-md" : ""
         }`}
-        onMouseEnter={() => {
-          console.log("[v0] Mouse entered question node")
-        }}
-        onMouseLeave={() => {
-          console.log("[v0] Mouse left question node")
-        }}
       >
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <MessageCircle className="w-4 h-4 text-accent" />
+            {/* Web Icon - Inside header, left side */}
+            <div className="w-5 h-5 bg-blue-500 rounded-md flex items-center justify-center flex-shrink-0">
+              <Globe className="w-3 h-3 text-white" />
+            </div>
             {isEditingLabel ? (
               <Input
                 value={editingLabelValue}
@@ -98,21 +93,21 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
                 }}
-                className="h-6 text-sm font-medium"
+                className="h-6 text-sm font-medium border-blue-200"
                 autoFocus
               />
             ) : (
               <div
-                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-accent/10 px-1 py-0.5 rounded flex items-center gap-1"
+                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-blue-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
-                {data.label || "Question"}
-                <Edit3 className="w-3 h-3 opacity-50" />
+                {data.label || "Web Message"}
+                <Edit3 className="w-3 h-3 opacity-40" />
               </div>
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-0 space-y-3 pb-8">
+        <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
             <div className="space-y-2">
               <Textarea
@@ -126,22 +121,22 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
                   }
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className={`text-sm min-h-[60px] resize-none ${
-                  isOverLimit(editingQuestionValue, "question") ? "border-destructive" : ""
+                className={`text-sm min-h-[60px] resize-none border-blue-200 focus:border-blue-300 ${
+                  isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
                 }`}
-                placeholder="Enter your question..."
+                placeholder="Enter your message..."
                 autoFocus
               />
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-destructive" : "text-muted-foreground"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
                   }`}
                 >
-                  {editingQuestionValue.length}/{limits.question} characters
+                  {editingQuestionValue.length}/{limits.question}
                 </span>
                 {isOverLimit(editingQuestionValue, "question") && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge variant="destructive" className="text-xs h-5">
                     Too long
                   </Badge>
                 )}
@@ -149,17 +144,17 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-accent/10 p-2 rounded border border-transparent hover:border-accent/20 transition-colors"
+              className="text-sm text-gray-600 line-clamp-3 cursor-pointer hover:bg-blue-50/30 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Enter your question..."}
+              {data.question || "Enter your message..."}
             </div>
           )}
 
           {selected && <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-center text-xs h-8 border-2 border-dashed border-muted-foreground/30 hover:border-accent transition-colors"
+            className="w-full justify-center text-xs h-7 border border-dashed border-blue-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-gray-600"
             onClick={data.onAddButton}
           >
             <Plus className="w-3 h-3 mr-1" />
@@ -170,15 +165,15 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
         <Handle
           type="target"
           position={Position.Left}
-          className="w-4 h-4 bg-accent border-3 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
         />
 
-        <div className="absolute bottom-2 right-2 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Next Step</span>
+        <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-400 font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
-            className="w-4 h-4 bg-accent border-3 border-white opacity-100 hover:scale-110 transition-transform relative"
+            className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform relative"
             style={{ position: "relative", transform: "none", right: "auto", top: "auto" }}
           />
         </div>
@@ -186,3 +181,4 @@ export function QuestionNode({ data, selected }: { data: any; selected?: boolean
     </div>
   )
 }
+

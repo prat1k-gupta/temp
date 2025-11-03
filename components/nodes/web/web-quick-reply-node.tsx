@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { MessageSquare, Plus, Edit3, X } from "lucide-react"
+import { Plus, Edit3, X, Globe } from "lucide-react"
 import { useState, useEffect } from "react"
 import { CHARACTER_LIMITS } from "@/constants/platform-limits"
 
 const PLATFORM_LIMITS = CHARACTER_LIMITS
 
-export function QuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
+export function WebQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
@@ -47,7 +47,6 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
 
   const finishEditingLabel = () => {
     if (data.onNodeUpdate) {
-      console.log("[v0] Updating label:", editingLabelValue)
       if (editingLabelValue.length > limits.button) {
         return
       }
@@ -68,7 +67,6 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
 
   const finishEditingQuestion = () => {
     if (data.onNodeUpdate) {
-      console.log("[v0] Updating question:", editingQuestionValue)
       if (editingQuestionValue.length > limits.question) {
         return
       }
@@ -91,7 +89,6 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
     if (editingButtonIndex !== null && data.onNodeUpdate) {
       const updatedButtons = [...buttons]
       updatedButtons[editingButtonIndex] = { ...updatedButtons[editingButtonIndex], text: editingButtonValue }
-      console.log("[v0] Updating button", editingButtonIndex, "with text:", editingButtonValue)
       if (editingButtonValue.length > limits.button) {
         return
       }
@@ -117,13 +114,16 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
   return (
     <div className="relative">
       <Card
-        className={`min-w-[280px] max-w-[320px] bg-card border-border shadow-lg transition-all duration-200 hover:shadow-xl hover:border-accent/50 ${
-          selected ? "ring-2 ring-accent/50" : ""
+        className={`min-w-[280px] max-w-[320px] bg-white border-blue-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 ${
+          selected ? "ring-1 ring-blue-300/50 shadow-md" : ""
         }`}
       >
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-accent" />
+            {/* Web Icon - Inside header, left side */}
+            <div className="w-5 h-5 bg-blue-500 rounded-md flex items-center justify-center flex-shrink-0">
+              <Globe className="w-3 h-3 text-white" />
+            </div>
             {isEditingLabel ? (
               <Input
                 value={editingLabelValue}
@@ -133,21 +133,21 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
                 }}
-                className="h-6 text-sm font-medium"
+                className="h-6 text-sm font-medium border-blue-200"
                 autoFocus
               />
             ) : (
               <div
-                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-accent/10 px-1 py-0.5 rounded flex items-center gap-1"
+                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-blue-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Quick Reply"}
-                <Edit3 className="w-3 h-3 opacity-50" />
+                <Edit3 className="w-3 h-3 opacity-40" />
               </div>
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-0 space-y-3 pb-12">
+        <CardContent className="pt-0 space-y-2 pb-12 px-4">
           {isEditingQuestion ? (
             <div className="space-y-2">
               <Textarea
@@ -161,22 +161,22 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
                   }
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className={`text-sm min-h-[60px] resize-none ${
-                  isOverLimit(editingQuestionValue, "question") ? "border-destructive" : ""
+                className={`text-sm min-h-[60px] resize-none border-blue-200 focus:border-blue-300 ${
+                  isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
                 }`}
-                placeholder="Enter your question..."
+                placeholder="Enter your message..."
                 autoFocus
               />
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-destructive" : "text-muted-foreground"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
                   }`}
                 >
-                  {editingQuestionValue.length}/{limits.question} characters
+                  {editingQuestionValue.length}/{limits.question}
                 </span>
                 {isOverLimit(editingQuestionValue, "question") && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge variant="destructive" className="text-xs h-5">
                     Too long
                   </Badge>
                 )}
@@ -184,14 +184,14 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-accent/10 p-2 rounded border border-transparent hover:border-accent/20 transition-colors"
+              className="text-sm text-gray-600 line-clamp-2 cursor-pointer hover:bg-blue-50/30 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Enter your question..."}
+              {data.question || "Choose an action..."}
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {buttons.map((button: any, index: number) => (
               <div key={index} className="relative group">
                 {editingButtonIndex === index ? (
@@ -205,8 +205,8 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
                           if (e.key === "Enter") finishEditingButton()
                           if (e.key === "Escape") cancelEditingButton()
                         }}
-                        className={`h-8 text-xs ${
-                          isOverLimit(editingButtonValue, "button") ? "border-destructive" : ""
+                        className={`h-7 text-xs border-blue-200 ${
+                          isOverLimit(editingButtonValue, "button") ? "border-red-300" : ""
                         }`}
                         autoFocus
                       />
@@ -214,23 +214,17 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
                         variant="ghost"
                         size="sm"
                         onClick={() => removeButton(index)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                       >
                         <X className="w-3 h-3" />
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span
-                        className={`text-xs ${
-                          isOverLimit(editingButtonValue, "button") ? "text-destructive" : "text-muted-foreground"
-                        }`}
-                      >
-                        {editingButtonValue.length}/{limits.button} characters
+                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-gray-400"}`}>
+                        {editingButtonValue.length}/{limits.button}
                       </span>
                       {isOverLimit(editingButtonValue, "button") && (
-                        <Badge variant="destructive" className="text-xs">
-                          Too long
-                        </Badge>
+                        <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
                       )}
                     </div>
                   </div>
@@ -238,50 +232,50 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-8 bg-transparent hover:bg-accent/10 transition-colors cursor-pointer"
+                    className="w-full justify-start text-xs h-7 bg-blue-50/40 border-blue-100 hover:bg-blue-50 hover:border-blue-200 text-gray-700 transition-colors cursor-pointer"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
-                    <Edit3 className="w-3 h-3 opacity-50 ml-auto" />
+                    <Edit3 className="w-3 h-3 opacity-40 ml-auto" />
                   </Button>
                 )}
                 <Handle
                   type="source"
                   position={Position.Right}
                   id={`button-${index}`}
-                  className="w-3 h-3 bg-accent border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-md"
-                  style={{ right: "-6px", top: "50%", transform: "translateY(-50%)" }}
+                  className="w-2.5 h-2.5 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
             ))}
-
-            {buttons.length < 10 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-center text-xs h-8 border-2 border-dashed border-muted-foreground/30 hover:border-accent transition-colors"
-                onClick={data.onAddButton}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                Add Button
-              </Button>
-            )}
           </div>
+
+          {buttons.length < 10 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center text-xs h-7 border border-dashed border-blue-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-gray-600"
+              onClick={data.onAddButton}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Add Button
+            </Button>
+          )}
         </CardContent>
 
         <Handle
           type="target"
           position={Position.Left}
-          className="w-4 h-4 bg-accent border-3 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
         />
 
-        <div className="absolute bottom-2 right-2 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground font-medium">Next Step</span>
+        <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-400 font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
             id="next-step"
-            className="w-4 h-4 bg-primary border-3 border-white opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
             style={{
               position: "absolute",
               bottom: "8px",
@@ -294,3 +288,4 @@ export function QuickReplyNode({ data, selected }: { data: any; selected?: boole
     </div>
   )
 }
+

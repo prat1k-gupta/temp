@@ -21,8 +21,8 @@ export const WEB_PLATFORM_CONFIG = {
     supportsLists: true,
   },
   nodeTypes: {
-    question: "question",
-    quickReply: "quickReply",
+    question: "webQuestion",
+    quickReply: "webQuickReply",
     list: "whatsappList", // Using whatsappList as base list type
   }
 } as const

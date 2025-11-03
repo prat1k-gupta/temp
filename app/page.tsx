@@ -22,13 +22,12 @@ import "@xyflow/react/dist/style.css"
 
 // Component imports
 import { StartNode } from "@/components/nodes/start-node"
-import { QuestionNode } from "@/components/nodes/question-node"
-import { QuickReplyNode } from "@/components/nodes/quick-reply-node"
-import { WhatsAppListNode } from "@/components/nodes/whatsapp-list-node"
 import { CommentNode } from "@/components/nodes/comment-node"
+import { WebQuestionNode } from "@/components/nodes/web/web-question-node"
+import { WebQuickReplyNode } from "@/components/nodes/web/web-quick-reply-node"
 import { WhatsAppQuestionNode } from "@/components/nodes/whatsapp/whatsapp-question-node"
 import { WhatsAppQuickReplyNode } from "@/components/nodes/whatsapp/whatsapp-quick-reply-node"
-import { WhatsAppListNode as WhatsAppListNodeSpecific } from "@/components/nodes/whatsapp/whatsapp-list-node"
+import { WhatsAppListNode } from "@/components/nodes/whatsapp/whatsapp-list-node"
 import { WhatsAppMessageNode } from "@/components/nodes/whatsapp/whatsapp-message-node"
 import { InstagramQuestionNode } from "@/components/nodes/instagram/instagram-question-node"
 import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-quick-reply-node"
@@ -85,15 +84,19 @@ import { publishVersion } from "@/utils/version-storage"
 
 const nodeTypes = {
   start: StartNode,
-  question: QuestionNode,
-  quickReply: QuickReplyNode,
-  whatsappList: WhatsAppListNode,
   comment: CommentNode,
+  // Web specific nodes
+  webQuestion: WebQuestionNode,
+  webQuickReply: WebQuickReplyNode,
   // WhatsApp specific nodes
   whatsappQuestion: WhatsAppQuestionNode,
   whatsappQuickReply: WhatsAppQuickReplyNode,
-  whatsappListSpecific: WhatsAppListNodeSpecific,
+  whatsappList: WhatsAppListNode,
+  whatsappListSpecific: WhatsAppListNode,
   whatsappMessage: WhatsAppMessageNode,
+  // Backwards compatibility aliases
+  question: WebQuestionNode,
+  quickReply: WebQuickReplyNode,
   // Instagram specific nodes
   instagramQuestion: InstagramQuestionNode,
   instagramQuickReply: InstagramQuickReplyNode,
@@ -423,7 +426,7 @@ export default function MagicFlow() {
         }
 
         // Handle question nodes (convert to quick reply)
-        if (node.type === "question" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
+        if (node.type === "question" || node.type === "webQuestion" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
           const platform = (node.data.platform as Platform) || "web"
           const newType = getPlatformSpecificNodeType("quickReply", platform)
           
@@ -457,7 +460,7 @@ export default function MagicFlow() {
           setNodeToFocus(nodeId)
         } 
         // Handle quick reply nodes (add button or convert to list)
-        else if (node.type === "quickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
+        else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
           const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
           const platform = (node.data.platform as Platform) || "web"
           
@@ -635,7 +638,7 @@ export default function MagicFlow() {
           }
         }
         // Handle quick reply nodes (remove button and potentially convert back to question)
-        else if (node.type === "quickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
+        else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
           const newButtons = currentButtons.filter((_, i) => i !== buttonIndex)
           
           // If no buttons left, convert back to question
@@ -1409,8 +1412,12 @@ export default function MagicFlow() {
           const newData: any = { ...node.data, platform: newPlatform }
 
           // Convert question nodes
-          if (node.type === "question" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
+          if (node.type === "question" || node.type === "webQuestion" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
             switch (newPlatform) {
+              case "web":
+                newType = "webQuestion"
+                newData.label = "Web Message"
+                break
               case "whatsapp":
                 newType = "whatsappQuestion"
                 newData.label = "WhatsApp Message"
@@ -1420,14 +1427,18 @@ export default function MagicFlow() {
                 newData.label = "Instagram Message"
                 break
               default:
-                newType = "question"
+                newType = "webQuestion"
                 newData.label = "Question"
             }
           }
 
           // Convert quick reply nodes
-          if (node.type === "quickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
+          if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
             switch (newPlatform) {
+              case "web":
+                newType = "webQuickReply"
+                newData.label = "Web Actions"
+                break
               case "whatsapp":
                 newType = "whatsappQuickReply"
                 newData.label = "WhatsApp Actions"
@@ -1437,7 +1448,7 @@ export default function MagicFlow() {
                 newData.label = "Instagram Actions"
                 break
               default:
-                newType = "quickReply"
+                newType = "webQuickReply"
                 newData.label = "Quick Reply"
             }
           }

@@ -62,6 +62,8 @@ const NODE_ICONS = {
   whatsappList: List,
   comment: MessageSquareText,
   // Platform-specific nodes
+  webQuestion: MessageCircle,
+  webQuickReply: MessageSquare,
   whatsappQuestion: MessageCircle,
   whatsappQuickReply: MessageSquare,
   whatsappListSpecific: List,
@@ -80,6 +82,8 @@ const NODE_COLORS = {
   whatsappList: "bg-chart-4 text-white",
   comment: "bg-yellow-400 text-yellow-900",
   // Platform-specific nodes
+  webQuestion: "bg-blue-500 text-white",
+  webQuickReply: "bg-blue-600 text-white",
   whatsappQuestion: "bg-green-500 text-white",
   whatsappQuickReply: "bg-green-600 text-white",
   whatsappListSpecific: "bg-green-700 text-white",
@@ -393,6 +397,10 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
       case "comment":
         return "Comment Node"
       // Platform-specific nodes
+      case "webQuestion":
+        return "Web Question Node"
+      case "webQuickReply":
+        return "Web Quick Reply Node"
       case "whatsappQuestion":
         return "WhatsApp Question Node"
       case "whatsappQuickReply":
@@ -482,6 +490,8 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
           {(selectedNode.type === "question" ||
             selectedNode.type === "quickReply" ||
             selectedNode.type === "whatsappList" ||
+            selectedNode.type === "webQuestion" ||
+            selectedNode.type === "webQuickReply" ||
             selectedNode.type === "whatsappQuestion" ||
             selectedNode.type === "whatsappQuickReply" ||
             selectedNode.type === "whatsappListSpecific" ||

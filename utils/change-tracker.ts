@@ -200,14 +200,14 @@ export class ChangeTracker {
    * Check if a node type is a question type
    */
   private isQuestionType(type: string): boolean {
-    return type === 'question' || type === 'whatsappQuestion' || type === 'instagramQuestion'
+    return type === 'question' || type === 'webQuestion' || type === 'whatsappQuestion' || type === 'instagramQuestion'
   }
 
   /**
    * Check if a node type is a quick reply type
    */
   private isQuickReplyType(type: string): boolean {
-    return type === 'quickReply' || type === 'whatsappQuickReply' || type === 'instagramQuickReply'
+    return type === 'quickReply' || type === 'webQuickReply' || type === 'whatsappQuickReply' || type === 'instagramQuickReply'
   }
 
   /**

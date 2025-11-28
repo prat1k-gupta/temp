@@ -34,6 +34,15 @@ import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-
 import { InstagramListNode } from "@/components/nodes/instagram/instagram-list-node"
 import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
 import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
+// Super nodes
+import { NameNode } from "@/components/nodes/super/name-node"
+import { EmailNode } from "@/components/nodes/super/email-node"
+import { AddressNode } from "@/components/nodes/super/address-node"
+import { DobNode } from "@/components/nodes/super/dob-node"
+// Fulfillment nodes
+import { GenericFulfillmentNode } from "@/components/nodes/fulfillment/generic-fulfillment-node"
+// Integration nodes
+import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
 import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
 import { PlatformSelector } from "@/components/platform-selector"
@@ -51,6 +60,7 @@ import { FlowSetupModal } from "@/components/flow-setup-modal"
 import { useVersionManager } from "@/hooks/use-version-manager"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
+import { Toaster } from "@/components/ui/sonner"
 import { useSearchParams } from "next/navigation"
 
 // Modular imports
@@ -112,6 +122,26 @@ const nodeTypes = {
   instagramList: InstagramListNode,
   instagramDM: InstagramDMNode,
   instagramStory: InstagramStoryNode,
+  // Super nodes (platform-agnostic)
+  name: NameNode,
+  email: EmailNode,
+  address: AddressNode,
+  dob: DobNode,
+  // Fulfillment nodes
+  homeDelivery: GenericFulfillmentNode,
+  event: GenericFulfillmentNode,
+  retailStore: GenericFulfillmentNode,
+  // Integration nodes
+  shopify: GenericIntegrationNode,
+  metaAudience: GenericIntegrationNode,
+  stripe: GenericIntegrationNode,
+  zapier: GenericIntegrationNode,
+  google: GenericIntegrationNode,
+  salesforce: GenericIntegrationNode,
+  mailchimp: GenericIntegrationNode,
+  twilio: GenericIntegrationNode,
+  slack: GenericIntegrationNode,
+  airtable: GenericIntegrationNode,
 }
 
 const initialNodes: Node[] = [
@@ -849,37 +879,28 @@ export default function MagicFlow() {
       let newNode: Node
 
       try {
-        switch (draggedNodeType) {
-          case "question":
-            newNode = createNode("question", platform, position, newNodeId)
-            break
-          case "quickReply":
-            newNode = createNode("quickReply", platform, position, newNodeId)
-            break
-          case "whatsappList":
-            newNode = createNode("whatsappList", platform, position, newNodeId)
-            break
-          case "comment":
-            newNode = createCommentNode(
-              platform,
-              position,
-              newNodeId,
-              (updates: any) => {
-                console.log("[v0] Comment inline update:", newNodeId, updates)
-                setNodes((nds) =>
-                  nds.map((node) =>
-                    node.id === newNodeId
-                      ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                      : node,
-                  ),
-                )
-              },
-              () => deleteNode(newNodeId)
-            )
-            break
-          default:
-            console.warn(`[v0] Unknown dragged node type: ${draggedNodeType}`)
-            return
+        // Handle comment nodes specially because they need inline callbacks
+        if (draggedNodeType === "comment") {
+          newNode = createCommentNode(
+            platform,
+            position,
+            newNodeId,
+            (updates: any) => {
+              console.log("[v0] Comment inline update:", newNodeId, updates)
+              setNodes((nds) =>
+                nds.map((node) =>
+                  node.id === newNodeId
+                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
+                    : node,
+                ),
+              )
+            },
+            () => deleteNode(newNodeId)
+          )
+        } else {
+          // All other node types (interaction, super, fulfillment, integration)
+          // Use the unified createNode factory function
+          newNode = createNode(draggedNodeType, platform, position, newNodeId)
         }
 
         // Track node creation
@@ -1024,6 +1045,24 @@ export default function MagicFlow() {
     
     setSelectedNode(node)
     setIsPropertiesPanelOpen(true)
+  }, [])
+
+  // Handle double-click for super nodes
+  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
+    console.log("Node double-clicked:", node.type, node.data)
+    
+    const superNodeTypes = ["name", "email", "address", "dob"]
+    
+    if (superNodeTypes.includes(node.type || "")) {
+      console.log("✨ Super node double-clicked!", node.type)
+      toast.info(`🔧 Configure ${node.data?.label || node.type} validation rules`, {
+        description: "Configuration modal coming soon...",
+        duration: 3000,
+      })
+    } else {
+      // For other nodes, just log
+      console.log("Regular node double-clicked (no special action)")
+    }
   }, [])
 
   const onSelectionChange = useCallback(({ nodes: selectedNodesFromFlow }: { nodes: Node[], edges: Edge[] }) => {
@@ -2108,6 +2147,7 @@ export default function MagicFlow() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onNodeDoubleClick={onNodeDoubleClick}
             onNodeContextMenu={onNodeContextMenu}
             onPaneClick={onPaneClick}
             onPaneContextMenu={onPaneContextMenu}
@@ -2404,6 +2444,9 @@ export default function MagicFlow() {
           </div>
         )}
       </div>
+      
+      {/* Toast notifications */}
+      <Toaster position="bottom-right" />
     </div>
   )
 }

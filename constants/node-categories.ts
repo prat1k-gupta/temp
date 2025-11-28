@@ -1,0 +1,229 @@
+import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap } from "lucide-react"
+import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
+import type { Platform } from "@/types"
+
+export interface NodeTemplate {
+  type: string
+  icon: any
+  label: string
+  description: string
+  category: "interaction" | "information" | "fulfillment" | "integration"
+  isSuperNode?: boolean // Can be double-clicked to see sub-nodes
+  platforms: Platform[] // Which platforms support this node
+  badge?: string // Optional badge text
+}
+
+export const NODE_CATEGORIES = {
+  interaction: {
+    label: "Interaction",
+    description: "Conversational elements",
+    icon: MessageCircle,
+  },
+  information: {
+    label: "Information",
+    description: "Collect & validate data",
+    icon: User,
+  },
+  fulfillment: {
+    label: "Fulfillment",
+    description: "Delivery & services",
+    icon: Package,
+  },
+  integration: {
+    label: "Integration",
+    description: "External platforms",
+    icon: Zap,
+  },
+}
+
+export const NODE_TEMPLATES: NodeTemplate[] = [
+  // INTERACTION NODES
+  {
+    type: "question",
+    icon: MessageCircle,
+    label: "Question",
+    description: "Ask users a question",
+    category: "interaction",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "quickReply",
+    icon: MessageSquare,
+    label: "Quick Reply",
+    description: "Question with button options",
+    category: "interaction",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "whatsappList",
+    icon: List,
+    label: "List",
+    description: "Interactive list menu",
+    category: "interaction",
+    platforms: ["whatsapp", "instagram"],
+  },
+  
+  // INFORMATION NODES (Super Nodes)
+  {
+    type: "name",
+    icon: User,
+    label: "Name",
+    description: "Collect and validate name",
+    category: "information",
+    isSuperNode: true,
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Validation",
+  },
+  {
+    type: "email",
+    icon: Mail,
+    label: "Email",
+    description: "Collect and validate email",
+    category: "information",
+    isSuperNode: true,
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Validation",
+  },
+  {
+    type: "dob",
+    icon: Calendar,
+    label: "DOB",
+    description: "Collect date of birth",
+    category: "information",
+    isSuperNode: true,
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Validation",
+  },
+  {
+    type: "address",
+    icon: MapPin,
+    label: "Address",
+    description: "Collect and validate address",
+    category: "information",
+    isSuperNode: true,
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Validation",
+  },
+  
+  // FULFILLMENT NODES
+  {
+    type: "homeDelivery",
+    icon: Package,
+    label: "At-home Delivery",
+    description: "Schedule home delivery",
+    category: "fulfillment",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "event",
+    icon: CalendarIcon,
+    label: "Event",
+    description: "Book event or appointment",
+    category: "fulfillment",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "retailStore",
+    icon: Store,
+    label: "Retail Store",
+    description: "Find nearby stores",
+    category: "fulfillment",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  
+  // INTEGRATION NODES
+  {
+    type: "shopify",
+    icon: ShopifyIcon,
+    label: "Shopify",
+    description: "Connect to Shopify store",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "metaAudience",
+    icon: MetaIcon,
+    label: "Meta Audience",
+    description: "Sync with Meta audiences",
+    category: "integration",
+    platforms: ["whatsapp", "instagram"],
+  },
+  {
+    type: "stripe",
+    icon: StripeIcon,
+    label: "Stripe",
+    description: "Process payments",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "zapier",
+    icon: ZapierIcon,
+    label: "Zapier",
+    description: "Connect 5000+ apps",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "google",
+    icon: GoogleIcon,
+    label: "Google Sheets",
+    description: "Sync with Google Sheets",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "salesforce",
+    icon: SalesforceIcon,
+    label: "Salesforce",
+    description: "CRM integration",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "mailchimp",
+    icon: MailchimpIcon,
+    label: "Mailchimp",
+    description: "Email marketing",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "twilio",
+    icon: TwilioIcon,
+    label: "Twilio",
+    description: "SMS & Voice",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "slack",
+    icon: SlackIcon,
+    label: "Slack",
+    description: "Team notifications",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "airtable",
+    icon: AirtableIcon,
+    label: "Airtable",
+    description: "Database sync",
+    category: "integration",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+]
+
+export function getNodesByCategory(category: string, platform: Platform) {
+  return NODE_TEMPLATES.filter(
+    node => node.category === category && node.platforms.includes(platform)
+  )
+}
+
+export function getAllCategories() {
+  return Object.entries(NODE_CATEGORIES).map(([key, value]) => ({
+    key,
+    ...value,
+  }))
+}
+

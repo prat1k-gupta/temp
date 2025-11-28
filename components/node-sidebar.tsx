@@ -81,7 +81,7 @@ interface NodeSidebarProps {
 }
 
 export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
   
   const availableNodes = BASE_NODE_TEMPLATES.filter(template => 
     template.isAvailable(platform)

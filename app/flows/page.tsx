@@ -124,7 +124,10 @@ export default function FlowsPage() {
       <div className="border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div 
+              className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => router.push('/flows')}
+            >
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>

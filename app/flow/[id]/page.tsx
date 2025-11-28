@@ -86,6 +86,8 @@ import {
   platformSupportsNodeType 
 } from "@/utils/platform-labels"
 import { publishVersion } from "@/utils/version-storage"
+import { getFlow, updateFlow, type FlowData } from "@/utils/flow-storage"
+import { useParams, useRouter } from "next/navigation"
 
 const nodeTypes = {
   start: StartNode,
@@ -132,6 +134,10 @@ const initialEdges: Edge[] = [
 ]
 
 export default function MagicFlow() {
+  const params = useParams()
+  const router = useRouter()
+  const flowId = params?.id as string
+  const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -140,6 +146,7 @@ export default function MagicFlow() {
   const [draftStateLoaded, setDraftStateLoaded] = useState(false)
   const [isLoadingVersion, setIsLoadingVersion] = useState(false)
   const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
+  const [flowLoaded, setFlowLoaded] = useState(false)
   
   // Version management
   const {
@@ -1794,7 +1801,10 @@ export default function MagicFlow() {
           <div className="flex items-center justify-between px-6 py-4">
             {/* Left Section - App Logo and Title */}
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
+              <div 
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => router.push('/flows')}
+              >
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>

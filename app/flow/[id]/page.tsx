@@ -47,6 +47,8 @@ import { GenericFulfillmentNode } from "@/components/nodes/fulfillment/generic-f
 import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
 import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
+import { AISuggestionsPanel } from "@/components/ai"
+import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -185,6 +187,35 @@ export default function MagicFlow() {
   const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
   const [flowLoaded, setFlowLoaded] = useState(false)
   const [showSetupModal, setShowSetupModal] = useState(isSetupMode)
+  const [isAISuggestionsPanelOpen, setIsAISuggestionsPanelOpen] = useState(false)
+  
+  // Node suggestions hook
+  const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
+  
+  // Fetch suggestions when node is selected (skip start and comment nodes)
+  useEffect(() => {
+    if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
+      setIsAISuggestionsPanelOpen(true)
+      fetchSuggestions({
+        currentNodeType: selectedNode.type,
+        platform,
+        flowContext: currentFlow?.description,
+        existingNodes: nodes
+          .filter(n => n.type)
+          .map(n => ({ type: n.type!, label: n.data.label as string | undefined })),
+        maxSuggestions: 2,
+      })
+    } else {
+      setIsAISuggestionsPanelOpen(false)
+      clearSuggestions()
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      clearSuggestions()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode?.id, selectedNode?.type, platform, currentFlow?.description])
   
   // Version management
   const {
@@ -955,6 +986,117 @@ export default function MagicFlow() {
     setDraggedNodeType(nodeType)
     event.dataTransfer.effectAllowed = "move"
   }, [])
+
+  // Add node from AI suggestions (with generated content)
+  const onAcceptAISuggestion = useCallback(
+    (suggestion: { type: string; generatedContent?: any }) => {
+      if (!selectedNode) {
+        toast.error("No node selected")
+        return
+      }
+
+      const newNodeId = `${suggestion.type}-${Date.now()}`
+      let newNode: Node
+
+      try {
+        // Calculate position to the right of selected node
+        const nodePosition = {
+          x: (selectedNode.position.x || 0) + 350,
+          y: (selectedNode.position.y || 0),
+        }
+
+        // Handle comment nodes specially
+        if (suggestion.type === "comment") {
+          newNode = createCommentNode(
+            platform,
+            nodePosition,
+            newNodeId,
+            (updates: any) => {
+              setNodes((nds) =>
+                nds.map((node) =>
+                  node.id === newNodeId
+                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
+                    : node,
+                ),
+              )
+            },
+            () => deleteNode(newNodeId)
+          )
+        } else {
+          newNode = createNode(suggestion.type, platform, nodePosition, newNodeId)
+        }
+
+        // Populate node with generated content
+        if (suggestion.generatedContent) {
+          const content = suggestion.generatedContent
+          const updatedData: any = { ...newNode.data }
+
+          if (content.question) {
+            updatedData.question = content.question
+          }
+          if (content.text) {
+            updatedData.text = content.text
+          }
+          if (content.buttons && Array.isArray(content.buttons)) {
+            updatedData.buttons = content.buttons.map((btn: any, index: number) => ({
+              id: `btn-${Date.now()}-${index}`,
+              text: btn.text || btn.label || "",
+              label: btn.label || btn.text || "",
+            }))
+          }
+          if (content.options && Array.isArray(content.options)) {
+            updatedData.options = content.options.map((opt: any, index: number) => ({
+              text: opt.text || "",
+            }))
+          }
+
+          newNode.data = updatedData
+        }
+
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeAdd(newNode)
+        updateDraftChanges()
+
+        // Add the node first
+        setNodes((nds) => [...nds, newNode])
+
+        // Auto-connect the new node to the selected node
+        // Create edge connection (same pattern as onConnect)
+        const newEdge: Edge = {
+          id: `e-${selectedNode.id}-${newNodeId}`,
+          source: selectedNode.id,
+          target: newNodeId,
+          type: "default",
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        }
+
+        // Check if connection already exists
+        const existingConnection = edges.find(
+          (edge) => edge.source === selectedNode.id && edge.target === newNodeId,
+        )
+
+        if (!existingConnection) {
+          // Add edge using addEdge helper (same as onConnect)
+          setEdges((eds) => addEdge(newEdge, eds))
+          changeTracker.trackEdgeAdd(newEdge)
+          updateDraftChanges()
+        }
+
+        // Clear suggestions and close panel
+        clearSuggestions()
+        setIsAISuggestionsPanelOpen(false)
+        
+        setNodeToFocus(newNodeId)
+        toast.success(`Added ${newNode.data.label || suggestion.type} node with AI-generated content`)
+      } catch (error) {
+        console.error(`[v0] Error creating suggested node ${suggestion.type}:`, error)
+        toast.error(`Failed to add ${suggestion.type} node`)
+      }
+    },
+    [selectedNode, platform, isEditMode, setNodes, setEdges, setPlatform, nodes, edges, autoEnterEditMode, updateDraftChanges, deleteNode, clearSuggestions],
+  )
 
   // Add node from AI suggestions
   const onAddNode = useCallback(
@@ -2646,6 +2788,27 @@ export default function MagicFlow() {
         )}
       </div>
 
+      {/* AI Suggestions Panel - Right Side (left of Properties Panel) */}
+      <div
+        className={`transition-all duration-300 ease-in-out ${
+          isAISuggestionsPanelOpen ? "w-80" : "w-0"
+        } overflow-hidden bg-background border-r border-border`}
+      >
+        <AISuggestionsPanel
+          selectedNode={selectedNode}
+          suggestions={suggestions}
+          loading={suggestionsLoading}
+          platform={platform}
+          isOpen={isAISuggestionsPanelOpen}
+          onClose={() => setIsAISuggestionsPanelOpen(false)}
+          onAccept={onAcceptAISuggestion}
+          onReject={(suggestion) => {
+            clearSuggestions()
+            toast.info(`Dismissed ${suggestion.label} suggestion`)
+          }}
+        />
+      </div>
+
       <div
         className={`transition-all duration-300 ease-in-out ${
           isPropertiesPanelOpen ? "w-80" : "w-0"
@@ -2663,11 +2826,6 @@ export default function MagicFlow() {
               selectedNode={selectedNode} 
               platform={platform} 
               onNodeUpdate={updateNodeData}
-              flowContext={currentFlow?.description}
-              existingNodes={nodes
-                .filter(n => n.type)
-                .map(n => ({ type: n.type!, label: n.data.label as string | undefined }))}
-              onAddNode={onAddNode}
             />
           </div>
         )}

@@ -8,5 +8,6 @@ export { AITextField } from './ai-text-field'
 export { AIButtonToolbar, AIButtonActions } from './ai-button-toolbar'
 export { AIButtonSuggestions } from './ai-button-suggestions'
 export { SuggestedNodes } from './suggested-nodes'
+export { AISuggestionsPanel } from './ai-suggestions-panel'
 export type { SuggestedNode } from './suggested-nodes'
 

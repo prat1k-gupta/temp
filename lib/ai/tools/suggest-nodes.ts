@@ -10,12 +10,9 @@ export interface SuggestNodesRequest {
   maxSuggestions?: number
 }
 
-export interface SuggestedNode {
-  type: string
-  label: string
-  reason: string
-  description: string
-}
+import type { SuggestedNode } from "@/types"
+
+export type { SuggestedNode }
 
 export interface SuggestNodesResponse {
   suggestions: SuggestedNode[]
@@ -100,6 +97,12 @@ ${getAvailableNodeTypes(platform)}
 4. Avoid suggesting nodes that are already in the flow (if provided)
 5. Provide a clear reason for each suggestion
 6. Focus on creating a smooth user experience
+7. **IMPORTANT**: For each suggested node, generate the actual content that should be in that node:
+   - For "question" nodes: Generate the question text
+   - For "quickReply" nodes: Generate the question text AND 2-3 button options
+   - For "list" nodes: Generate the question text AND 3-5 list options
+   - For "name", "email", "dob", "address" nodes: Generate the prompt/question text
+   - For other nodes: Generate appropriate content based on the node type
 
 **Response Format (JSON array):**
 [
@@ -107,7 +110,14 @@ ${getAvailableNodeTypes(platform)}
     "type": "nodeType",
     "label": "Display Name",
     "reason": "Why this node makes sense",
-    "description": "What this node does"
+    "description": "What this node does",
+    "previewContent": "A short preview of the generated content",
+    "generatedContent": {
+      "question": "The question text (if applicable)",
+      "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes),
+      "options": [{"text": "Option 1"}, {"text": "Option 2"}] (for list nodes),
+      "text": "Content text (for other node types)"
+    }
   }
 ]`
 
@@ -178,6 +188,8 @@ function parseSuggestions(content: string, maxSuggestions: number): SuggestedNod
           label: item.label || item.type,
           reason: item.reason || "",
           description: item.description || "",
+          previewContent: item.previewContent || generatePreviewContent(item),
+          generatedContent: item.generatedContent || {},
         }))
       }
     }
@@ -190,6 +202,8 @@ function parseSuggestions(content: string, maxSuggestions: number): SuggestedNod
         label: item.label || item.type,
         reason: item.reason || "",
         description: item.description || "",
+        previewContent: item.previewContent || generatePreviewContent(item),
+        generatedContent: item.generatedContent || {},
       }))
     }
   } catch (error) {
@@ -203,7 +217,32 @@ function parseSuggestions(content: string, maxSuggestions: number): SuggestedNod
       label: "Question",
       reason: "A common next step in conversational flows",
       description: "Ask the user a question to gather information",
+      previewContent: "What would you like to know?",
+      generatedContent: {
+        question: "What would you like to know?",
+      },
     },
   ].slice(0, maxSuggestions)
+}
+
+function generatePreviewContent(item: any): string {
+  if (item.generatedContent) {
+    if (item.generatedContent.question) {
+      const question = item.generatedContent.question
+      if (item.generatedContent.buttons && item.generatedContent.buttons.length > 0) {
+        const buttons = item.generatedContent.buttons.map((b: any) => b.text || b.label).join(", ")
+        return `${question} [${buttons}]`
+      }
+      if (item.generatedContent.options && item.generatedContent.options.length > 0) {
+        const options = item.generatedContent.options.map((o: any) => o.text).join(", ")
+        return `${question} [${options}]`
+      }
+      return question
+    }
+    if (item.generatedContent.text) {
+      return item.generatedContent.text
+    }
+  }
+  return item.description || item.reason || ""
 }
 

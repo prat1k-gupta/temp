@@ -108,4 +108,12 @@ export interface SuggestedNode {
   label: string
   reason: string
   description: string
+  previewContent?: string // Preview of the generated content
+  generatedContent?: {
+    question?: string
+    buttons?: Array<{ text: string; label?: string }>
+    options?: Array<{ text: string }>
+    text?: string
+    [key: string]: any
+  }
 }

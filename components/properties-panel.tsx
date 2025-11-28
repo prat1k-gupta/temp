@@ -42,9 +42,6 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { useSortable } from "@dnd-kit/sortable"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
-import { SuggestedNodes } from "@/components/ai"
-import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
-import { toast } from "sonner"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -61,9 +58,6 @@ interface PropertiesPanelProps {
   } | null
   platform: "web" | "whatsapp" | "instagram"
   onNodeUpdate: (nodeId: string, data: any) => void
-  flowContext?: string
-  existingNodes?: Array<{ type: string; label?: string }>
-  onAddNode?: (nodeType: string, position?: { x: number; y: number }) => void
 }
 
 const PLATFORM_LIMITS = {
@@ -272,37 +266,10 @@ function SortableOptionItem({
 export function PropertiesPanel({ 
   selectedNode, 
   platform, 
-  onNodeUpdate,
-  flowContext,
-  existingNodes,
-  onAddNode
+  onNodeUpdate
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
-  
-  // Node suggestions hook
-  const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
-  
-  // Fetch suggestions when node is selected (skip start and comment nodes)
-  useEffect(() => {
-    if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
-      fetchSuggestions({
-        currentNodeType: selectedNode.type,
-        platform,
-        flowContext: flowContext || undefined,
-        existingNodes: existingNodes || undefined,
-        maxSuggestions: 2,
-      })
-    } else {
-      clearSuggestions()
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      clearSuggestions()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id, selectedNode?.type, platform, flowContext])
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -622,33 +589,6 @@ export function PropertiesPanel({
             </div>
           </div>
         </div>
-
-        {/* Suggested Nodes */}
-        {selectedNode && selectedNode.type !== "start" && selectedNode.type !== "comment" && (
-          <div className="mb-6">
-            <SuggestedNodes
-              suggestions={suggestions}
-              loading={suggestionsLoading}
-              platform={platform}
-              onAccept={(suggestion) => {
-                if (onAddNode) {
-                  // Calculate position to the right of selected node
-                  const position = {
-                    x: (selectedNode.position.x || 0) + 350,
-                    y: (selectedNode.position.y || 0),
-                  }
-                  onAddNode(suggestion.type, position)
-                  toast.success(`Added ${suggestion.label} node`)
-                }
-              }}
-              onReject={(suggestion) => {
-                // Just remove from suggestions (already handled by hook)
-                clearSuggestions()
-                toast.info(`Dismissed ${suggestion.label} suggestion`)
-              }}
-            />
-          </div>
-        )}
 
         <div className="space-y-6">
           {/* Comment Node */}

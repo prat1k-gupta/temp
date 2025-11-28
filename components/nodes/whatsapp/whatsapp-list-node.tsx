@@ -108,8 +108,8 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
   return (
     <div className="relative">
       <Card
-        className={`min-w-[300px] max-w-[350px] bg-white border-green-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-green-200 ${
-          selected ? "ring-1 ring-green-300/50 shadow-md" : ""
+        className={`min-w-[300px] max-w-[350px] bg-card border-green-100 dark:border-green-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-green-200 dark:hover:border-green-800 ${
+          selected ? "ring-1 ring-green-300/50 dark:ring-green-600/50 shadow-md" : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
@@ -135,7 +135,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                 />
               ) : (
                 <div
-                  className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-green-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                  className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-green-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                   onClick={startEditingLabel}
                 >
                   {data.label || "WhatsApp List"}
@@ -171,7 +171,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{maxQuestionLength}
@@ -185,7 +185,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-2 cursor-pointer hover:bg-green-50/30 px-2 py-1.5 rounded border border-transparent hover:border-green-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-green-50/30 px-2 py-1.5 rounded border border-transparent hover:border-green-100 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Choose an option:"}
@@ -224,7 +224,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingOptionValue, "option") ? "text-red-500" : "text-gray-400"}`}>
+                      <span className={`text-xs ${isOverLimit(editingOptionValue, "option") ? "text-red-500" : "text-muted-foreground"}`}>
                         {editingOptionValue.length}/{maxOptionLength}
                       </span>
                       {isOverLimit(editingOptionValue, "option") && (
@@ -240,7 +240,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                     <span className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center text-[10px] font-medium">
                       {index + 1}
                     </span>
-                    <span className="flex-1 text-gray-700">{option.text || `Option ${index + 1}`}</span>
+                    <span className="flex-1 text-card-foreground">{option.text || `Option ${index + 1}`}</span>
                     <Edit3 className="w-3 h-3 opacity-40" />
                   </div>
                 )}
@@ -248,7 +248,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                   type="source"
                   position={Position.Right}
                   id={`option-${index}`}
-                  className="w-2.5 h-2.5 bg-green-500 border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  className="w-2.5 h-2.5 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
@@ -258,7 +258,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-green-300 hover:bg-green-50/30 transition-colors text-gray-600"
+                className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-green-300 hover:bg-green-50/30 transition-colors text-muted-foreground"
                 onClick={data.onAddOption}
               >
                 <Plus className="w-3 h-3 mr-1" />
@@ -271,17 +271,17 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-green-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
         </div>
         <Handle
           type="source"
           position={Position.Bottom}
           id="next-step"
-          className="w-3 h-3 bg-green-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           style={{
             position: "absolute",
             bottom: "-6px",

@@ -130,7 +130,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
               />
             ) : (
               <div
-                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Quick Reply"}
@@ -162,7 +162,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{INSTAGRAM_LIMITS.question}
@@ -176,7 +176,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-2 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Choose an action..."}
@@ -212,7 +212,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-gray-400"}`}>
+                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
                         {editingButtonValue.length}/{INSTAGRAM_LIMITS.button}
                       </span>
                       {isOverLimit(editingButtonValue, "button") && (
@@ -224,7 +224,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-purple-50/40 border-purple-100 hover:bg-purple-50 hover:border-purple-200 text-gray-700 transition-colors cursor-pointer"
+                    className="w-full justify-start text-xs h-7 bg-purple-50/40 border-purple-100 hover:bg-purple-50 hover:border-purple-200 text-card-foreground transition-colors cursor-pointer"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
@@ -235,7 +235,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   type="source"
                   position={Position.Right}
                   id={`button-${index}`}
-                  className="w-2.5 h-2.5 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  className="w-2.5 h-2.5 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
@@ -246,7 +246,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-gray-600"
+              className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-muted-foreground"
               onClick={data.onAddButton}
             >
               <Plus className="w-3 h-3 mr-1" />
@@ -258,16 +258,16 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
             id="next-step"
-            className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
             style={{
               position: "absolute",
               bottom: "8px",

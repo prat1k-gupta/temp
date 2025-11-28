@@ -89,7 +89,7 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
                 <span className="text-xs text-gray-500">
                   {data.text.length}/{maxLength} characters
                 </span>
-                <Edit2 className="w-3 h-3 text-gray-400" />
+                <Edit2 className="w-3 h-3 text-muted-foreground" />
               </div>
             </div>
           </div>

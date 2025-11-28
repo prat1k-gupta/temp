@@ -117,8 +117,8 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
   return (
     <div className="relative">
       <Card
-        className={`min-w-[280px] max-w-[320px] bg-white border-blue-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 ${
-          selected ? "ring-1 ring-blue-300/50 shadow-md" : ""
+        className={`min-w-[280px] max-w-[320px] bg-card border-blue-100 dark:border-blue-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 ${
+          selected ? "ring-1 ring-blue-300/50 dark:ring-blue-600/50 shadow-md" : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
@@ -141,7 +141,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
               />
             ) : (
               <div
-                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-blue-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-accent/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Quick Reply"}
@@ -173,7 +173,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{maxQuestionLength}
@@ -187,7 +187,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-2 cursor-pointer hover:bg-blue-50/30 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-accent/30 px-2 py-1.5 rounded border border-transparent hover:border-accent transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Choose an action..."}
@@ -223,7 +223,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-gray-400"}`}>
+                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
                         {editingButtonValue.length}/{maxButtonLength}
                       </span>
                       {isOverLimit(editingButtonValue, "button") && (
@@ -235,7 +235,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-blue-50/40 border-blue-100 hover:bg-blue-50 hover:border-blue-200 text-gray-700 transition-colors cursor-pointer"
+                    className="w-full justify-start text-xs h-7 bg-accent/40 hover:bg-accent/50 text-card-foreground transition-colors cursor-pointer"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
@@ -246,7 +246,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                   type="source"
                   position={Position.Right}
                   id={`button-${index}`}
-                  className="w-2.5 h-2.5 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  className="w-2.5 h-2.5 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
@@ -257,7 +257,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-xs h-7 border border-dashed border-blue-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-gray-600"
+              className="w-full justify-center text-xs h-7 border border-dashed border-border hover:border-accent hover:bg-accent/30 transition-colors text-muted-foreground"
               onClick={data.onAddButton}
             >
               <Plus className="w-3 h-3 mr-1" />
@@ -269,16 +269,16 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
             id="next-step"
-            className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
             style={{
               position: "absolute",
               bottom: "8px",

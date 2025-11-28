@@ -108,7 +108,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
               onClick={() => setIsEditingTitle(true)}
             >
               <h3 className="text-sm font-medium text-gray-900">{data.title}</h3>
-              <Edit2 className="w-3 h-3 text-gray-400" />
+              <Edit2 className="w-3 h-3 text-muted-foreground" />
             </div>
           )}
         </div>
@@ -118,7 +118,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
           {data.fields.map((field) => (
             <div key={field.id} className="group relative">
               <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs text-gray-600">
+                <Label className="text-xs text-muted-foreground">
                   {field.label} {field.required && <span className="text-red-500">*</span>}
                 </Label>
                 <Button

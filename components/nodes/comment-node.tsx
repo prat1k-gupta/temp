@@ -88,13 +88,13 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
     <TooltipProvider>
       <div className="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
         <Card
-          className={`min-w-[180px] max-w-[250px] bg-yellow-50 border-yellow-200 shadow-lg transition-all duration-200 hover:shadow-xl ${
-            selected ? "ring-2 ring-yellow-400" : ""
-          } ${isEditing ? "ring-2 ring-blue-400" : ""}`}
+          className={`min-w-[180px] max-w-[250px] bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 shadow-lg transition-all duration-200 hover:shadow-xl ${
+            selected ? "ring-2 ring-yellow-400 dark:ring-yellow-600" : ""
+          } ${isEditing ? "ring-2 ring-blue-400 dark:ring-blue-600" : ""}`}
         >
           <CardContent className="p-3">
             <div className="flex items-start gap-2">
-              <MessageSquareText className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+              <MessageSquareText className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 {isEditing ? (
                   <div className="space-y-1">
@@ -103,16 +103,16 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
                       value={editValue}
                       onChange={handleTextareaChange}
                       onKeyDown={handleKeyDown}
-                      className="w-full text-sm text-yellow-800 bg-transparent border-none outline-none resize-none min-h-[20px] max-h-[120px] placeholder-yellow-500 overflow-y-auto"
+                      className="w-full text-sm text-yellow-800 dark:text-yellow-200 bg-transparent border-none outline-none resize-none min-h-[20px] max-h-[120px] placeholder-yellow-500 dark:placeholder-yellow-600 overflow-y-auto"
                       placeholder="Add your comment here..."
                       rows={1}
                     />
-                    <div className="flex justify-between items-center text-xs text-yellow-600">
+                    <div className="flex justify-between items-center text-xs text-yellow-600 dark:text-yellow-400">
                       <span className="opacity-75">
                         {editValue.length}/{maxLength} characters
                       </span>
                       {editValue.length > maxLength * 0.8 && (
-                        <span className="text-orange-500">
+                        <span className="text-orange-500 dark:text-orange-400">
                           {maxLength - editValue.length} remaining
                         </span>
                       )}
@@ -121,13 +121,13 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
                 ) : (
                   <div>
                     <p
-                      className="text-sm text-yellow-800 whitespace-pre-wrap break-words cursor-text hover:bg-yellow-100 rounded px-1 py-0.5 transition-colors max-h-[100px] overflow-y-auto"
+                      className="text-sm text-yellow-800 dark:text-yellow-200 whitespace-pre-wrap break-words cursor-text hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded px-1 py-0.5 transition-colors max-h-[100px] overflow-y-auto"
                       onClick={() => setIsEditing(true)}
                     >
                       {data.comment || "Add your comment here..."}
                     </p>
                     {data.comment && (data.createdBy || data.editedBy) && (
-                      <div className="mt-1 text-xs text-yellow-600 opacity-75">
+                      <div className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 opacity-75">
                         {data.editedBy ? <span>Edited by {data.editedBy}</span> : <span>By {data.createdBy}</span>}
                         {data.editedAt && (
                           <span className="ml-1">
@@ -187,14 +187,14 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
         )}
 
         {isEditing && (
-          <div className="absolute -bottom-8 left-0 flex gap-1 bg-white rounded shadow-lg p-1 border z-20">
+          <div className="absolute -bottom-8 left-0 flex gap-1 bg-card rounded shadow-lg p-1 border border-border z-20">
             <Button size="sm" variant="default" className="h-6 px-2 text-xs" onClick={handleSave}>
               Save
             </Button>
-            <Button size="sm" variant="outline" className="h-6 px-2 text-xs bg-transparent" onClick={handleCancel}>
+            <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={handleCancel}>
               Cancel
             </Button>
-            <span className="text-xs text-gray-500 self-center ml-1">Enter to save</span>
+            <span className="text-xs text-muted-foreground self-center ml-1">Enter to save</span>
           </div>
         )}
       </div>

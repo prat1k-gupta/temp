@@ -75,8 +75,8 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-white border-blue-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 ${
-          selected ? "ring-1 ring-blue-300/50 shadow-md" : ""
+        className={`min-w-[260px] max-w-[300px] bg-card border-blue-100 dark:border-blue-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-blue-200 dark:hover:border-blue-800 ${
+          selected ? "ring-1 ring-blue-300/50 dark:ring-blue-600/50 shadow-md" : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
@@ -99,7 +99,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               />
             ) : (
               <div
-                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-blue-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-accent/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Web Message"}
@@ -131,7 +131,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{maxLength}
@@ -145,7 +145,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-3 cursor-pointer hover:bg-blue-50/30 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-accent/30 px-2 py-1.5 rounded border border-transparent hover:border-accent transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Enter your message..."}
@@ -155,7 +155,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
           {selected && <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-center text-xs h-7 border border-dashed border-blue-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors text-gray-600"
+            className="w-full justify-center text-xs h-7 border border-dashed border-border hover:border-accent hover:bg-accent/30 transition-colors text-muted-foreground"
             onClick={data.onAddButton}
           >
             <Plus className="w-3 h-3 mr-1" />
@@ -166,15 +166,15 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-blue-500 border-2 border-white opacity-100 hover:scale-110 transition-transform relative"
+            className="w-3 h-3 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-transform relative"
             style={{ position: "relative", transform: "none", right: "auto", top: "auto" }}
           />
         </div>

@@ -131,7 +131,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                 />
               ) : (
                 <div
-                  className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                  className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                   onClick={startEditingLabel}
                 >
                   {data.label || "Instagram List"}
@@ -167,7 +167,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{INSTAGRAM_LIMITS.question}
@@ -181,7 +181,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-2 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Choose an option:"}
@@ -220,7 +220,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingOptionValue, "button") ? "text-red-500" : "text-gray-400"}`}>
+                      <span className={`text-xs ${isOverLimit(editingOptionValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
                         {editingOptionValue.length}/{INSTAGRAM_LIMITS.button}
                       </span>
                       {isOverLimit(editingOptionValue, "button") && (
@@ -236,7 +236,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                     <span className="w-4 h-4 rounded-full bg-purple-500 text-white flex items-center justify-center text-[10px] font-medium">
                       {index + 1}
                     </span>
-                    <span className="flex-1 text-gray-700">{option.text || `Option ${index + 1}`}</span>
+                    <span className="flex-1 text-card-foreground">{option.text || `Option ${index + 1}`}</span>
                     <Edit3 className="w-3 h-3 opacity-40" />
                   </div>
                 )}
@@ -244,7 +244,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                   type="source"
                   position={Position.Right}
                   id={`option-${index}`}
-                  className="w-2.5 h-2.5 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  className="w-2.5 h-2.5 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
@@ -254,7 +254,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-gray-600"
+                className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-muted-foreground"
                 onClick={data.onAddOption}
               >
                 <Plus className="w-3 h-3 mr-1" />
@@ -267,17 +267,17 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
         </div>
         <Handle
           type="source"
           position={Position.Bottom}
           id="next-step"
-          className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           style={{
             position: "absolute",
             bottom: "-6px",

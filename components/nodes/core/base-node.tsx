@@ -22,12 +22,12 @@ export const BaseNode = memo(({ data, children }: BaseNodeProps) => {
 
   return (
     <div
-      className="relative bg-white border-2 border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+      className="relative bg-card border-2 rounded-lg shadow-sm hover:shadow-md transition-shadow"
       style={{
         borderColor: platformColors?.primary || "#3b82f6",
       }}
     >
-      <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-gray-400 border-2 border-white" />
+      <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-muted-foreground border-2 border-background" />
 
       {/* Platform indicator */}
       <div
@@ -39,7 +39,7 @@ export const BaseNode = memo(({ data, children }: BaseNodeProps) => {
 
       {children}
 
-      <Handle type="source" position={Position.Bottom} className="w-3 h-3 !bg-gray-400 border-2 border-white" />
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 !bg-muted-foreground border-2 border-background" />
     </div>
   )
 })

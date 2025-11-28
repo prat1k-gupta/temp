@@ -99,7 +99,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
               />
             ) : (
               <div
-                className="font-medium text-gray-700 text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Instagram Message"}
@@ -131,7 +131,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
                   {editingQuestionValue.length}/{INSTAGRAM_LIMITS.question}
@@ -145,7 +145,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
             </div>
           ) : (
             <div
-              className="text-sm text-gray-600 line-clamp-3 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Enter your message..."}
@@ -155,7 +155,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
           {selected && <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-gray-600"
+            className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-muted-foreground"
             onClick={data.onAddButton}
           >
             <Plus className="w-3 h-3 mr-1" />
@@ -166,15 +166,15 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-purple-400 border-2 border-white opacity-100 hover:scale-110 transition-transform relative"
+            className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform relative"
             style={{ position: "relative", transform: "none", right: "auto", top: "auto" }}
           />
         </div>

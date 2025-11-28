@@ -2,7 +2,10 @@
 export type Platform = "web" | "whatsapp" | "instagram"
 
 export interface ButtonData {
-  text: string
+  text?: string
+  label?: string
+  id?: string
+  value?: string
 }
 
 export interface OptionData {

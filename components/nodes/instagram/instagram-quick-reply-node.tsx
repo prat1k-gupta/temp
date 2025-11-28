@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3, X } from "lucide-react"
+import { Plus, Edit3, X, Sparkles, Minimize2 } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
+import { AIToolbar, AIButtonToolbar } from "@/components/ai"
+import { useAIButtonGenerator } from "@/hooks/use-node-ai"
+import { getNodeLimits } from "@/constants"
 import { useState, useEffect } from "react"
+import type { Platform, ButtonData } from "@/types"
+import { toast } from "sonner"
 
 const INSTAGRAM_LIMITS = {
   question: 100,
@@ -24,6 +29,16 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
   const [editingButtonValue, setEditingButtonValue] = useState("")
 
+  const platform = (data.platform || "instagram") as Platform
+  const nodeType = "instagramQuickReply"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  const maxQuestionLength = nodeLimits.question?.max || INSTAGRAM_LIMITS.question
+  const maxButtonLength = nodeLimits.buttons?.textMaxLength || INSTAGRAM_LIMITS.button
+  const maxButtons = nodeLimits.buttons?.max || 10
+
+  // AI hook for button generation and improvement
+  const ai = useAIButtonGenerator(nodeType, platform)
+
   useEffect(() => {
     if (!isEditingLabel) {
       setEditingLabelValue(data.label || "")
@@ -37,7 +52,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   }, [data.question, isEditingQuestion])
 
   const isOverLimit = (text: string, type: "question" | "button") => {
-    return text.length > INSTAGRAM_LIMITS[type]
+    return type === "question" ? text.length > maxQuestionLength : text.length > maxButtonLength
   }
 
   const startEditingLabel = () => {
@@ -102,6 +117,81 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
     }
   }
 
+  const handleUpdateButtons = (newButtons: ButtonData[]) => {
+    const formattedButtons = newButtons.map(btn => ({
+      text: btn.label,
+      id: btn.id,
+      value: btn.value
+    }))
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+    }
+  }
+
+  const handleImproveButton = async (index: number) => {
+    const button = buttons[index]
+    if (!button) return
+
+    const result = await ai.improveCopy(button.text, 'button', {
+      maxLength: maxButtonLength,
+      context: {
+        purpose: 'Instagram button label',
+        flowContext: data.question || ''
+      }
+    })
+
+    if (result) {
+      const updatedButtons = [...buttons]
+      updatedButtons[index] = {
+        ...button,
+        text: result.improvedText
+      }
+      if (data.onNodeUpdate) {
+        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+      }
+      toast.success('Button improved!', {
+        description: result.improvements[0] || 'Label enhanced'
+      })
+    }
+  }
+
+  const handleShortenButton = async (index: number) => {
+    const button = buttons[index]
+    if (!button) return
+
+    // Get context from other buttons
+    const otherButtons = buttons
+      .filter((_: any, i: number) => i !== index)
+      .map((b: any) => b.text)
+      .filter(Boolean)
+
+    const result = await ai.shortenText(button.text, maxButtonLength, {
+      context: {
+        purpose: 'Instagram button label',
+        flowContext: data.question || '',
+        existingButtons: otherButtons
+      }
+    })
+
+    if (result) {
+      const updatedButtons = [...buttons]
+      updatedButtons[index] = {
+        ...button,
+        text: result.shortenedText
+      }
+      if (data.onNodeUpdate) {
+        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+      }
+      // Also update the editing value if we're editing this button
+      if (editingButtonIndex === index) {
+        setEditingButtonValue(result.shortenedText)
+      }
+      toast.success('Button shortened!', {
+        description: `Reduced to ${result.shortenedText.length} characters`
+      })
+    }
+  }
+
   return (
     <div className="relative">
       <Card
@@ -140,11 +230,10 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
         </CardHeader>
         <CardContent className="pt-0 space-y-2 pb-12 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2">
+            <div className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
-                onBlur={finishEditingQuestion}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -159,18 +248,30 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                 autoFocus
               />
               <div className="flex justify-between items-center">
-                <span
-                  className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
-                  }`}
-                >
-                  {editingQuestionValue.length}/{INSTAGRAM_LIMITS.question}
-                </span>
-                {isOverLimit(editingQuestionValue, "question") && (
-                  <Badge variant="destructive" className="text-xs h-5">
-                    Too long
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs ${
+                      isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
+                    }`}
+                  >
+                    {editingQuestionValue.length}/{maxQuestionLength}
+                  </span>
+                  {isOverLimit(editingQuestionValue, "question") && (
+                    <Badge variant="destructive" className="text-xs h-5">
+                      Too long
+                    </Badge>
+                  )}
+                </div>
+                <div className="opacity-0 group-hover/question:opacity-100 transition-opacity">
+                  <AIToolbar
+                    value={editingQuestionValue}
+                    onChange={setEditingQuestionValue}
+                    nodeType={nodeType}
+                    platform={platform}
+                    field="question"
+                    maxLength={maxQuestionLength}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -182,11 +283,24 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             </div>
           )}
 
+          {/* AI Button Generator */}
+          {(data.question || editingQuestionValue) && buttons.length < maxButtons && (
+            <AIButtonToolbar
+              questionContext={editingQuestionValue || data.question}
+              buttons={buttons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
+              onUpdateButtons={handleUpdateButtons}
+              maxButtons={maxButtons}
+              maxButtonLength={maxButtonLength}
+              nodeType={nodeType}
+              platform={platform}
+            />
+          )}
+
           <div className="space-y-1.5">
             {buttons.map((button: any, index: number) => (
               <div key={index} className="relative group">
                 {editingButtonIndex === index ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2 group/button-edit">
                     <div className="flex items-center gap-1">
                       <Input
                         value={editingButtonValue}
@@ -211,11 +325,33 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
-                        {editingButtonValue.length}/{INSTAGRAM_LIMITS.button}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
+                          {editingButtonValue.length}/{maxButtonLength}
+                        </span>
+                        {isOverLimit(editingButtonValue, "button") && (
+                          <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
+                        )}
+                      </div>
                       {isOverLimit(editingButtonValue, "button") && (
-                        <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
+                        <div className="opacity-0 group-hover/button-edit:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              handleShortenButton(index)
+                            }}
+                            onMouseDown={(e) => e.preventDefault()}
+                            disabled={ai.loading}
+                            className="h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                            title="Shorten with AI"
+                          >
+                            <Minimize2 className="w-3 h-3 text-purple-500" />
+                            <span className="text-purple-600 dark:text-purple-400">Shorten</span>
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -223,11 +359,22 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-purple-50/40 border-purple-100 hover:bg-purple-50 hover:border-purple-200 text-card-foreground transition-colors cursor-pointer"
+                    className="w-full justify-start text-xs h-7 bg-purple-50/40 border-purple-100 hover:bg-purple-50 hover:border-purple-200 text-card-foreground transition-colors cursor-pointer group/btn"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
-                    <Edit3 className="w-3 h-3 opacity-40 ml-auto" />
+                    <div className="ml-auto flex items-center gap-1">
+                      <Sparkles 
+                        className="w-3 h-3 text-purple-500 opacity-0 group-hover/btn:opacity-100 transition-opacity cursor-pointer" 
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          handleImproveButton(index)
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      />
+                      <Edit3 className="w-3 h-3 opacity-40" />
+                    </div>
                   </Button>
                 )}
                 <Handle

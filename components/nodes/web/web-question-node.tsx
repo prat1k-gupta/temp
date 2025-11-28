@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit3 } from "lucide-react"
 import { WebIcon } from "@/components/platform-icons"
+import { AIToolbar } from "@/components/ai/ai-toolbar"
 import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
@@ -115,7 +116,6 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
-                onBlur={finishEditingQuestion}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -129,20 +129,28 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                 placeholder={nodeLimits.question?.placeholder || "Enter your message..."}
                 autoFocus
               />
-              <div className="flex justify-between items-center">
-                <span
-                  className={`text-xs ${
-                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-muted-foreground"
-                  }`}
-                >
-                  {editingQuestionValue.length}/{maxLength}
-                </span>
-                {isOverLimit(editingQuestionValue) && (
-                  <Badge variant="destructive" className="text-xs h-5">
-                    Too long
-                  </Badge>
-                )}
-              </div>
+              
+              {/* AI Toolbar - Add AI-powered text improvement */}
+              <AIToolbar
+                value={editingQuestionValue}
+                onChange={(newValue) => {
+                  setEditingQuestionValue(newValue)
+                  if (data.onNodeUpdate) {
+                    data.onNodeUpdate(data.id, { ...data, question: newValue })
+                  }
+                }}
+                nodeType={nodeType}
+                platform={platform}
+                field="question"
+                maxLength={maxLength}
+                className="border-t border-border pt-2"
+              />
+              
+              {isOverLimit(editingQuestionValue) && (
+                <Badge variant="destructive" className="text-xs h-5">
+                  Too long - use AI to shorten
+                </Badge>
+              )}
             </div>
           ) : (
             <div

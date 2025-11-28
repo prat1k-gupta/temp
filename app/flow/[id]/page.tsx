@@ -212,7 +212,7 @@ export default function MagicFlow() {
     isEditMode,
     currentVersion,
     draftChanges
-  } = useVersionManager()
+  } = useVersionManager(flowId)
   const flowElementRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -248,6 +248,47 @@ export default function MagicFlow() {
   const [pastePosition, setPastePosition] = useState<{ x: number, y: number } | null>(null)
 
   const { screenToFlowPosition, fitView, getNodes, getEdges } = useReactFlow();
+
+  // Load flow data when flowId changes
+  useEffect(() => {
+    if (flowId && !isSetupMode) {
+      console.log('[App] Loading flow data for flowId:', flowId)
+      const flowData = getFlow(flowId)
+      
+      if (flowData) {
+        console.log('[App] Flow data loaded:', {
+          name: flowData.name,
+          nodes: flowData.nodes.length,
+          edges: flowData.edges.length,
+          platform: flowData.platform
+        })
+        
+        setCurrentFlow(flowData)
+        setNodes(flowData.nodes)
+        setEdges(flowData.edges)
+        setPlatform(flowData.platform)
+        setFlowLoaded(false) // Reset flow loaded flag for new flow
+      } else {
+        console.log('[App] No flow data found for flowId:', flowId)
+      }
+    }
+  }, [flowId, isSetupMode])
+
+  // Auto-save flow data when nodes, edges, or platform change
+  useEffect(() => {
+    if (flowId && currentFlow && !isSetupMode && nodes.length > 0) {
+      const timeoutId = setTimeout(() => {
+        console.log('[App] Auto-saving flow data for flowId:', flowId)
+        updateFlow(flowId, {
+          nodes,
+          edges,
+          platform
+        })
+      }, 1000) // Debounce for 1 second
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [nodes, edges, platform, flowId, currentFlow, isSetupMode])
 
   // Custom onNodesChange to prevent deletion of start nodes
   const onNodesChange = useCallback((changes: any[]) => {
@@ -2145,7 +2186,7 @@ export default function MagicFlow() {
                       await createNewVersion(nodes, edges, platform, name, description)
                     }}
                     onPublishVersion={async (versionId) => {
-                      await publishVersion(versionId)
+                      await publishVersion(flowId, versionId)
                     }}
                     isEditMode={isEditMode}
                     hasChanges={hasActualChanges(nodes, edges, platform)}

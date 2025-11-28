@@ -14,11 +14,13 @@ import {
   saveDraftState,
   getDraftState,
   clearDraftState,
-  debugLocalStorageState
+  debugLocalStorageState,
+  setCurrentFlowId,
+  getCurrentFlowId
 } from '@/utils/version-storage'
 import { changeTracker } from '@/utils/change-tracker'
 
-export function useVersionManager() {
+export function useVersionManager(flowId: string) {
   const [editModeState, setEditModeState] = useState<EditModeState>({
     isEditMode: false,
     hasUnsavedChanges: false,
@@ -26,12 +28,16 @@ export function useVersionManager() {
     draftChanges: []
   })
 
-  // Load initial state from localStorage
+  // Load initial state from localStorage for the specific flow
   useEffect(() => {
-    const storedEditMode = getEditModeState()
-    const currentVersion = getCurrentVersion()
+    // Set the current flow ID and initialize the change tracker
+    setCurrentFlowId(flowId)
+    changeTracker.setFlowId(flowId)
+
+    const storedEditMode = getEditModeState(flowId)
+    const currentVersion = getCurrentVersion(flowId)
     const draftChanges = changeTracker.getChanges()
-    const latestPublishedVersion = getLatestPublishedVersion()
+    const latestPublishedVersion = getLatestPublishedVersion(flowId)
     
     // Check if this is a first visit (no stored edit mode state)
     const isFirstVisit = storedEditMode === null
@@ -50,8 +56,8 @@ export function useVersionManager() {
         }
         
         setEditModeState(initialState)
-        saveEditModeState(false)
-        saveCurrentVersion(latestPublishedVersion)
+        saveEditModeState(flowId, false)
+        saveCurrentVersion(flowId, latestPublishedVersion)
       } else {
         // No published version exists - start in edit mode and never go back to view mode
         console.log('[Version Manager] First visit with no published version - starting in edit mode')
@@ -64,7 +70,7 @@ export function useVersionManager() {
         }
         
         setEditModeState(initialState)
-        saveEditModeState(true)
+        saveEditModeState(flowId, true)
         changeTracker.startTracking()
       }
     } else {
@@ -81,7 +87,7 @@ export function useVersionManager() {
         changeTracker.startTracking()
       }
     }
-  }, [])
+  }, [flowId])
 
   /**
    * Toggle edit mode on/off
@@ -99,7 +105,7 @@ export function useVersionManager() {
       changeTracker.startTracking()
     } else {
       // Exiting edit mode - check if we have a published version
-      const publishedVersion = getLatestPublishedVersion()
+      const publishedVersion = getLatestPublishedVersion(flowId)
       if (publishedVersion) {
         console.log('[Version Manager] Reverting to published version:', publishedVersion.name)
         
@@ -137,7 +143,7 @@ export function useVersionManager() {
       }
     }
 
-    saveEditModeState(newEditMode)
+    saveEditModeState(flowId, newEditMode)
   }, [editModeState.isEditMode])
 
   /**
@@ -170,7 +176,7 @@ export function useVersionManager() {
         }
       })
       changeTracker.startTracking(currentNodes, currentEdges, currentPlatform)
-      saveEditModeState(true)
+      saveEditModeState(flowId, true)
       console.log('[Version Manager] Auto-entered edit mode successfully')
     }
   }, [editModeState.isEditMode])
@@ -217,10 +223,10 @@ export function useVersionManager() {
     console.log('[Version Manager] createNewVersion stack trace:', new Error().stack)
     
     const changes = changeTracker.getChanges()
-    const newVersion = createVersion(nodes, edges, platform, name, description, changes)
+    const newVersion = createVersion(flowId, nodes, edges, platform, name, description, changes)
     
-    addVersion(newVersion)
-    saveCurrentVersion(newVersion)
+    addVersion(flowId, newVersion)
+    saveCurrentVersion(flowId, newVersion)
     
     setEditModeState(prev => ({
       ...prev,
@@ -256,16 +262,16 @@ export function useVersionManager() {
     })
     
     const changes = changeTracker.getChanges()
-    const newVersion = createVersion(nodes, edges, platform, name, description, changes)
+    const newVersion = createVersion(flowId, nodes, edges, platform, name, description, changes)
     
-    addVersion(newVersion)
+    addVersion(flowId, newVersion)
     
     // Mark the new version as published
-    const publishedVersion = publishVersion(newVersion.id)
+    const publishedVersion = publishVersion(flowId, newVersion.id)
     
     if (publishedVersion) {
       // Save the published version as current
-      saveCurrentVersion(publishedVersion)
+      saveCurrentVersion(flowId, publishedVersion)
       
       // Switch to view mode after publishing
       setEditModeState(prev => ({
@@ -276,12 +282,12 @@ export function useVersionManager() {
         draftChanges: []
       }))
       
-      saveEditModeState(false)
+      saveEditModeState(flowId, false)
       
       // Clear changes and draft state after publishing
       changeTracker.clearChanges()
       changeTracker.stopTracking()
-      clearDraftState()
+      clearDraftState(flowId)
       
       console.log('[Version Manager] Created and published new version:', publishedVersion.name)
       return publishedVersion
@@ -304,23 +310,23 @@ export function useVersionManager() {
     
     // If there are changes, create a new version and mark it as published
     if (changeTracker.getChangesCount() > 0) {
-      const allVersions = getStoredVersions()
+      const allVersions = getStoredVersions(flowId)
       const defaultName = versionName || `v${(allVersions.length + 1)} - Published Flow`
       console.log('[Version Manager] Creating new version:', defaultName)
       
-      const newVersion = createVersion(nodes, edges, platform, defaultName, description, changeTracker.getChanges())
+      const newVersion = createVersion(flowId, nodes, edges, platform, defaultName, description, changeTracker.getChanges())
       console.log('[Version Manager] Created version:', newVersion.id, newVersion.name)
       
       // Mark the new version as published
-      const publishedVersion = publishVersion(newVersion.id)
+      const publishedVersion = publishVersion(flowId, newVersion.id)
       console.log('[Version Manager] Published version result:', publishedVersion?.id, publishedVersion?.name, publishedVersion?.isPublished)
       
       if (publishedVersion) {
-        addVersion(publishedVersion)
+        addVersion(flowId, publishedVersion)
         console.log('[Version Manager] Added version to storage')
         
         // Save the published version as current first
-        saveCurrentVersion(publishedVersion)
+        saveCurrentVersion(flowId, publishedVersion)
         console.log('[Version Manager] Saved as current version')
         
         // Switch to view mode after publishing
@@ -339,24 +345,24 @@ export function useVersionManager() {
           }
         })
         
-        saveEditModeState(false)
+        saveEditModeState(flowId, false)
         console.log('[Version Manager] Saved edit mode state as false')
         
         // Clear changes and draft state after publishing
         changeTracker.clearChanges()
         changeTracker.stopTracking()
-        clearDraftState()
+        clearDraftState(flowId)
         
         console.log('[Version Manager] Published new version and switched to view mode:', publishedVersion.name)
         return publishedVersion
       }
     } else if (editModeState.currentVersion && !editModeState.currentVersion.isPublished) {
       // If no changes but current version is not published, publish the current version
-      const publishedVersion = publishVersion(editModeState.currentVersion.id)
+      const publishedVersion = publishVersion(flowId, editModeState.currentVersion.id)
       
       if (publishedVersion) {
         // Save the published version as current first
-        saveCurrentVersion(publishedVersion)
+        saveCurrentVersion(flowId, publishedVersion)
         
         // Switch to view mode after publishing
         setEditModeState(prev => ({
@@ -365,10 +371,10 @@ export function useVersionManager() {
           currentVersion: publishedVersion
         }))
         
-        saveEditModeState(false)
+        saveEditModeState(flowId, false)
         
         // Clear draft state after publishing
-        clearDraftState()
+        clearDraftState(flowId)
         
         console.log('[Version Manager] Published existing version and switched to view mode:', publishedVersion.name)
         return publishedVersion
@@ -384,7 +390,7 @@ export function useVersionManager() {
   const loadVersion = useCallback((version: FlowVersion, setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
     console.log('[Version Manager] Loading version:', version.name, 'with', version.nodes.length, 'nodes and', version.edges.length, 'edges')
     
-    saveCurrentVersion(version)
+    saveCurrentVersion(flowId, version)
     setEditModeState(prev => ({
       ...prev,
       currentVersion: version,
@@ -421,7 +427,7 @@ export function useVersionManager() {
    * Get all versions
    */
   const getAllVersions = useCallback((): FlowVersion[] => {
-    const versions = getStoredVersions()
+    const versions = getStoredVersions(flowId)
     console.log('[Version Manager] Retrieved versions:', versions.length, versions)
     return versions
   }, [])
@@ -430,7 +436,7 @@ export function useVersionManager() {
    * Get latest published version
    */
   const getLatestVersion = useCallback((): FlowVersion | null => {
-    return getLatestPublishedVersion()
+    return getLatestPublishedVersion(flowId)
   }, [])
 
   /**
@@ -484,7 +490,7 @@ export function useVersionManager() {
    * Load draft state from localStorage
    */
   const loadDraftState = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
-    const draftState = getDraftState()
+    const draftState = getDraftState(flowId)
     if (draftState) {
       console.log('[Version Manager] Loading draft state from localStorage:', {
         nodes: draftState.nodes.length,
@@ -526,7 +532,7 @@ export function useVersionManager() {
         edges: edges.length,
         platform: platform
       })
-      saveDraftState(nodes, edges, platform)
+      saveDraftState(flowId, nodes, edges, platform)
     }
   }, [editModeState.isEditMode])
 
@@ -539,14 +545,14 @@ export function useVersionManager() {
       edges: edges.length,
       platform: platform
     })
-    saveDraftState(nodes, edges, platform)
+    saveDraftState(flowId, nodes, edges, platform)
   }, [])
 
   /**
    * Toggle between view mode (published version) and draft mode (with changes)
    */
   const toggleViewDraft = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
-    const publishedVersion = getLatestPublishedVersion()
+    const publishedVersion = getLatestPublishedVersion(flowId)
     // const hasDraftChanges = changeTracker.getChangesCount() > 0
     
     if (!publishedVersion) {
@@ -584,7 +590,7 @@ export function useVersionManager() {
         draftChanges: preservedChanges // Preserve the changes instead of clearing them
       }))
       
-      saveEditModeState(false)
+      saveEditModeState(flowId, false)
       // Pause tracking to preserve the changes
       changeTracker.pauseTracking()
     } else if (!editModeState.isEditMode) {
@@ -592,7 +598,7 @@ export function useVersionManager() {
       console.log('[Version Manager] Switching to edit mode - showing draft changes')
       
       // Try to load draft state first
-      const draftState = getDraftState()
+      const draftState = getDraftState(flowId)
       if (draftState) {
         console.log('[Version Manager] Loading existing draft state')
         
@@ -629,7 +635,7 @@ export function useVersionManager() {
         draftChanges: currentChanges
       }))
       
-      saveEditModeState(true)
+      saveEditModeState(flowId, true)
     }
   }, [editModeState.isEditMode])
 
@@ -637,7 +643,7 @@ export function useVersionManager() {
    * Reset to published version or clear everything if no published version exists
    */
   const resetToPublished = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
-    const publishedVersion = getLatestPublishedVersion()
+    const publishedVersion = getLatestPublishedVersion(flowId)
     
     if (publishedVersion) {
       // Load the published version
@@ -666,12 +672,12 @@ export function useVersionManager() {
         draftChanges: []
       }))
       
-      saveEditModeState(false)
+      saveEditModeState(flowId, false)
       
       // Clear changes and draft state
       changeTracker.clearChanges()
       changeTracker.stopTracking()
-      clearDraftState()
+      clearDraftState(flowId)
       
       console.log('[Version Manager] Reset to published version complete')
       return true
@@ -702,12 +708,12 @@ export function useVersionManager() {
         draftChanges: []
       }))
       
-      saveEditModeState(true)
+      saveEditModeState(flowId, true)
       
       // Clear changes and draft state
       changeTracker.clearChanges()
       changeTracker.startTracking()
-      clearDraftState()
+      clearDraftState(flowId)
       
       console.log('[Version Manager] Cleared everything')
       return true
@@ -749,7 +755,7 @@ export function useVersionManager() {
     savePublishedAsDraftBaseline,
     
     // Debug
-    debugLocalStorageState,
+    debugLocalStorageState: () => debugLocalStorageState(flowId),
     
     // Computed values
     isEditMode: editModeState.isEditMode,

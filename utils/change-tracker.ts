@@ -12,8 +12,20 @@ export class ChangeTracker {
     edges: any[]
     platform: Platform
   } | null = null
+  private flowId: string | null = null
 
-  constructor() {
+  constructor(flowId?: string) {
+    if (flowId) {
+      this.flowId = flowId
+      this.loadDraftChanges()
+    }
+  }
+
+  /**
+   * Set the flow ID for this tracker
+   */
+  setFlowId(flowId: string): void {
+    this.flowId = flowId
     this.loadDraftChanges()
   }
 
@@ -61,14 +73,18 @@ export class ChangeTracker {
    * Load draft changes from localStorage
    */
   private loadDraftChanges(): void {
-    this.changes = getDraftChanges()
+    if (this.flowId) {
+      this.changes = getDraftChanges(this.flowId)
+    }
   }
 
   /**
    * Save changes to localStorage
    */
   private saveChanges(): void {
-    saveDraftChanges(this.changes)
+    if (this.flowId) {
+      saveDraftChanges(this.flowId, this.changes)
+    }
   }
 
   /**

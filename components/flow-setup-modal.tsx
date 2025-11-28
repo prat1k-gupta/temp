@@ -80,12 +80,12 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-2xl">Start automation when...</DialogTitle>
+          <DialogTitle className="text-xl">Start automation when...</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-6 py-4">
+        <div className="flex-1 overflow-y-auto space-y-5 py-3">
           {/* Flow Name Input */}
           <div className="space-y-2 px-1">
             <Label htmlFor="flow-name" className="text-sm text-muted-foreground">Flow Name</Label>
@@ -109,17 +109,17 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
                     setSelectedPlatform(platform)
                     setSelectedTrigger("") // Reset trigger when changing platform
                   }}
-                  className={`flex-1 p-4 rounded-lg border-2 transition-all duration-200 ${
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer ${
                     selectedPlatform === platform
                       ? "border-accent bg-accent/10"
                       : "border-border hover:border-accent/50 hover:bg-muted"
                   }`}
                 >
-                  <div className="flex flex-col items-center gap-2">
-                    <div className={`w-12 h-12 rounded-lg ${getPlatformColor(platform)} flex items-center justify-center text-white`}>
-                      {getPlatformIcon(platform, "md")}
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className={`w-9 h-9 rounded-lg ${getPlatformColor(platform)} flex items-center justify-center text-white`}>
+                      {getPlatformIcon(platform, "sm")}
                     </div>
-                    <span className="font-medium text-sm text-card-foreground capitalize">{platform}</span>
+                    <span className="font-medium text-xs text-card-foreground capitalize">{platform}</span>
                   </div>
                 </button>
               ))}
@@ -127,10 +127,10 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
           </div>
 
           {/* Triggers Section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
+          <div className="space-y-2.5">
+            <div className="flex items-start justify-between px-1 gap-2">
               <Label className="text-sm text-muted-foreground">Triggers</Label>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground text-right leading-tight">
                 Specific {selectedPlatform === "web" ? "Web" : selectedPlatform === "whatsapp" ? "WhatsApp" : "Instagram"} event that starts your automation.
               </p>
             </div>
@@ -154,24 +154,24 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
             </div>
 
             {/* Trigger Options */}
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
               {filteredTriggers.map((trigger) => (
                 <button
                   key={trigger.id}
                   onClick={() => setSelectedTrigger(trigger.id)}
-                  className={`w-full p-3 rounded-lg border transition-all duration-200 text-left ${
+                  className={`w-full p-2.5 rounded-lg border transition-all duration-200 text-left cursor-pointer ${
                     selectedTrigger === trigger.id
                       ? "border-accent bg-accent/10"
                       : "border-border hover:border-accent/50 hover:bg-muted"
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full ${getPlatformColor(selectedPlatform)} flex items-center justify-center shrink-0 text-white`}>
+                  <div className="flex items-start gap-2.5">
+                    <div className={`w-7 h-7 rounded-full ${getPlatformColor(selectedPlatform)} flex items-center justify-center shrink-0 text-white`}>
                       {getPlatformIcon(selectedPlatform, "sm")}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-muted-foreground mb-0.5">{trigger.category}</div>
-                      <div className="font-medium text-card-foreground text-sm">{trigger.title}</div>
+                      <div className="text-[10px] text-muted-foreground mb-0.5">{trigger.category}</div>
+                      <div className="font-medium text-card-foreground text-xs">{trigger.title}</div>
                     </div>
                   </div>
                 </button>

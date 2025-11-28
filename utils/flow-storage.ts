@@ -6,7 +6,8 @@ export interface FlowMetadata {
   name: string
   description?: string
   platform: Platform
-  triggerId?: string
+  triggerId?: string // Backwards compatibility
+  triggerIds?: string[] // Multiple triggers support
   thumbnail?: string
   createdAt: string
   updatedAt: string
@@ -19,7 +20,8 @@ export interface FlowData {
   name: string
   description?: string
   platform: Platform
-  triggerId?: string
+  triggerId?: string // Backwards compatibility
+  triggerIds?: string[] // Multiple triggers support
   nodes: Node[]
   edges: Edge[]
   thumbnail?: string
@@ -91,14 +93,20 @@ export function createFlow(
     description,
     platform,
     triggerId,
+    triggerIds: triggerId ? [triggerId] : [],
     nodes: [
       {
         id: "1",
         type: "start",
         position: { x: 250, y: 25 },
-        data: { label: "Start", platform },
+        data: { 
+          label: "Start", 
+          platform,
+          triggerId,
+          triggerIds: triggerId ? [triggerId] : []
+        },
         draggable: false,
-        selectable: false,
+        selectable: true, // Allow selection to edit triggers
       },
     ],
     edges: [],

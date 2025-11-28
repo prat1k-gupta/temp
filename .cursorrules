@@ -192,6 +192,31 @@ const isOverLimit = (text: string) => text.length > maxLength
 - Import from `@/components/ui/*`
 - Use existing components: Button, Card, Input, Textarea, Badge, etc.
 - Follow shadcn/ui patterns for composition
+- **Always add `cursor-pointer`** to any clickable element that performs an action (unless using `<Button>` component which has it by default)
+
+### Clickable Elements Best Practices
+```tsx
+// ✅ GOOD - Custom clickable card
+<Card 
+  className="cursor-pointer hover:shadow-lg transition-all"
+  onClick={handleClick}
+>
+  ...
+</Card>
+
+// ✅ GOOD - Clickable div
+<div 
+  className="cursor-pointer hover:bg-accent/10"
+  onClick={handleEdit}
+>
+  ...
+</div>
+
+// ❌ BAD - Missing cursor-pointer
+<Card onClick={handleClick}>
+  ...
+</Card>
+```
 
 ### Icons
 - Use Lucide React icons for general UI elements
@@ -269,6 +294,7 @@ const {
 6. Forget to handle the `selected` prop
 7. Skip `onNodeUpdate` callbacks
 8. Use inline styles instead of Tailwind classes (except for dynamic positioning)
+9. Forget to add `cursor-pointer` to clickable elements (buttons, cards, divs with onClick)
 
 ### ✅ DO:
 1. Use theme-aware CSS variables (`bg-card`, `text-muted-foreground`)
@@ -279,6 +305,7 @@ const {
 6. Add hover states and transitions for better UX
 7. Use the `onNodeUpdate` pattern for all data changes
 8. Keep node widths consistent (`min-w-[260px] max-w-[300px]`)
+9. Always add `cursor-pointer` to clickable elements that perform actions (cards, divs, custom buttons)
 
 ## Platform-Specific Considerations
 

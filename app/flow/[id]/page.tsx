@@ -1244,8 +1244,8 @@ export default function MagicFlow() {
           updateDraftChanges()
         }
         
-        setNodes((nds) =>
-          nds.map((node) => {
+        setNodes((nds) => {
+          const updatedNodes = nds.map((node) => {
             if (node.id === nodeId) {
               const updatedNode = {
                 ...node,
@@ -1253,11 +1253,21 @@ export default function MagicFlow() {
                 _timestamp: Date.now(),
               }
               console.log("[v0] Updated node:", updatedNode)
+              
+              // If updating start node triggers, also update flow data
+              if (node.type === "start" && updates.triggerIds && flowId) {
+                updateFlow(flowId, { 
+                  triggerIds: updates.triggerIds,
+                  triggerId: updates.triggerIds[0] // backwards compatibility
+                })
+              }
+              
               return updatedNode
             }
             return node
-          }),
-        )
+          })
+          return updatedNodes
+        })
         setSelectedNode((prev) => (prev && prev.id === nodeId ? { ...prev, data: { ...prev.data, ...updates } } : prev))
         
         // Request focus on the node if requested (for significant updates)
@@ -1804,14 +1814,20 @@ export default function MagicFlow() {
         name: data.name,
         platform: data.platform,
         triggerId: data.triggerId,
+        triggerIds: [data.triggerId],
         nodes: [
           {
             id: "1",
             type: "start",
             position: { x: 250, y: 25 },
-            data: { label: "Start", platform: data.platform },
+            data: { 
+              label: "Start", 
+              platform: data.platform,
+              triggerId: data.triggerId,
+              triggerIds: [data.triggerId]
+            },
             draggable: false,
-            selectable: false,
+            selectable: true,
           },
         ],
       })

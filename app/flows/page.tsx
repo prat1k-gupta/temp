@@ -5,11 +5,6 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Plus, Trash2, Copy, FileEdit, Sparkles, Globe, MessageCircle, Instagram } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -21,11 +16,7 @@ import { toast } from "sonner"
 export default function FlowsPage() {
   const router = useRouter()
   const [flows, setFlows] = useState<FlowMetadata[]>([])
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null)
-  const [newFlowName, setNewFlowName] = useState("")
-  const [newFlowDescription, setNewFlowDescription] = useState("")
-  const [newFlowPlatform, setNewFlowPlatform] = useState<Platform>("web")
 
   useEffect(() => {
     loadFlows()
@@ -37,23 +28,10 @@ export default function FlowsPage() {
   }
 
   const handleCreateFlow = () => {
-    if (!newFlowName.trim()) {
-      toast.error("Please enter a flow name")
-      return
-    }
-
-    const newFlow = createFlow(newFlowName, newFlowDescription, newFlowPlatform)
-    toast.success(`Flow "${newFlowName}" created!`)
-    
-    // Reset form
-    setNewFlowName("")
-    setNewFlowDescription("")
-    setNewFlowPlatform("web")
-    setIsCreateDialogOpen(false)
-    
-    // Reload flows and navigate to the new flow
-    loadFlows()
-    router.push(`/flow/${newFlow.id}`)
+    // Create a temporary flow and navigate to it
+    // The setup modal will appear on the flow editor page
+    const tempFlow = createFlow("New Flow", "", "whatsapp")
+    router.push(`/flow/${tempFlow.id}?setup=true`)
   }
 
   const handleDeleteFlow = (flowId: string) => {
@@ -139,82 +117,10 @@ export default function FlowsPage() {
             
             <div className="flex items-center gap-4">
               <ThemeToggle />
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    New Flow
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Flow</DialogTitle>
-                    <DialogDescription>
-                      Create a new flow to start building your conversation logic.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Flow Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="My Awesome Flow"
-                        value={newFlowName}
-                        onChange={(e) => setNewFlowName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleCreateFlow()
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description (Optional)</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Describe what this flow does..."
-                        value={newFlowDescription}
-                        onChange={(e) => setNewFlowDescription(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="platform">Platform</Label>
-                      <Select value={newFlowPlatform} onValueChange={(value) => setNewFlowPlatform(value as Platform)}>
-                        <SelectTrigger id="platform">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="web">
-                            <div className="flex items-center gap-2">
-                              <Globe className="w-4 h-4" />
-                              Web
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="whatsapp">
-                            <div className="flex items-center gap-2">
-                              <MessageCircle className="w-4 h-4" />
-                              WhatsApp
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="instagram">
-                            <div className="flex items-center gap-2">
-                              <Instagram className="w-4 h-4" />
-                              Instagram
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateFlow}>Create Flow</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Button className="gap-2" onClick={handleCreateFlow}>
+                <Plus className="w-4 h-4" />
+                New Flow
+              </Button>
             </div>
           </div>
         </div>
@@ -231,7 +137,7 @@ export default function FlowsPage() {
             <p className="text-muted-foreground mb-6 max-w-md">
               Create your first flow to start building amazing conversation experiences.
             </p>
-            <Button onClick={() => setIsCreateDialogOpen(true)} size="lg" className="gap-2">
+            <Button onClick={handleCreateFlow} size="lg" className="gap-2">
               <Plus className="w-5 h-5" />
               Create Your First Flow
             </Button>

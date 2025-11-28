@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3, Globe } from "lucide-react"
+import { Plus, Edit3 } from "lucide-react"
+import { WebIcon } from "@/components/platform-icons"
 import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
@@ -83,7 +84,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
           <div className="flex items-center gap-2">
             {/* Web Icon - Inside header, left side */}
             <div className="w-5 h-5 bg-blue-500 rounded-md flex items-center justify-center flex-shrink-0">
-              <Globe className="w-3 h-3 text-white" />
+              <WebIcon className="w-3 h-3 text-white" />
             </div>
             {isEditingLabel ? (
               <Input

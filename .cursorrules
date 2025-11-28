@@ -194,9 +194,22 @@ const isOverLimit = (text: string) => text.length > maxLength
 - Follow shadcn/ui patterns for composition
 
 ### Icons
-- Use Lucide React icons only
+- Use Lucide React icons for general UI elements
 - Import: `import { IconName } from "lucide-react"`
 - Common icons: MessageCircle, MessageSquare, List, Plus, Edit3, X, Trash2
+
+### Platform Icons (IMPORTANT)
+- **Always use the custom platform icon components** for WhatsApp and Instagram
+- Import: `import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"`
+- These provide the authentic branded icons
+- Usage:
+  ```tsx
+  <WhatsAppIcon className="w-4 h-4" />
+  <InstagramIcon className="w-5 h-5" />
+  <WebIcon className="w-6 h-6" />
+  ```
+- **DO NOT** use generic Lucide icons (MessageCircle, Instagram) for platform identification
+- **DO USE** these custom icons in: nodes, sidebars, modals, platform selectors, flow cards
 
 ### Handles (Connection Points)
 ```tsx

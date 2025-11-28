@@ -5,7 +5,8 @@ import type { Platform } from "@/types"
 import { BaseNode } from "../core/base-node"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Edit2, Check, X, MessageCircle } from "lucide-react"
+import { Edit2, Check, X } from "lucide-react"
+import { WhatsAppIcon } from "@/components/platform-icons"
 import { getPlatformConfig } from "@/lib/platform-config"
 
 interface WhatsAppMessageNodeData {
@@ -43,7 +44,7 @@ export const WhatsAppMessageNode = memo(({ data }: { data: WhatsAppMessageNodeDa
     <BaseNode data={data}>
       <div className="min-w-[280px] max-w-[350px] p-4">
         <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ backgroundColor: "#25d366" }}>
-          <MessageCircle className="w-4 h-4 text-white" />
+          <WhatsAppIcon className="w-4 h-4 text-white" />
           <span className="text-xs font-medium text-white">WhatsApp Message</span>
         </div>
 

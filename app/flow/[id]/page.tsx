@@ -47,9 +47,11 @@ import { ScreenshotModal } from "@/components/screenshot-modal"
 import { VersionHistoryModal } from "@/components/version-history-modal"
 import { PublishModal } from "@/components/publish-modal"
 import { ChangesModal } from "@/components/changes-modal"
+import { FlowSetupModal } from "@/components/flow-setup-modal"
 import { useVersionManager } from "@/hooks/use-version-manager"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
+import { useSearchParams } from "next/navigation"
 
 // Modular imports
 import type { 
@@ -136,7 +138,9 @@ const initialEdges: Edge[] = [
 export default function MagicFlow() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const flowId = params?.id as string
+  const isSetupMode = searchParams?.get("setup") === "true"
   const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
@@ -147,6 +151,7 @@ export default function MagicFlow() {
   const [isLoadingVersion, setIsLoadingVersion] = useState(false)
   const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
   const [flowLoaded, setFlowLoaded] = useState(false)
+  const [showSetupModal, setShowSetupModal] = useState(isSetupMode)
   
   // Version management
   const {
@@ -1792,8 +1797,50 @@ export default function MagicFlow() {
     }
   }, [selectedNodes, isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, updateDraftChanges, copyNodes, setSelectedNodes, setSelectedNode, setIsPropertiesPanelOpen, nodes, edges, platform])
 
+  // Handle flow setup completion
+  const handleFlowSetupComplete = (data: { name: string; platform: Platform; triggerId: string }) => {
+    if (flowId) {
+      const updatedFlow = updateFlow(flowId, {
+        name: data.name,
+        platform: data.platform,
+        triggerId: data.triggerId,
+        nodes: [
+          {
+            id: "1",
+            type: "start",
+            position: { x: 250, y: 25 },
+            data: { label: "Start", platform: data.platform },
+            draggable: false,
+            selectable: false,
+          },
+        ],
+      })
+      
+      if (updatedFlow) {
+        setCurrentFlow(updatedFlow)
+        setNodes(updatedFlow.nodes)
+        setEdges(updatedFlow.edges)
+        setPlatform(updatedFlow.platform)
+        setShowSetupModal(false)
+        // Remove setup param from URL
+        router.replace(`/flow/${flowId}`)
+        toast.success(`Flow "${data.name}" created!`)
+      }
+    }
+  }
+
   return (
     <div className="h-screen flex bg-background">
+      {/* Flow Setup Modal */}
+      <FlowSetupModal
+        open={showSetupModal}
+        onClose={() => {
+          setShowSetupModal(false)
+          router.push('/flows')
+        }}
+        onComplete={handleFlowSetupComplete}
+      />
+      
       <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
       <div className="flex-1 relative">

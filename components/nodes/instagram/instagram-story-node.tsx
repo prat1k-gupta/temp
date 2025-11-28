@@ -6,6 +6,7 @@ import { BaseNode } from "../core/base-node"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Edit2, Check, X, Camera } from "lucide-react"
+import { InstagramIcon } from "@/components/platform-icons"
 import { getPlatformConfig } from "@/lib/platform-config"
 
 interface InstagramStoryNodeData {

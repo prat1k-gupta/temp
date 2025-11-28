@@ -6,6 +6,7 @@ export interface FlowMetadata {
   name: string
   description?: string
   platform: Platform
+  triggerId?: string
   thumbnail?: string
   createdAt: string
   updatedAt: string
@@ -18,6 +19,7 @@ export interface FlowData {
   name: string
   description?: string
   platform: Platform
+  triggerId?: string
   nodes: Node[]
   edges: Edge[]
   thumbnail?: string
@@ -80,13 +82,15 @@ export function getFlow(flowId: string): FlowData | null {
 export function createFlow(
   name: string, 
   description?: string, 
-  platform: Platform = "web"
+  platform: Platform = "web",
+  triggerId?: string
 ): FlowData {
   const newFlow: FlowData = {
     id: `flow-${Date.now()}`,
     name,
     description,
     platform,
+    triggerId,
     nodes: [
       {
         id: "1",

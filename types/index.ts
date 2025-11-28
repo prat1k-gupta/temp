@@ -101,3 +101,11 @@ export interface EditModeState {
   currentVersion: FlowVersion | null
   draftChanges: FlowChange[]
 }
+
+// AI Node Suggestions
+export interface SuggestedNode {
+  type: string
+  label: string
+  reason: string
+  description: string
+}

@@ -956,6 +956,63 @@ export default function MagicFlow() {
     event.dataTransfer.effectAllowed = "move"
   }, [])
 
+  // Add node from AI suggestions
+  const onAddNode = useCallback(
+    (nodeType: string, position?: { x: number; y: number }) => {
+      const newNodeId = `${nodeType}-${Date.now()}`
+      let newNode: Node
+
+      try {
+        // Use provided position or calculate position to the right of selected node
+        let nodePosition: { x: number; y: number }
+        if (position) {
+          nodePosition = position
+        } else if (selectedNode) {
+          nodePosition = {
+            x: (selectedNode.position.x || 0) + 350,
+            y: (selectedNode.position.y || 0),
+          }
+        } else {
+          nodePosition = { x: 250, y: 200 }
+        }
+
+        // Handle comment nodes specially
+        if (nodeType === "comment") {
+          newNode = createCommentNode(
+            platform,
+            nodePosition,
+            newNodeId,
+            (updates: any) => {
+              setNodes((nds) =>
+                nds.map((node) =>
+                  node.id === newNodeId
+                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
+                    : node,
+                ),
+              )
+            },
+            () => deleteNode(newNodeId)
+          )
+        } else {
+          newNode = createNode(nodeType, platform, nodePosition, newNodeId)
+        }
+
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+        changeTracker.trackNodeAdd(newNode)
+        updateDraftChanges()
+
+        setNodes((nds) => [...nds, newNode])
+        setNodeToFocus(newNodeId)
+      } catch (error) {
+        console.error(`[v0] Error creating suggested node ${nodeType}:`, error)
+        toast.error(`Failed to add ${nodeType} node`)
+      }
+    },
+    [selectedNode, platform, isEditMode, setNodes, setEdges, setPlatform, nodes, edges, autoEnterEditMode, updateDraftChanges, deleteNode],
+  )
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
@@ -2081,13 +2138,14 @@ export default function MagicFlow() {
   }, [selectedNodes, isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, updateDraftChanges, copyNodes, setSelectedNodes, setSelectedNode, setIsPropertiesPanelOpen, nodes, edges, platform])
 
   // Handle flow setup completion
-  const handleFlowSetupComplete = (data: { name: string; platform: Platform; triggerId: string }) => {
+  const handleFlowSetupComplete = (data: { name: string; platform: Platform; triggerId: string; description?: string }) => {
     if (flowId) {
       const updatedFlow = updateFlow(flowId, {
         name: data.name,
         platform: data.platform,
         triggerId: data.triggerId,
         triggerIds: [data.triggerId],
+        description: data.description,
         nodes: [
           {
             id: "1",
@@ -2601,7 +2659,16 @@ export default function MagicFlow() {
                 <span className="sr-only">Close properties panel</span>×
               </Button>
             </div>
-            <PropertiesPanel selectedNode={selectedNode} platform={platform} onNodeUpdate={updateNodeData} />
+            <PropertiesPanel 
+              selectedNode={selectedNode} 
+              platform={platform} 
+              onNodeUpdate={updateNodeData}
+              flowContext={currentFlow?.description}
+              existingNodes={nodes
+                .filter(n => n.type)
+                .map(n => ({ type: n.type!, label: n.data.label as string | undefined }))}
+              onAddNode={onAddNode}
+            />
           </div>
         )}
         {!selectedNode && isPropertiesPanelOpen && (

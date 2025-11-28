@@ -1,0 +1,55 @@
+import { NextRequest, NextResponse } from "next/server"
+import { suggestNodes } from "@/lib/ai/tools/suggest-nodes"
+import type { Platform } from "@/types"
+
+export async function POST(request: NextRequest) {
+  try {
+    // Check for API key
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OpenAI API key not configured. Please set OPENAI_API_KEY in your .env.local file." },
+        { status: 500 }
+      )
+    }
+
+    const body = await request.json()
+    const {
+      currentNodeType,
+      platform,
+      flowContext,
+      existingNodes,
+      maxSuggestions = 2,
+    } = body
+
+    if (!currentNodeType || !platform) {
+      return NextResponse.json(
+        { error: "Missing required fields: currentNodeType, platform" },
+        { status: 400 }
+      )
+    }
+
+    const result = await suggestNodes({
+      currentNodeType,
+      platform: platform as Platform,
+      flowContext,
+      existingNodes,
+      maxSuggestions,
+    })
+
+    if (!result) {
+      return NextResponse.json(
+        { error: "Failed to generate node suggestions" },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(result)
+  } catch (error) {
+    console.error("[api/ai/suggest-nodes] Error:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+

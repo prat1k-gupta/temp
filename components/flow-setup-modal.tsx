@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import type { Platform } from "@/types"
@@ -16,11 +17,13 @@ interface FlowSetupModalProps {
     name: string
     platform: Platform
     triggerId: string
+    description?: string
   }) => void
 }
 
 export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProps) {
   const [flowName, setFlowName] = useState("")
+  const [flowDescription, setFlowDescription] = useState("")
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("whatsapp")
   const [selectedTrigger, setSelectedTrigger] = useState<string>("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -67,9 +70,11 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
         name: flowName,
         platform: selectedPlatform,
         triggerId: selectedTrigger,
+        description: flowDescription.trim() || undefined,
       })
       // Reset state
       setFlowName("")
+      setFlowDescription("")
       setSelectedPlatform("whatsapp")
       setSelectedTrigger("")
       setSearchQuery("")
@@ -96,6 +101,24 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               onChange={(e) => setFlowName(e.target.value)}
               className="h-10"
             />
+          </div>
+
+          {/* Flow Description/Context */}
+          <div className="space-y-2 px-1">
+            <Label htmlFor="flow-description" className="text-sm text-muted-foreground">
+              What is this flow about? <span className="text-xs text-muted-foreground/70">(Optional)</span>
+            </Label>
+            <Textarea
+              id="flow-description"
+              placeholder="This will help our smart AI assistant to suggest better interactions. e.g., Customer support flow for handling product inquiries, returns, and technical issues..."
+              value={flowDescription}
+              onChange={(e) => setFlowDescription(e.target.value)}
+              className="min-h-[80px] resize-none"
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Describe the purpose and context of this flow to get better AI suggestions
+            </p>
           </div>
 
           {/* Channel Selection */}

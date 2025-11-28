@@ -8,9 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit3, X } from "lucide-react"
 import { useState, useEffect } from "react"
-import { CHARACTER_LIMITS } from "@/constants/platform-limits"
-
-const PLATFORM_LIMITS = CHARACTER_LIMITS
+import { getNodeLimits } from "@/constants"
+import type { Platform } from "@/types"
 
 export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
@@ -33,11 +32,15 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
     }
   }, [data.question, isEditingQuestion])
 
-  const platform = data.platform || "web"
-  const limits = PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS]
+  const platform = (data.platform || "web") as Platform
+  const nodeType = "whatsappQuickReply"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  const maxQuestionLength = nodeLimits.question?.max || 160
+  const maxButtonLength = nodeLimits.buttons?.textMaxLength || 20
+  const maxButtons = nodeLimits.buttons?.max || 10
 
   const isOverLimit = (text: string, type: "question" | "button") => {
-    return text.length > limits[type]
+    return type === "question" ? text.length > maxQuestionLength : text.length > maxButtonLength
   }
 
   const startEditingLabel = () => {
@@ -47,7 +50,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
 
   const finishEditingLabel = () => {
     if (data.onNodeUpdate) {
-      if (editingLabelValue.length > limits.button) {
+      if (editingLabelValue.length > maxButtonLength) {
         return
       }
       data.onNodeUpdate(data.id, { ...data, label: editingLabelValue })
@@ -67,7 +70,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
 
   const finishEditingQuestion = () => {
     if (data.onNodeUpdate) {
-      if (editingQuestionValue.length > limits.question) {
+      if (editingQuestionValue.length > maxQuestionLength) {
         return
       }
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
@@ -89,7 +92,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
     if (editingButtonIndex !== null && data.onNodeUpdate) {
       const updatedButtons = [...buttons]
       updatedButtons[editingButtonIndex] = { ...updatedButtons[editingButtonIndex], text: editingButtonValue }
-      if (editingButtonValue.length > limits.button) {
+      if (editingButtonValue.length > maxButtonLength) {
         return
       }
       data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
@@ -175,7 +178,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                     isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
                   }`}
                 >
-                  {editingQuestionValue.length}/{limits.question}
+                  {editingQuestionValue.length}/{maxQuestionLength}
                 </span>
                 {isOverLimit(editingQuestionValue, "question") && (
                   <Badge variant="destructive" className="text-xs h-5">
@@ -223,7 +226,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                     </div>
                     <div className="flex justify-between items-center">
                       <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-gray-400"}`}>
-                        {editingButtonValue.length}/{limits.button}
+                        {editingButtonValue.length}/{maxButtonLength}
                       </span>
                       {isOverLimit(editingButtonValue, "button") && (
                         <Badge variant="destructive" className="text-xs h-5">Too long</Badge>

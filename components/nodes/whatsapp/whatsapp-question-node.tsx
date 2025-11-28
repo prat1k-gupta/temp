@@ -8,9 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit3 } from "lucide-react"
 import { useState, useEffect } from "react"
-import { CHARACTER_LIMITS } from "@/constants/platform-limits"
-
-const PLATFORM_LIMITS = CHARACTER_LIMITS
+import { getNodeLimits, getTextFieldLimit } from "@/constants"
+import type { Platform } from "@/types"
 
 export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -30,11 +29,13 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
     }
   }, [data.question, isEditingQuestion])
 
-  const platform = data.platform || "web"
-  const limits = PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS]
+  const platform = (data.platform || "web") as Platform
+  const nodeType = "whatsappQuestion"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  const maxLength = nodeLimits.question?.max || 160
 
-  const isOverLimit = (text: string, type: "question" | "button") => {
-    return text.length > limits[type]
+  const isOverLimit = (text: string) => {
+    return text.length > maxLength
   }
 
   const startEditingLabel = () => {
@@ -124,20 +125,20 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
                 className={`text-sm min-h-[60px] resize-none border-green-200 focus:border-green-300 ${
-                  isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
+                  isOverLimit(editingQuestionValue) ? "border-red-300" : ""
                 }`}
-                placeholder="Enter your message..."
+                placeholder={nodeLimits.question?.placeholder || "Enter your message..."}
                 autoFocus
               />
               <div className="flex justify-between items-center">
                 <span
                   className={`text-xs ${
-                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
+                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-gray-400"
                   }`}
                 >
-                  {editingQuestionValue.length}/{limits.question}
+                  {editingQuestionValue.length}/{maxLength}
                 </span>
-                {isOverLimit(editingQuestionValue, "question") && (
+                {isOverLimit(editingQuestionValue) && (
                   <Badge variant="destructive" className="text-xs h-5">
                     Too long
                   </Badge>

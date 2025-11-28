@@ -62,9 +62,11 @@ import type {
   Coordinates 
 } from "@/types"
 import { 
-  BUTTON_LIMITS, 
   OPTION_LIMITS, 
-  INTERACTION_THRESHOLDS 
+  INTERACTION_THRESHOLDS,
+  getNodeLimits,
+  areButtonsWithinNodeLimits,
+  areOptionsWithinNodeLimits
 } from "@/constants"
 import { 
   getClientCoordinates,
@@ -76,10 +78,13 @@ import {
   isValidPlatform,
   createButtonData,
   createOptionData,
-  canAddMoreButtons,
   createNode,
   createCommentNode
 } from "@/utils"
+import { 
+  getAddNodeLabel, 
+  platformSupportsNodeType 
+} from "@/utils/platform-labels"
 import { publishVersion } from "@/utils/version-storage"
 
 const nodeTypes = {
@@ -465,7 +470,10 @@ export default function MagicFlow() {
           const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
           const platform = (node.data.platform as Platform) || "web"
           
-          if (!canAddMoreButtons(currentButtons, platform)) {
+          // Check if adding one more button would exceed the limit
+          const canAddButton = areButtonsWithinNodeLimits(currentButtons.length + 1, node.type, platform)
+          
+          if (!canAddButton.valid) {
             // Convert to list node if at max buttons
             const newType = getPlatformSpecificNodeType("whatsappList", platform)
             const newLabel = getPlatformSpecificLabel("whatsappList", platform)
@@ -530,7 +538,12 @@ export default function MagicFlow() {
         // Handle list nodes (add option)
         else if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
           const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
-          if (currentOptions.length < OPTION_LIMITS.all) {
+          const platform = (node.data.platform as Platform) || "web"
+          
+          // Check if adding one more option would exceed the limit
+          const canAddOption = areOptionsWithinNodeLimits(currentOptions.length + 1, node.type, platform)
+          
+          if (canAddOption.valid) {
             const newOptions = [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[]
             
             // Track option addition
@@ -2137,22 +2150,24 @@ export default function MagicFlow() {
               onClick={() => addNodeAtPosition("question")}
             >
               <MessageCircle className="w-4 h-4" />
-              Add Question
+              {getAddNodeLabel("question", platform)}
             </button>
             <button
               className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
               onClick={() => addNodeAtPosition("quickReply")}
             >
               <MessageSquare className="w-4 h-4" />
-              Add Quick Reply
+              {getAddNodeLabel("quickReply", platform)}
             </button>
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeAtPosition("whatsappList")}
-            >
-              <List className="w-4 h-4" />
-              Add WhatsApp List
-            </button>
+            {platformSupportsNodeType(platform, "whatsappList") && (
+              <button
+                className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
+                onClick={() => addNodeAtPosition("whatsappList")}
+              >
+                <List className="w-4 h-4" />
+                {getAddNodeLabel("list", platform)}
+              </button>
+            )}
           </div>
         )}
 

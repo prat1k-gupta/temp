@@ -156,7 +156,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
         </Button>
 
         {/* Submit Button Preview */}
-        <Button className="w-full h-8 text-xs" style={{ backgroundColor: platform?.constraints.colors.primary }}>
+        <Button className="w-full h-8 text-xs" style={{ backgroundColor: data.platform ? getPlatformConfig(data.platform).colors.primary : "#3b82f6" }}>
           {data.submitText || "Submit"}
         </Button>
       </div>

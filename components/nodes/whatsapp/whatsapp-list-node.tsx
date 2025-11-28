@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { List, Plus, Edit3, X } from "lucide-react"
 import { useState, useEffect } from "react"
-import { CHARACTER_LIMITS } from "@/constants/platform-limits"
-
-const PLATFORM_LIMITS = CHARACTER_LIMITS
+import { getNodeLimits } from "@/constants"
+import type { Platform } from "@/types"
 
 export function WhatsAppListNode({ data, selected }: { data: any; selected?: boolean }) {
   const options = data.options || []
@@ -33,11 +32,15 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
     }
   }, [data.question, isEditingQuestion])
 
-  const platform = data.platform || "web"
-  const limits = PLATFORM_LIMITS[platform as keyof typeof PLATFORM_LIMITS]
+  const platform = (data.platform || "web") as Platform
+  const nodeType = "whatsappList"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  const maxQuestionLength = nodeLimits.question?.max || 160
+  const maxOptionLength = nodeLimits.options?.textMaxLength || 20
+  const maxOptions = nodeLimits.options?.max || 10
 
-  const isOverLimit = (text: string, type: "question" | "button") => {
-    return text.length > limits[type]
+  const isOverLimit = (text: string, type: "question" | "option") => {
+    return type === "question" ? text.length > maxQuestionLength : text.length > maxOptionLength
   }
 
   const startEditingLabel = () => {
@@ -171,7 +174,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                     isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-gray-400"
                   }`}
                 >
-                  {editingQuestionValue.length}/{limits.question}
+                  {editingQuestionValue.length}/{maxQuestionLength}
                 </span>
                 {isOverLimit(editingQuestionValue, "question") && (
                   <Badge variant="destructive" className="text-xs h-5">
@@ -207,7 +210,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                           if (e.key === "Escape") cancelEditingOption()
                         }}
                         className={`h-6 text-xs flex-1 border-green-200 ${
-                          isOverLimit(editingOptionValue, "button") ? "border-red-300" : ""
+                          isOverLimit(editingOptionValue, "option") ? "border-red-300" : ""
                         }`}
                         autoFocus
                       />
@@ -221,10 +224,10 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                       </Button>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className={`text-xs ${isOverLimit(editingOptionValue, "button") ? "text-red-500" : "text-gray-400"}`}>
-                        {editingOptionValue.length}/{limits.button}
+                      <span className={`text-xs ${isOverLimit(editingOptionValue, "option") ? "text-red-500" : "text-gray-400"}`}>
+                        {editingOptionValue.length}/{maxOptionLength}
                       </span>
-                      {isOverLimit(editingOptionValue, "button") && (
+                      {isOverLimit(editingOptionValue, "option") && (
                         <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
                       )}
                     </div>

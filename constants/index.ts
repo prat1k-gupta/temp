@@ -1,6 +1,7 @@
 // Export all constants from a centralized location
 export * from "./platform-limits"
 export * from "./node-types"
+export * from "./node-limits"
 
 // Re-export commonly used constants with cleaner names
 export { 
@@ -15,3 +16,20 @@ export {
   NODE_LABELS,
   NODE_CONTENT
 } from "./node-types"
+
+// Re-export node limits (now from modular structure)
+export type { NodeLimits, ValidationResult } from "./node-limits"
+export {
+  getNodeLimits,
+  nodeSupportsButtons,
+  nodeSupportsOptions,
+  nodeSupportsMultipleOutputs,
+  getMaxConnections,
+  getTextFieldLimit,
+  isTextWithinNodeLimits,
+  areButtonsWithinNodeLimits,
+  areOptionsWithinNodeLimits,
+  isButtonTextValid,
+  isOptionTextValid,
+  isOptionDescriptionValid,
+} from "./node-limits"

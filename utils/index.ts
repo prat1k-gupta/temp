@@ -4,6 +4,7 @@ export * from "./platform-helpers"
 export * from "./validation"
 export * from "./node-operations"
 export * from "./node-factory"
+export * from "./platform-labels"
 
 // Re-export commonly used utilities with cleaner names
 export { 
@@ -38,3 +39,16 @@ export {
   supportsButtons,
   supportsOptions
 } from "./node-operations"
+
+export {
+  PLATFORM_DISPLAY_NAMES,
+  NODE_TYPE_LABELS,
+  PLATFORM_COLORS,
+  PLATFORM_TEXT_COLORS,
+  getPlatformDisplayName,
+  getNodeLabel,
+  getAddNodeLabel,
+  getPlatformColor,
+  getPlatformTextColor,
+  platformSupportsNodeType
+} from "./platform-labels"

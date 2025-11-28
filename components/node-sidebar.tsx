@@ -1,84 +1,86 @@
 "use client"
 
 import type React from "react"
+import type { Platform } from "@/types"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Play, MessageCircle, MessageSquare, List, MessageSquareText } from "lucide-react"
+import { 
+  getNodeLabel, 
+  getPlatformColor, 
+  getPlatformDisplayName,
+  platformSupportsNodeType 
+} from "@/utils/platform-labels"
+import { BUTTON_LIMITS } from "@/constants/platform-limits"
 
-const nodeTemplates = [
+interface NodeTemplate {
+  type: string
+  icon: any
+  disabled?: boolean
+  getLabel: (platform: Platform) => string
+  getDescription: (platform: Platform) => string
+  getColor: (platform: Platform) => string
+  isAvailable: (platform: Platform) => boolean
+}
+
+const BASE_NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: "start",
-    label: "Start Node",
-    description: "Entry point of the flow",
     icon: Play,
-    color: "bg-chart-2",
     disabled: true,
+    getLabel: () => "Start Node",
+    getDescription: () => "Entry point of the flow",
+    getColor: () => "bg-chart-2",
+    isAvailable: () => true,
   },
   {
     type: "question",
-    label: "Question",
-    description: "Ask users a question",
     icon: MessageCircle,
-    color: "bg-accent",
+    disabled: false,
+    getLabel: (platform) => getNodeLabel("question", platform),
+    getDescription: (platform) => `Send ${getPlatformDisplayName(platform)} message`,
+    getColor: (platform) => getPlatformColor(platform, "primary"),
+    isAvailable: () => true,
   },
   {
     type: "quickReply",
-    label: "Quick Reply",
-    description: "Question with buttons",
     icon: MessageSquare,
-    color: "bg-chart-1",
+    disabled: false,
+    getLabel: (platform) => getNodeLabel("quickReply", platform),
+    getDescription: (platform) => `Question with buttons (max ${BUTTON_LIMITS[platform]})`,
+    getColor: (platform) => getPlatformColor(platform, "secondary"),
+    isAvailable: () => true,
   },
   {
     type: "whatsappList",
-    label: "WhatsApp List",
-    description: "List of options (WA only)",
     icon: List,
-    color: "bg-chart-4",
+    disabled: false,
+    getLabel: (platform) => getNodeLabel("list", platform),
+    getDescription: () => "Interactive list with options",
+    getColor: (platform) => getPlatformColor(platform, "tertiary"),
+    isAvailable: (platform) => platformSupportsNodeType(platform, "whatsappList"),
   },
   {
     type: "comment",
-    label: "Comment",
-    description: "Add documentation",
     icon: MessageSquareText,
-    color: "bg-yellow-400",
+    disabled: false,
+    getLabel: () => "Comment",
+    getDescription: () => "Add documentation",
+    getColor: () => "bg-yellow-400",
+    isAvailable: () => true,
   },
 ]
 
 interface NodeSidebarProps {
   onNodeDragStart: (event: React.DragEvent, nodeType: string) => void
-  platform?: "web" | "whatsapp" | "instagram"
+  platform?: Platform
 }
 
 export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarProps) {
-  // Filter nodes based on platform
-  const getAvailableNodes = () => {
-    let availableNodes = [...nodeTemplates]
-    
-    if (platform === "whatsapp") {
-      // Show WhatsApp-specific nodes
-      availableNodes = nodeTemplates.filter(node => 
-        node.type === "start" || 
-        node.type === "question" || 
-        node.type === "quickReply" || 
-        node.type === "whatsappList" || 
-        node.type === "comment"
-      )
-    } else if (platform === "instagram") {
-      // Show Instagram-specific nodes (Instagram doesn't have list traditionally, but we created one)
-      availableNodes = nodeTemplates.filter(node => 
-        node.type === "start" || 
-        node.type === "question" || 
-        node.type === "quickReply" || 
-        node.type === "whatsappList" || // We'll rename this dynamically
-        node.type === "comment"
-      )
-    }
-    
-    return availableNodes
-  }
-
-  const availableNodes = getAvailableNodes()
+  const availableNodes = BASE_NODE_TEMPLATES.filter(template => 
+    template.isAvailable(platform)
+  )
 
   return (
     <div className="w-64 bg-background border-r border-border p-4 overflow-y-auto">
@@ -87,40 +89,18 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
           <h2 className="text-lg font-semibold text-foreground mb-2">Node Types</h2>
           <p className="text-sm text-muted-foreground mb-4">
             Drag and drop to add nodes to your flow
-            {platform !== "web" && (
-              <span className="block text-xs mt-1 capitalize text-accent">
-                {platform} optimized
-              </span>
-            )}
+            <span className="block text-xs mt-1 capitalize text-accent">
+              {getPlatformDisplayName(platform)} Platform
+            </span>
           </p>
         </div>
 
         <div className="space-y-2">
           {availableNodes.map((template) => {
             const Icon = template.icon
-            
-            // Dynamically adjust labels and descriptions based on platform
-            let displayLabel = template.label
-            let displayDescription = template.description
-            
-            if (template.type === "whatsappList") {
-              if (platform === "instagram") {
-                displayLabel = "Instagram List"
-                displayDescription = "List of options (IG only)"
-              }
-            } else if (template.type === "question") {
-              if (platform === "whatsapp") {
-                displayDescription = "Send WhatsApp message"
-              } else if (platform === "instagram") {
-                displayDescription = "Send Instagram message"
-              }
-            } else if (template.type === "quickReply") {
-              if (platform === "whatsapp") {
-                displayDescription = "WhatsApp quick replies"
-              } else if (platform === "instagram") {
-                displayDescription = "Instagram quick replies"
-              }
-            }
+            const label = template.getLabel(platform)
+            const description = template.getDescription(platform)
+            const color = template.getColor(platform)
             
             return (
               <Card
@@ -133,24 +113,19 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
               >
                 <CardContent className="p-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-md ${template.color} flex items-center justify-center`}>
+                    <div className={`w-8 h-8 rounded-md ${color} flex items-center justify-center`}>
                       <Icon className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-card-foreground text-sm">{displayLabel}</h3>
+                        <h3 className="font-medium text-card-foreground text-sm">{label}</h3>
                         {template.disabled && (
                           <Badge variant="secondary" className="text-xs">
                             Auto
                           </Badge>
                         )}
-                        {platform !== "web" && template.type !== "start" && template.type !== "comment" && (
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {platform}
-                          </Badge>
-                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{displayDescription}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{description}</p>
                     </div>
                   </div>
                 </CardContent>

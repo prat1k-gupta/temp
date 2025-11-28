@@ -2,9 +2,9 @@ import type { Platform } from "@/types"
 
 // Platform-specific button limits
 export const BUTTON_LIMITS: Record<Platform, number> = {
-  web: 3,
-  whatsapp: 10,
-  instagram: 10,
+  web: 10,
+  whatsapp: 3,
+  instagram: 3,
 } as const
 
 // Platform-specific option limits

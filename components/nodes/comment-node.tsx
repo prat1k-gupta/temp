@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { MessageSquareText, Trash2, Edit3 } from "lucide-react"
-import { CHARACTER_LIMITS } from "@/constants/platform-limits"
+import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
 
 export function CommentNode({ data, selected }: { data: any; selected?: boolean }) {
@@ -18,7 +18,8 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
 
   const currentUser = "You" // In a real app, this would come from auth context
   const platform: Platform = data.platform || "web"
-  const maxLength = CHARACTER_LIMITS[platform].comment
+  const nodeLimits = getNodeLimits("comment", platform)
+  const maxLength = nodeLimits.question?.max || 200
 
   useEffect(() => {
     if (!isEditing) {

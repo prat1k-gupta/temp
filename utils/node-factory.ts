@@ -228,9 +228,8 @@ export const createConditionNode = (
       label: "Condition",
       conditionLogic: "AND",
       conditionGroups: [
-        { id: "group-1", label: "Group 1", rules: [] }
+        { id: "group-1", label: "Group 1", logic: "AND", rules: [] }
       ],
-      conditionRules: [],
     } as NodeData,
   }
 }

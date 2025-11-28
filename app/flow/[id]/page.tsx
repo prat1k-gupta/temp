@@ -464,28 +464,13 @@ export default function MagicFlow() {
       console.log("[v0] Creating new connection:", params)
       setEdges((eds) => addEdge(newEdge, eds))
       
-      // If connecting TO a condition node's main target handle, update its connectedNode data
+      // SCENARIO 2: If connecting TO a condition node, update its connectedNode data
       setNodes((nds) => {
         const targetNode = nds.find(n => n.id === params.target)
         const sourceNode = nds.find(n => n.id === params.source)
         
-        console.log("[v0] Connection check:", {
-          targetNodeType: targetNode?.type,
-          targetHandle: params.targetHandle,
-          sourceNodeType: sourceNode?.type,
-          hasSourceNode: !!sourceNode,
-          isConditionNode: targetNode?.type === "condition"
-        })
-        
-        // Only update connectedNode when connecting to the main target handle (not named handles)
+        // Only update connectedNode when connecting to a condition node's main target handle
         if (targetNode?.type === "condition" && sourceNode && !params.targetHandle) {
-          console.log("[v0] ✅ Updating condition node with connected source node info:", {
-            targetId: params.target,
-            sourceId: params.source,
-            sourceType: sourceNode.type,
-            sourceLabel: sourceNode.data?.label
-          })
-          
           const updatedNodes = nds.map((node) =>
             node.id === params.target
               ? {
@@ -502,12 +487,10 @@ export default function MagicFlow() {
               : node
           )
           
-          // If this condition node is currently selected, update the selectedNode state too
+          // Also update selectedNode if this condition node is currently selected
           setSelectedNode((currentSelected) => {
             if (currentSelected?.id === params.target) {
-              const updatedNode = updatedNodes.find(n => n.id === params.target)
-              console.log("[v0] ✅ Also updating selectedNode state:", updatedNode?.data?.connectedNode)
-              return updatedNode || currentSelected
+              return updatedNodes.find(n => n.id === params.target) || currentSelected
             }
             return currentSelected
           })
@@ -1267,6 +1250,18 @@ export default function MagicFlow() {
         // All other node types (interaction, super, fulfillment, integration)
         try {
           newNode = createNode(nodeType, platform, nodePosition, newNodeId)
+          
+          // SCENARIO 1: If creating a condition node from connection menu, set connectedNode data
+          if (nodeType === "condition") {
+            newNode.data = {
+              ...newNode.data,
+              connectedNode: {
+                id: sourceNode.id,
+                type: sourceNode.type,
+                label: sourceNode.data?.label || sourceNode.type
+              }
+            }
+          }
         } catch (error) {
           console.error(`[v0] Error creating node type ${nodeType}:`, error)
           return
@@ -1848,91 +1843,53 @@ export default function MagicFlow() {
   }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
 
 
-  // Sync condition node connections - update connectedNode data based on incoming edges
+  // Sync condition nodes after flow loads - detect existing connections
   useEffect(() => {
-    // Find all condition nodes
+    if (nodes.length <= 1 || flowLoaded) return // Skip if only start node or already synced
+    
     const conditionNodes = nodes.filter(n => n.type === "condition")
+    if (conditionNodes.length === 0) {
+      setFlowLoaded(true)
+      return
+    }
     
-    if (conditionNodes.length === 0) return
-    
-    let needsUpdate = false
-    const updates: Array<{ nodeId: string; connectedNode: any }> = []
-    
+    let needsSync = false
     conditionNodes.forEach(conditionNode => {
-      // Find incoming edge to this condition node's main target handle
-      const incomingEdge = edges.find(
-        e => e.target === conditionNode.id && !e.targetHandle
-      )
-      
-      if (incomingEdge) {
-        // Find the source node
-        const sourceNode = nodes.find(n => n.id === incomingEdge.source)
-        
-        if (sourceNode) {
-          const expectedConnectedNode = {
-            id: sourceNode.id,
-            type: sourceNode.type,
-            label: sourceNode.data?.label || sourceNode.type
-          }
-          
-          // Check if connectedNode data is missing or outdated
-          const currentConnectedNode = conditionNode.data?.connectedNode as any
-          const needsSync = !currentConnectedNode || 
-            currentConnectedNode?.id !== expectedConnectedNode.id ||
-            currentConnectedNode?.type !== expectedConnectedNode.type
-          
-          if (needsSync) {
-            needsUpdate = true
-            updates.push({ nodeId: conditionNode.id, connectedNode: expectedConnectedNode })
-          }
-        }
-      } else {
-        // No incoming edge, but connectedNode data exists - clear it
-        if (conditionNode.data?.connectedNode) {
-          needsUpdate = true
-          updates.push({ nodeId: conditionNode.id, connectedNode: null })
-        }
+      const incomingEdge = edges.find(e => e.target === conditionNode.id && !e.targetHandle)
+      if (incomingEdge && !conditionNode.data?.connectedNode) {
+        needsSync = true
       }
     })
     
-    // Apply updates if needed
-    if (needsUpdate && updates.length > 0) {
-      console.log("[v0] 🔄 Syncing condition node connections:", updates)
-      
+    if (needsSync) {
       setNodes((nds) =>
         nds.map((node) => {
-          const update = updates.find(u => u.nodeId === node.id)
-          if (update) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                connectedNode: update.connectedNode
+          if (node.type !== "condition") return node
+          
+          const incomingEdge = edges.find(e => e.target === node.id && !e.targetHandle)
+          if (incomingEdge && !node.data?.connectedNode) {
+            const sourceNode = nds.find(n => n.id === incomingEdge.source)
+            if (sourceNode) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  connectedNode: {
+                    id: sourceNode.id,
+                    type: sourceNode.type,
+                    label: sourceNode.data?.label || sourceNode.type
+                  }
+                }
               }
             }
           }
           return node
         })
       )
-      
-      // Also update selectedNode if it's a condition node being updated
-      setSelectedNode((currentSelected) => {
-        if (currentSelected && currentSelected.type === "condition") {
-          const update = updates.find(u => u.nodeId === currentSelected.id)
-          if (update) {
-            return {
-              ...currentSelected,
-              data: {
-                ...currentSelected.data,
-                connectedNode: update.connectedNode
-              }
-            }
-          }
-        }
-        return currentSelected
-      })
     }
-  }, [nodes, edges, setNodes, setSelectedNode])
+    
+    setFlowLoaded(true)
+  }, [nodes, edges, flowLoaded, setNodes])
 
   // Handle focusing on newly created nodes
   useEffect(() => {

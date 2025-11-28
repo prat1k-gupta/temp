@@ -24,10 +24,13 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
   const platform = (data.platform || "web") as Platform
   const conditionLogic = data.conditionLogic || "AND" // AND or OR
   const connectedNode = data.connectedNode || null // Info about the connected source node
-  const conditionGroups = data.conditionGroups || [
-    { id: "group-1", label: "Group 1", rules: [] }
-  ]
-  const conditionRules = data.conditionRules || []
+  const conditionGroups = (data.conditionGroups || [
+    { id: "group-1", label: "Group 1", logic: "AND", rules: [] }
+  ]).map((group: any) => ({
+    ...group,
+    logic: group.logic || "AND",
+    rules: group.rules || []
+  }))
 
   useEffect(() => {
     if (!isEditingLabel) {
@@ -156,7 +159,7 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
           {/* Condition Groups */}
           <div className="space-y-0">
             {conditionGroups.map((group: any, groupIndex: number) => {
-              const groupRules = conditionRules.filter((r: any) => r.groupId === group.id)
+              const groupRules = group.rules || []
               
               return (
                 <div 
@@ -165,6 +168,21 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
                   data-group-id={group.id}
                   data-group-index={groupIndex}
                 >
+                  {/* Group Header with Logic Badge */}
+                  {groupRules.length > 0 && (
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Badge 
+                        variant="secondary" 
+                        className="text-[10px] px-1.5 py-0 h-4 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium"
+                      >
+                        {group.logic || "AND"}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {group.logic === "OR" ? "Any of these" : "All of these"}
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* Group Rules */}
                   <div className="space-y-1 pr-8">
                     {groupRules.length > 0 ? (

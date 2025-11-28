@@ -834,7 +834,7 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
               {/* Condition Groups */}
               <div className="space-y-4">
                 {(selectedNode.data.conditionGroups || []).map((group: any, groupIndex: number) => {
-                  const groupRules = (selectedNode.data.conditionRules || []).filter((r: any) => r.groupId === group.id)
+                  const groupRules = group.rules || []
                   
                   return (
                     <div key={group.id} className="space-y-3 p-3 bg-muted/10 rounded-lg border border-border">
@@ -849,11 +849,9 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                             size="sm"
                             onClick={() => {
                               const newGroups = (selectedNode.data.conditionGroups || []).filter((_: any, i: number) => i !== groupIndex)
-                              const newRules = (selectedNode.data.conditionRules || []).filter((r: any) => r.groupId !== group.id)
                               onNodeUpdate(selectedNode.id, { 
                                 ...selectedNode.data, 
-                                conditionGroups: newGroups,
-                                conditionRules: newRules
+                                conditionGroups: newGroups
                               })
                             }}
                             className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
@@ -863,18 +861,49 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                         )}
                       </div>
 
+                      {/* Group Logic Selector */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Match</span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant={group.logic === "AND" || !group.logic ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              const updatedGroups = (selectedNode.data.conditionGroups || []).map((g: any) =>
+                                g.id === group.id ? { ...g, logic: "AND" } : g
+                              )
+                              onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionGroups: updatedGroups })
+                            }}
+                            className="h-6 px-2 text-xs cursor-pointer"
+                          >
+                            ALL
+                          </Button>
+                          <Button
+                            variant={group.logic === "OR" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              const updatedGroups = (selectedNode.data.conditionGroups || []).map((g: any) =>
+                                g.id === group.id ? { ...g, logic: "OR" } : g
+                              )
+                              onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionGroups: updatedGroups })
+                            }}
+                            className="h-6 px-2 text-xs cursor-pointer"
+                          >
+                            ANY
+                          </Button>
+                        </div>
+                        <span className="text-xs text-muted-foreground">of these conditions</span>
+                      </div>
+
                       {/* Group Rules */}
                       <div className="space-y-2">
-                        {groupRules.map((rule: any) => {
-                          const allRules = selectedNode.data.conditionRules || []
-                          const globalRuleIndex = allRules.indexOf(rule)
-                          
+                        {groupRules.map((rule: any, ruleIndex: number) => {
                           return (
                             <div 
-                              key={rule.id || globalRuleIndex} 
+                              key={rule.id || ruleIndex} 
                               className="flex items-center gap-2 px-3 py-2 bg-background rounded-lg border border-border hover:bg-muted/30 transition-colors cursor-pointer group"
                               onClick={() => {
-                                setEditingRule({ ...rule, groupId: group.id })
+                                setEditingRule({ ...rule, groupId: group.id, groupIndex, ruleIndex })
                                 setIsConditionDialogOpen(true)
                               }}
                             >
@@ -890,8 +919,12 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  const newRules = allRules.filter((_: any, i: number) => i !== globalRuleIndex)
-                                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: newRules })
+                                  const updatedGroups = [...(selectedNode.data.conditionGroups || [])]
+                                  updatedGroups[groupIndex] = {
+                                    ...updatedGroups[groupIndex],
+                                    rules: updatedGroups[groupIndex].rules.filter((_: any, i: number) => i !== ruleIndex)
+                                  }
+                                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionGroups: updatedGroups })
                                 }}
                                 className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                               >
@@ -930,6 +963,7 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                   const newGroup = {
                     id: `group-${Date.now()}`,
                     label: `Group ${(selectedNode.data.conditionGroups || []).length + 1}`,
+                    logic: "AND",
                     rules: []
                   }
                   onNodeUpdate(selectedNode.id, { 
@@ -1341,21 +1375,34 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                 setEditingRule(null)
               }}
               onSave={(rule) => {
-                const allRules = selectedNode.data.conditionRules || []
-                const ruleWithGroup = { ...rule, groupId: editingRule?.groupId || (selectedNode.data.conditionGroups?.[0]?.id || "group-1") }
+                const updatedGroups = [...(selectedNode.data.conditionGroups || [])]
+                const groupId = editingRule?.groupId || updatedGroups[0]?.id || "group-1"
+                const groupIndex = editingRule?.groupIndex ?? updatedGroups.findIndex((g: any) => g.id === groupId)
                 
-                if (editingRule && editingRule.id) {
-                  // Update existing rule
-                  const ruleIndex = allRules.findIndex((r: any) => r.id === editingRule.id)
-                  if (ruleIndex !== -1) {
-                    const newRules = [...allRules]
-                    newRules[ruleIndex] = ruleWithGroup
-                    onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: newRules })
+                if (groupIndex !== -1 && updatedGroups[groupIndex]) {
+                  const groupRules = updatedGroups[groupIndex].rules || []
+                  
+                  if (editingRule && editingRule.id) {
+                    // Update existing rule
+                    const ruleIndex = editingRule.ruleIndex ?? groupRules.findIndex((r: any) => r.id === editingRule.id)
+                    if (ruleIndex !== -1) {
+                      groupRules[ruleIndex] = rule
+                    }
+                  } else {
+                    // Add new rule
+                    groupRules.push(rule)
                   }
-                } else {
-                  // Add new rule to specified group
-                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: [...allRules, ruleWithGroup] })
+                  
+                  updatedGroups[groupIndex] = {
+                    ...updatedGroups[groupIndex],
+                    rules: groupRules
+                  }
+                  
+                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionGroups: updatedGroups })
                 }
+                
+                setIsConditionDialogOpen(false)
+                setEditingRule(null)
               }}
               existingRule={editingRule}
               connectedNodeType={selectedNode.data.connectedNode?.type}

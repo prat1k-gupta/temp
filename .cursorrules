@@ -1,0 +1,335 @@
+# Magic Flow - Cursor AI Rules
+
+## Project Overview
+Magic Flow is a Next.js-based visual flow builder for creating conversational flows across multiple platforms (Web, WhatsApp, Instagram). It uses React Flow for the canvas, shadcn/ui components, and localStorage for data persistence.
+
+## Tech Stack
+- **Framework**: Next.js 14 (App Router)
+- **UI Library**: React 18, TypeScript
+- **Component Library**: shadcn/ui (Radix UI primitives)
+- **Flow Canvas**: @xyflow/react (React Flow)
+- **Styling**: Tailwind CSS with CSS variables for theming
+- **State Management**: React hooks (useState, useCallback, useEffect)
+- **Storage**: localStorage (flows, versions, drafts)
+- **Icons**: Lucide React
+
+## Architecture
+
+### Directory Structure
+```
+/app                    # Next.js app router
+  /flow/[id]           # Dynamic route for flow editor
+  /flows               # Flow list/dashboard page
+/components
+  /nodes               # All node implementations
+    /core              # Base node components
+    /web               # Web platform nodes
+    /whatsapp          # WhatsApp platform nodes
+    /instagram         # Instagram platform nodes
+  /ui                  # shadcn/ui components
+/utils                 # Utility functions
+  flow-storage.ts      # Flow CRUD operations
+  version-storage.ts   # Version management
+  platform-helpers.ts  # Platform-specific logic
+/constants             # Configuration and limits
+/types                 # TypeScript type definitions
+/hooks                 # Custom React hooks
+```
+
+### Key Concepts
+1. **Platforms**: Each flow targets a platform (web, whatsapp, instagram)
+2. **Nodes**: Visual elements representing conversation steps
+3. **Edges**: Connections between nodes
+4. **Flows**: Complete conversation flows with multiple nodes
+5. **Versions**: Saved states of flows (draft, published)
+
+## Theme System - CRITICAL RULES
+
+### Always Use Theme-Aware CSS Classes
+**NEVER use hardcoded colors like `bg-white`, `text-gray-700`, etc.**
+
+#### Correct Background Classes:
+- `bg-card` (for node backgrounds)
+- `bg-background` (for page backgrounds)
+- `bg-muted` (for subtle backgrounds)
+- `bg-accent` (for interactive elements)
+
+#### Correct Text Classes:
+- `text-foreground` (primary text)
+- `text-card-foreground` (text on cards)
+- `text-muted-foreground` (secondary/muted text)
+
+#### Correct Border Classes:
+- `border-border` (standard borders)
+- `border-background` (for handles/connection points)
+
+#### Dark Mode Variants:
+When using platform-specific colors, ALWAYS add dark mode variants:
+```tsx
+// ✅ CORRECT
+className="border-blue-100 dark:border-blue-900"
+className="hover:border-blue-200 dark:hover:border-blue-800"
+className="ring-blue-300/50 dark:ring-blue-600/50"
+
+// ❌ WRONG
+className="border-blue-100"
+className="bg-white"
+```
+
+### Platform Color Consistency:
+- **Web**: blue-500
+- **WhatsApp**: green-500
+- **Instagram**: pink-500
+- **Comment**: yellow-400
+- **Start Node**: Uses `bg-chart-2` (theme color)
+
+## Node Creation Guidelines
+
+### 1. File Location
+- Web nodes: `/components/nodes/web/web-{type}-node.tsx`
+- WhatsApp nodes: `/components/nodes/whatsapp/whatsapp-{type}-node.tsx`
+- Instagram nodes: `/components/nodes/instagram/instagram-{type}-node.tsx`
+
+### 2. Node Structure Template
+```tsx
+"use client"
+
+import { Handle, Position } from "@xyflow/react"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+// ... other imports
+
+export function {Platform}{Type}Node({ data, selected }: { data: any; selected?: boolean }) {
+  // State management
+  const [isEditing, setIsEditing] = useState(false)
+  
+  // Platform config
+  const platform = (data.platform || "web") as Platform
+  const nodeType = "{platform}{Type}"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  
+  return (
+    <div className="relative">
+      <Card className={`min-w-[260px] max-w-[300px] bg-card border-{color}-100 dark:border-{color}-900 ${
+        selected ? "ring-1 ring-{color}-300/50 dark:ring-{color}-600/50" : ""
+      }`}>
+        <CardHeader className="pb-2 pt-3 px-4">
+          {/* Platform icon and label */}
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 bg-{color}-500 rounded-md flex items-center justify-center">
+              <Icon className="w-3 h-3 text-white" />
+            </div>
+            {/* Editable label */}
+          </div>
+        </CardHeader>
+        
+        <CardContent className="pt-0 space-y-3 pb-8 px-4">
+          {/* Node content */}
+        </CardContent>
+        
+        {/* Connection handles */}
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="w-3 h-3 bg-{color}-500 border-2 border-background"
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="w-3 h-3 bg-{color}-500 border-2 border-background"
+        />
+      </Card>
+    </div>
+  )
+}
+```
+
+### 3. Required Node Props
+- `data`: Contains all node data (id, label, platform, etc.)
+- `data.id`: Unique node identifier
+- `data.platform`: Target platform
+- `data.onNodeUpdate`: Callback for updating node data
+- `data.onAddButton`: Callback for adding buttons (if applicable)
+- `data.onDelete`: Callback for node deletion
+- `selected`: Boolean indicating if node is selected
+
+### 4. Node State Management
+```tsx
+// Editing states
+const [isEditingLabel, setIsEditingLabel] = useState(false)
+const [editingValue, setEditingValue] = useState("")
+
+// Sync with data changes
+useEffect(() => {
+  if (!isEditing) {
+    setEditingValue(data.someField || "")
+  }
+}, [data.someField, isEditing])
+
+// Update node data
+const finishEditing = () => {
+  if (data.onNodeUpdate) {
+    data.onNodeUpdate(data.id, { ...data, someField: editingValue })
+  }
+  setIsEditing(false)
+}
+```
+
+### 5. Node Limits & Validation
+ALWAYS get limits from the constants:
+```tsx
+import { getNodeLimits } from "@/constants"
+
+const nodeLimits = getNodeLimits(nodeType, platform)
+const maxLength = nodeLimits.question?.max || 500
+const maxButtons = nodeLimits.buttons?.max || 3
+
+const isOverLimit = (text: string) => text.length > maxLength
+```
+
+## Component Usage Guidelines
+
+### shadcn/ui Components
+- Import from `@/components/ui/*`
+- Use existing components: Button, Card, Input, Textarea, Badge, etc.
+- Follow shadcn/ui patterns for composition
+
+### Icons
+- Use Lucide React icons only
+- Import: `import { IconName } from "lucide-react"`
+- Common icons: MessageCircle, MessageSquare, List, Plus, Edit3, X, Trash2
+
+### Handles (Connection Points)
+```tsx
+// Target (input) handle
+<Handle
+  type="target"
+  position={Position.Left}
+  className="w-3 h-3 bg-{color}-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+/>
+
+// Source (output) handle
+<Handle
+  type="source"
+  position={Position.Right}
+  id="optional-id"
+  className="w-3 h-3 bg-{color}-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+/>
+```
+
+## State Management Patterns
+
+### Flow Storage
+```tsx
+import { getFlow, updateFlow, createFlow } from "@/utils/flow-storage"
+
+// Load flow
+const flow = getFlow(flowId)
+
+// Update flow
+updateFlow(flowId, { nodes, edges, platform })
+
+// Create flow
+const newFlow = createFlow("Flow Name", "Description", "web")
+```
+
+### Version Management
+```tsx
+import { useVersionManager } from "@/hooks/use-version-manager"
+
+const {
+  isEditMode,
+  currentVersion,
+  toggleEditMode,
+  createNewVersion,
+  publishCurrentVersion
+} = useVersionManager()
+```
+
+## Common Pitfalls to Avoid
+
+### ❌ DON'T:
+1. Use hardcoded colors (`bg-white`, `text-gray-600`)
+2. Forget dark mode variants for platform colors
+3. Create nodes without platform-specific styling
+4. Skip node limit validation
+5. Hardcode text limits instead of using constants
+6. Forget to handle the `selected` prop
+7. Skip `onNodeUpdate` callbacks
+8. Use inline styles instead of Tailwind classes (except for dynamic positioning)
+
+### ✅ DO:
+1. Use theme-aware CSS variables (`bg-card`, `text-muted-foreground`)
+2. Add `dark:` variants for all platform-specific colors
+3. Follow the node template structure exactly
+4. Import and use `getNodeLimits()` for validation
+5. Implement proper state synchronization with `useEffect`
+6. Add hover states and transitions for better UX
+7. Use the `onNodeUpdate` pattern for all data changes
+8. Keep node widths consistent (`min-w-[260px] max-w-[300px]`)
+
+## Platform-Specific Considerations
+
+### Web Platform
+- Color: Blue (`blue-500`)
+- Icon: `<Globe />`
+- Support all node types
+
+### WhatsApp Platform
+- Color: Green (`green-500`)
+- Icon: `<MessageCircle />`
+- Supports: Question, Quick Reply (max 3 buttons), List
+- Button limit: 3 (enforced by constants)
+
+### Instagram Platform
+- Color: Pink (`pink-500`)
+- Icon: `<Instagram />`
+- Similar to WhatsApp but with Instagram-specific styling
+
+## File Naming Conventions
+- Components: PascalCase (`WebQuestionNode`)
+- Files: kebab-case (`web-question-node.tsx`)
+- Utilities: camelCase (`flowStorage.ts`)
+- Types: PascalCase (`Platform`, `NodeData`)
+
+## TypeScript Guidelines
+- Always use TypeScript
+- Import types from `@/types`
+- Common types: `Platform`, `NodeData`, `ButtonData`, `OptionData`
+- Use `type` for object shapes, `interface` for extensible objects
+
+## Performance Considerations
+- Use `memo()` for base components
+- Use `useCallback()` for event handlers passed as props
+- Use `useEffect()` with proper dependencies
+- Avoid unnecessary re-renders
+
+## Testing Approach
+- Manual testing in browser (dev server on port 3001)
+- Test all platforms (web, whatsapp, instagram)
+- Test light and dark modes
+- Test node creation, editing, deletion
+- Test flow save/load functionality
+
+## Important Context
+- Flows auto-save to localStorage every second
+- Versions are separate from flows (draft/published system)
+- Start node cannot be deleted or duplicated
+- Each platform has specific node type mappings
+- The app supports unlimited flows
+- Theme toggle is in the header (sun/moon icon)
+
+## When Adding New Features
+1. Check existing patterns in similar components
+2. Use theme-aware classes exclusively
+3. Add proper TypeScript types
+4. Update constants if adding limits
+5. Test in both light and dark modes
+6. Ensure mobile responsiveness
+7. Follow the established file structure
+
+## Resources
+- Documentation: `/ADDING_NEW_NODES.md`
+- Quick Reference: `/QUICK_NODE_REFERENCE.md`
+- Architecture: `/ARCHITECTURE.md`
+- Node Limits Guide: `/NODE_LIMITS_GUIDE.md`
+

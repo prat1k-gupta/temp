@@ -17,7 +17,18 @@ import {
   MessageSquareText,
   Play,
   GripVertical,
+  User,
+  Mail,
+  Calendar,
+  MapPin,
+  Sparkles,
+  Shield,
+  CheckCircle2,
+  GitBranch,
 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ConditionRuleDialog } from "@/components/condition-rule-dialog"
 import {
   DndContext,
   closestCenter,
@@ -73,6 +84,13 @@ const NODE_ICONS = {
   instagramList: List,
   instagramDM: MessageCircle,
   instagramStory: MessageCircle,
+  // Super nodes
+  name: User,
+  email: Mail,
+  dob: Calendar,
+  address: MapPin,
+  // Logic nodes
+  condition: GitBranch,
 }
 
 const NODE_COLORS = {
@@ -93,6 +111,13 @@ const NODE_COLORS = {
   instagramList: "bg-pink-700 text-white",
   instagramDM: "bg-pink-400 text-white",
   instagramStory: "bg-purple-500 text-white",
+  // Super nodes
+  name: "bg-purple-500 text-white",
+  email: "bg-purple-500 text-white",
+  dob: "bg-purple-500 text-white",
+  address: "bg-purple-500 text-white",
+  // Logic nodes
+  condition: "bg-indigo-500 text-white",
 }
 
 function SortableButtonItem({
@@ -247,6 +272,10 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
+
+  // Condition rule dialog state
+  const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<any>(null)
 
   if (!selectedNode) {
     return null
@@ -419,9 +448,96 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
         return "Instagram DM Node"
       case "instagramStory":
         return "Instagram Story Node"
+      // Super nodes
+      case "name":
+        return "Name Validation Node"
+      case "email":
+        return "Email Validation Node"
+      case "dob":
+        return "DOB Validation Node"
+      case "address":
+        return "Address Validation Node"
+      case "condition":
+        return "Condition Node"
       default:
         return "Node Properties"
     }
+  }
+
+  const isSuperNode = ["name", "email", "dob", "address"].includes(selectedNode.type || "")
+  const isConditionNode = selectedNode.type === "condition"
+
+  // Get available fields based on connected node type
+  const getAvailableFields = (nodeType: string) => {
+    switch (nodeType) {
+      case "name":
+        return [
+          { value: "fullName", label: "Full Name" },
+          { value: "firstName", label: "First Name" },
+          { value: "lastName", label: "Last Name" },
+          { value: "length", label: "Name Length" }
+        ]
+      case "email":
+        return [
+          { value: "email", label: "Email Address" },
+          { value: "domain", label: "Email Domain" },
+          { value: "isValid", label: "Is Valid Email" },
+          { value: "isDisposable", label: "Is Disposable Email" }
+        ]
+      case "dob":
+        return [
+          { value: "age", label: "Age" },
+          { value: "date", label: "Date of Birth" },
+          { value: "year", label: "Birth Year" },
+          { value: "isAdult", label: "Is Adult (18+)" }
+        ]
+      case "address":
+        return [
+          { value: "street", label: "Street" },
+          { value: "city", label: "City" },
+          { value: "state", label: "State" },
+          { value: "zip", label: "ZIP Code" },
+          { value: "country", label: "Country" },
+          { value: "isComplete", label: "Is Complete" }
+        ]
+      default:
+        return [{ value: "value", label: "Value" }]
+    }
+  }
+
+  // Get available operators based on field type
+  const getAvailableOperators = (nodeType: string, field: string) => {
+    // Age and numeric fields
+    if (field === "age" || field === "length" || field === "year") {
+      return [
+        { value: "equals", label: "Equals (=)" },
+        { value: "notEquals", label: "Not Equals (≠)" },
+        { value: "greaterThan", label: "Greater Than (>)" },
+        { value: "lessThan", label: "Less Than (<)" },
+        { value: "greaterThanOrEqual", label: "Greater or Equal (≥)" },
+        { value: "lessThanOrEqual", label: "Less or Equal (≤)" }
+      ]
+    }
+    
+    // Boolean fields
+    if (field === "isValid" || field === "isDisposable" || field === "isAdult" || field === "isComplete") {
+      return [
+        { value: "isTrue", label: "Is True" },
+        { value: "isFalse", label: "Is False" }
+      ]
+    }
+    
+    // String fields
+    return [
+      { value: "equals", label: "Equals" },
+      { value: "notEquals", label: "Not Equals" },
+      { value: "contains", label: "Contains" },
+      { value: "notContains", label: "Does Not Contain" },
+      { value: "startsWith", label: "Starts With" },
+      { value: "endsWith", label: "Ends With" },
+      { value: "isEmpty", label: "Is Empty" },
+      { value: "isNotEmpty", label: "Is Not Empty" }
+    ]
   }
 
   const handleLabelChange = (value: string) => {
@@ -455,6 +571,12 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-foreground">{getNodeTitle()}</h2>
             <div className="flex items-center gap-2 mt-1">
+              {isSuperNode && (
+                <Badge variant="secondary" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Super Node
+                </Badge>
+              )}
               <Badge variant="secondary" className="text-xs">
                 {selectedNode.type === "comment" ? "NOTE" : platform.toUpperCase()}
               </Badge>
@@ -670,6 +792,576 @@ export function PropertiesPanel({ selectedNode, platform, onNodeUpdate }: Proper
                 </>
               )}
             </>
+          )}
+
+          {/* Condition Node Configuration */}
+          {isConditionNode && (
+            <>
+              {/* Node Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter condition name..."
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Main Question with inline logic selector */}
+              <div className="space-y-2">
+                <p className="text-sm text-card-foreground">
+                  Does the contact match
+                </p>
+                <button
+                  onClick={() => {
+                    const newLogic = selectedNode.data.conditionLogic === "AND" ? "OR" : "AND"
+                    onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionLogic: newLogic })
+                  }}
+                  className="text-sm text-blue-600 dark:text-blue-400 font-medium hover:underline cursor-pointer"
+                >
+                  {selectedNode.data.conditionLogic === "AND" ? "all" : "any"} of the following conditions?
+                </button>
+              </div>
+
+              <Separator />
+
+              {/* Condition Groups */}
+              <div className="space-y-4">
+                {(selectedNode.data.conditionGroups || []).map((group: any, groupIndex: number) => {
+                  const groupRules = (selectedNode.data.conditionRules || []).filter((r: any) => r.groupId === group.id)
+                  
+                  return (
+                    <div key={group.id} className="space-y-3 p-3 bg-muted/10 rounded-lg border border-border">
+                      {/* Group Header */}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">
+                          Condition Group {groupIndex + 1}
+                        </Label>
+                        {(selectedNode.data.conditionGroups || []).length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const newGroups = (selectedNode.data.conditionGroups || []).filter((_: any, i: number) => i !== groupIndex)
+                              const newRules = (selectedNode.data.conditionRules || []).filter((r: any) => r.groupId !== group.id)
+                              onNodeUpdate(selectedNode.id, { 
+                                ...selectedNode.data, 
+                                conditionGroups: newGroups,
+                                conditionRules: newRules
+                              })
+                            }}
+                            className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Group Rules */}
+                      <div className="space-y-2">
+                        {groupRules.map((rule: any) => {
+                          const allRules = selectedNode.data.conditionRules || []
+                          const globalRuleIndex = allRules.indexOf(rule)
+                          
+                          return (
+                            <div 
+                              key={rule.id || globalRuleIndex} 
+                              className="flex items-center gap-2 px-3 py-2 bg-background rounded-lg border border-border hover:bg-muted/30 transition-colors cursor-pointer group"
+                              onClick={() => {
+                                setEditingRule({ ...rule, groupId: group.id })
+                                setIsConditionDialogOpen(true)
+                              }}
+                            >
+                              <span className="text-xs text-card-foreground flex-1">
+                                <span className="font-medium">{rule.fieldLabel || rule.field || "Field"}</span>
+                                {" "}
+                                <span className="text-muted-foreground">{rule.operatorLabel || rule.operator || "equals"}</span>
+                                {" "}
+                                {rule.value && <span className="font-medium">{rule.value}</span>}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const newRules = allRules.filter((_: any, i: number) => i !== globalRuleIndex)
+                                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: newRules })
+                                }}
+                                className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Add Condition to Group */}
+                      {selectedNode.data.connectedNode && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingRule({ groupId: group.id })
+                            setIsConditionDialogOpen(true)
+                          }}
+                          className="w-full text-teal-600 dark:text-teal-400 border-dashed cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Condition
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Add Group Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newGroup = {
+                    id: `group-${Date.now()}`,
+                    label: `Group ${(selectedNode.data.conditionGroups || []).length + 1}`,
+                    rules: []
+                  }
+                  onNodeUpdate(selectedNode.id, { 
+                    ...selectedNode.data, 
+                    conditionGroups: [...(selectedNode.data.conditionGroups || []), newGroup]
+                  })
+                }}
+                className="w-full cursor-pointer"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Condition Group
+              </Button>
+
+              <Separator />
+
+              {/* Else Section */}
+              <div className="p-3 bg-muted/10 rounded-lg border border-border">
+                <p className="text-sm text-muted-foreground mb-2">
+                  If none of the above groups match
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Connect the red handle (else) to define what happens when no conditions match
+                </p>
+              </div>
+
+              {/* Info/Help Box */}
+              {!selectedNode.data.connectedNode && (
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <GitBranch className="w-5 h-5 text-indigo-600 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-medium text-indigo-900 dark:text-indigo-100 mb-1">
+                        Connect a Node
+                      </h4>
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                        Connect this condition node to another node (like Name, Email, DOB) to enable smart, context-aware condition options.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Super Nodes Configuration */}
+          {isSuperNode && (
+            <>
+              {/* Node Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter node label..."
+                  className="mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This label helps you identify the node in the flow.
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Field Label */}
+              <div>
+                <Label htmlFor="field-label" className="text-sm font-medium">
+                  Field Label
+                </Label>
+                <Input
+                  id="field-label"
+                  value={selectedNode.data.fieldLabel || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, fieldLabel: e.target.value })}
+                  placeholder={`e.g., ${
+                    selectedNode.type === "name" ? "Full Name" :
+                    selectedNode.type === "email" ? "Email Address" :
+                    selectedNode.type === "dob" ? "Date of Birth" :
+                    "Street Address"
+                  }`}
+                  className="mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The label shown to users when collecting this information.
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Validation Rules Header */}
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-semibold text-foreground">Validation Rules</h3>
+              </div>
+
+              {/* Name Validation */}
+              {selectedNode.type === "name" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Required Field</Label>
+                      <p className="text-xs text-muted-foreground">User must provide a name</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.required !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="min-length" className="text-sm">Minimum Length</Label>
+                      <Input
+                        id="min-length"
+                        type="number"
+                        min="1"
+                        value={selectedNode.data.validationRules?.minLength || 2}
+                        onChange={(e) => 
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), minLength: parseInt(e.target.value) }
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max-length" className="text-sm">Maximum Length</Label>
+                      <Input
+                        id="max-length"
+                        type="number"
+                        min="1"
+                        value={selectedNode.data.validationRules?.maxLength || 50}
+                        onChange={(e) => 
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), maxLength: parseInt(e.target.value) }
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Allow Numbers</Label>
+                      <p className="text-xs text-muted-foreground">Permit numbers in name</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.allowNumbers === true}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), allowNumbers: checked }
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Email Validation */}
+              {selectedNode.type === "email" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Required Field</Label>
+                      <p className="text-xs text-muted-foreground">User must provide an email</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.required !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="format" className="text-sm">Format Validation</Label>
+                    <Select
+                      value={selectedNode.data.validationRules?.format || "RFC 5322"}
+                      onValueChange={(value) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), format: value }
+                        })
+                      }
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="RFC 5322">RFC 5322 (Standard)</SelectItem>
+                        <SelectItem value="Simple">Simple (Basic)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Check Domain</Label>
+                      <p className="text-xs text-muted-foreground">Verify domain exists</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.checkDomain !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), checkDomain: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Block Disposable Emails</Label>
+                      <p className="text-xs text-muted-foreground">Reject temporary email services</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.blockDisposable !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), blockDisposable: checked }
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* DOB Validation */}
+              {selectedNode.type === "dob" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Required Field</Label>
+                      <p className="text-xs text-muted-foreground">User must provide date of birth</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.required !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="date-format" className="text-sm">Date Format</Label>
+                    <Select
+                      value={selectedNode.data.validationRules?.format || "DD/MM/YYYY"}
+                      onValueChange={(value) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), format: value }
+                        })
+                      }
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+                        <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
+                        <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="min-age" className="text-sm">Minimum Age</Label>
+                      <Input
+                        id="min-age"
+                        type="number"
+                        min="0"
+                        max="120"
+                        value={selectedNode.data.validationRules?.minAge || 13}
+                        onChange={(e) => 
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), minAge: parseInt(e.target.value) }
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max-age" className="text-sm">Maximum Age</Label>
+                      <Input
+                        id="max-age"
+                        type="number"
+                        min="0"
+                        max="150"
+                        value={selectedNode.data.validationRules?.maxAge || 120}
+                        onChange={(e) => 
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), maxAge: parseInt(e.target.value) }
+                          })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Address Validation */}
+              {selectedNode.type === "address" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Required Field</Label>
+                      <p className="text-xs text-muted-foreground">User must provide an address</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.required !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Validate Postal Code</Label>
+                      <p className="text-xs text-muted-foreground">Check ZIP/postal code format</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.validatePostalCode !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), validatePostalCode: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm">Address Autocomplete</Label>
+                      <p className="text-xs text-muted-foreground">Enable Google Places autocomplete</p>
+                    </div>
+                    <Switch
+                      checked={selectedNode.data.validationRules?.autocomplete !== false}
+                      onCheckedChange={(checked) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: checked }
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-sm mb-2 block">Address Components</Label>
+                    <div className="p-3 bg-muted/30 rounded-lg space-y-2">
+                      {(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).map((component: string) => (
+                        <div key={component} className="flex items-center gap-2 text-xs">
+                          <CheckCircle2 className="w-3 h-3 text-green-600" />
+                          <span className="text-foreground">{component}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Validation Summary */}
+              <div className="p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-purple-600 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">Super Node</h4>
+                    <p className="text-xs text-purple-700 dark:text-purple-300">
+                      This node includes built-in validation. Changes are applied in real-time and reflected in the node on the canvas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Condition Rule Dialog */}
+          {isConditionNode && selectedNode.data.connectedNode && (
+            <ConditionRuleDialog
+              isOpen={isConditionDialogOpen}
+              onClose={() => {
+                setIsConditionDialogOpen(false)
+                setEditingRule(null)
+              }}
+              onSave={(rule) => {
+                const allRules = selectedNode.data.conditionRules || []
+                const ruleWithGroup = { ...rule, groupId: editingRule?.groupId || (selectedNode.data.conditionGroups?.[0]?.id || "group-1") }
+                
+                if (editingRule && editingRule.id) {
+                  // Update existing rule
+                  const ruleIndex = allRules.findIndex((r: any) => r.id === editingRule.id)
+                  if (ruleIndex !== -1) {
+                    const newRules = [...allRules]
+                    newRules[ruleIndex] = ruleWithGroup
+                    onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: newRules })
+                  }
+                } else {
+                  // Add new rule to specified group
+                  onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionRules: [...allRules, ruleWithGroup] })
+                }
+              }}
+              existingRule={editingRule}
+              connectedNodeType={selectedNode.data.connectedNode?.type}
+              availableFields={selectedNode.data.connectedNode ? getAvailableFields(selectedNode.data.connectedNode.type) : []}
+              getOperators={(field: string) => getAvailableOperators(selectedNode.data.connectedNode?.type, field)}
+            />
           )}
 
           {/* Start Node */}

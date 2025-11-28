@@ -59,7 +59,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                 variant="outline"
                 size="icon"
                 onClick={() => setIsCollapsed(false)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-r-md hover:cursor-pointer rounded-l-none bg-accent/50 text-white hover:bg-accent border-border border-r-1 shadow-lg p-0 translate-x-full"
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-l-md rounded-r-none bg-accent/10 hover:bg-accent/20 border-accent/30 shadow-lg p-0 translate-x-full cursor-pointer"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -69,8 +69,8 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
             </TooltipContent>
           </Tooltip>
 
-          <div className="p-2 overflow-y-auto h-full flex flex-col items-center">
-            <div className="space-y-2 w-full">
+          <div className="p-2 overflow-y-auto h-full">
+            <div className="space-y-3 pt-12">
               {categories.map((category) => {
                 const nodes = getNodesByCategory(category.key, platform)
                 
@@ -83,17 +83,17 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                     <Tooltip key={node.type}>
                       <TooltipTrigger asChild>
                         <div
-                          className={`w-12 h-12 rounded-md ${getPlatformColorClass(platform)} flex items-center justify-center cursor-pointer transition-all duration-200 hover:ring-2 hover:ring-accent/50 hover:scale-105`}
+                          className={`w-12 h-12 rounded-md ${getPlatformColorClass(platform)} flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105`}
                           draggable
                           onDragStart={(e) => onNodeDragStart(e, node.type)}
                         >
                           <NodeIcon className="w-5 h-5 text-white" />
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
+                      <TooltipContent side="right">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm">{node.label}</p>
+                            <p className="font-medium">{node.label}</p>
                             {node.isSuperNode && (
                               <Badge variant="secondary" className="text-xs">
                                 {node.badge}
@@ -140,7 +140,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <div>
+        <div>
               <h2 className="text-sm font-semibold text-foreground">Nodes</h2>
               <p className="text-[10px] text-muted-foreground capitalize">
                 {platform === "web" ? "Web" : platform === "whatsapp" ? "WhatsApp" : "Instagram"} Platform
@@ -158,8 +158,8 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
               const nodes = getNodesByCategory(category.key, platform)
               
               if (nodes.length === 0) return null
-              
-              return (
+            
+            return (
                 <div key={category.key} className="space-y-2">
                   {/* Category Header */}
                   <button
@@ -192,13 +192,13 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                             className="cursor-pointer transition-all duration-200 hover:shadow-md border-border bg-card hover:border-accent/50"
                             draggable
                             onDragStart={(e) => onNodeDragStart(e, node.type)}
-                          >
+              >
                             <CardContent className="p-2.5">
                               <div className="flex items-center gap-2">
                                 <div className={`w-7 h-7 rounded-md ${getPlatformColorClass(platform)} flex items-center justify-center shrink-0`}>
                                   <NodeIcon className="w-3.5 h-3.5 text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
+                    </div>
+                    <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <h3 className="font-medium text-card-foreground text-xs truncate">
                                       {node.label}
@@ -206,18 +206,18 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                                     {node.isSuperNode && (
                                       <Badge variant="secondary" className="text-[8px] h-3.5 px-1">
                                         {node.badge}
-                                      </Badge>
-                                    )}
-                                  </div>
+                          </Badge>
+                        )}
+                      </div>
                                   <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                                     {node.description}
                                   </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )
-                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
                     </div>
                   )}
                 </div>

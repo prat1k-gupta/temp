@@ -34,6 +34,8 @@ import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-
 import { InstagramListNode } from "@/components/nodes/instagram/instagram-list-node"
 import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
 import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
+// Logic nodes
+import { ConditionNode } from "@/components/nodes/logic/condition-node"
 // Super nodes
 import { NameNode } from "@/components/nodes/super/name-node"
 import { EmailNode } from "@/components/nodes/super/email-node"
@@ -61,7 +63,7 @@ import { useVersionManager } from "@/hooks/use-version-manager"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/sonner"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useParams, useRouter } from "next/navigation"
 
 // Modular imports
 import type { 
@@ -99,7 +101,6 @@ import {
 } from "@/utils/platform-labels"
 import { publishVersion } from "@/utils/version-storage"
 import { getFlow, updateFlow, type FlowData } from "@/utils/flow-storage"
-import { useParams, useRouter } from "next/navigation"
 
 const nodeTypes = {
   start: StartNode,
@@ -116,6 +117,8 @@ const nodeTypes = {
   // Backwards compatibility aliases
   question: WebQuestionNode,
   quickReply: WebQuickReplyNode,
+  // Logic nodes
+  condition: ConditionNode,
   // Instagram specific nodes
   instagramQuestion: InstagramQuestionNode,
   instagramQuickReply: InstagramQuickReplyNode,
@@ -173,7 +176,7 @@ export default function MagicFlow() {
   const isSetupMode = searchParams?.get("setup") === "true"
   const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  const [edges, setEdges, onEdgesChangeOriginal] = useEdgesState(initialEdges)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
   const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
@@ -460,8 +463,62 @@ export default function MagicFlow() {
 
       console.log("[v0] Creating new connection:", params)
       setEdges((eds) => addEdge(newEdge, eds))
+      
+      // If connecting TO a condition node's main target handle, update its connectedNode data
+      setNodes((nds) => {
+        const targetNode = nds.find(n => n.id === params.target)
+        const sourceNode = nds.find(n => n.id === params.source)
+        
+        console.log("[v0] Connection check:", {
+          targetNodeType: targetNode?.type,
+          targetHandle: params.targetHandle,
+          sourceNodeType: sourceNode?.type,
+          hasSourceNode: !!sourceNode,
+          isConditionNode: targetNode?.type === "condition"
+        })
+        
+        // Only update connectedNode when connecting to the main target handle (not named handles)
+        if (targetNode?.type === "condition" && sourceNode && !params.targetHandle) {
+          console.log("[v0] ✅ Updating condition node with connected source node info:", {
+            targetId: params.target,
+            sourceId: params.source,
+            sourceType: sourceNode.type,
+            sourceLabel: sourceNode.data?.label
+          })
+          
+          const updatedNodes = nds.map((node) =>
+            node.id === params.target
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connectedNode: {
+                      id: sourceNode.id,
+                      type: sourceNode.type,
+                      label: sourceNode.data?.label || sourceNode.type
+                    }
+                  }
+                }
+              : node
+          )
+          
+          // If this condition node is currently selected, update the selectedNode state too
+          setSelectedNode((currentSelected) => {
+            if (currentSelected?.id === params.target) {
+              const updatedNode = updatedNodes.find(n => n.id === params.target)
+              console.log("[v0] ✅ Also updating selectedNode state:", updatedNode?.data?.connectedNode)
+              return updatedNode || currentSelected
+            }
+            return currentSelected
+          })
+          
+          return updatedNodes
+        }
+        
+        return nds
+      })
     },
-    [setEdges, edges, isEditMode, updateDraftChanges, autoEnterEditMode, setNodes, setPlatform, nodes, platform],
+    [setEdges, edges, isEditMode, updateDraftChanges, autoEnterEditMode, setNodes, setSelectedNode, setPlatform, nodes, platform],
   )
 
   const addButtonToNode = useCallback(
@@ -1197,22 +1254,23 @@ export default function MagicFlow() {
 
       let newNode: Node
 
-      switch (nodeType) {
-        case "question":
-          newNode = createNode("question", platform, nodePosition, newNodeId)
-          break
-        case "quickReply":
-          newNode = createNode("quickReply", platform, nodePosition, newNodeId)
-          break
-        case "whatsappList":
-          newNode = createNode("whatsappList", platform, nodePosition, newNodeId)
-          break
-        default:
-          // Default to question node for unknown types
-          newNode = createNode("question", platform, nodePosition, newNodeId, {
-            label: nodeType.charAt(0).toUpperCase() + nodeType.slice(1),
-            question: `${nodeType} step`,
-          })
+      // Use the unified createNode factory for all node types
+      if (nodeType === "comment") {
+        newNode = createCommentNode(
+          platform,
+          nodePosition,
+          newNodeId,
+          (updates: any) => updateNodeData(newNodeId, updates),
+          () => deleteNode(newNodeId)
+        )
+      } else {
+        // All other node types (interaction, super, fulfillment, integration)
+        try {
+          newNode = createNode(nodeType, platform, nodePosition, newNodeId)
+        } catch (error) {
+          console.error(`[v0] Error creating node type ${nodeType}:`, error)
+          return
+        }
       }
 
       const newEdge: Edge = {
@@ -1317,8 +1375,34 @@ export default function MagicFlow() {
         console.error(`[v0] Error updating node data for ${nodeId}:`, error)
       }
     },
-    [setNodes, setSelectedNode, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform],
+    [setNodes, setSelectedNode, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform, flowId],
   )
+
+  // Custom onEdgesChange to handle condition node disconnection
+  const onEdgesChange = useCallback((changes: any[]) => {
+    // Check for edge removals
+    changes.forEach(change => {
+      if (change.type === 'remove') {
+        // Find the edge being removed
+        const edgeToRemove = edges.find(e => e.id === change.id)
+        if (edgeToRemove) {
+          // Check if the target is a condition node
+          const targetNode = nodes.find(n => n.id === edgeToRemove.target)
+          if (targetNode?.type === "condition") {
+            // Clear the connectedNode data
+            console.log("[v0] Clearing connected node data from condition node")
+            updateNodeData(edgeToRemove.target, {
+              connectedNode: null,
+              conditionRules: [] // Also clear any rules when disconnecting
+            })
+          }
+        }
+      }
+    })
+    
+    // Apply the original edge changes
+    onEdgesChangeOriginal(changes)
+  }, [edges, nodes, onEdgesChangeOriginal, updateNodeData])
 
   const closeConnectionMenu = useCallback(() => {
     setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
@@ -1763,6 +1847,92 @@ export default function MagicFlow() {
     }
   }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
 
+
+  // Sync condition node connections - update connectedNode data based on incoming edges
+  useEffect(() => {
+    // Find all condition nodes
+    const conditionNodes = nodes.filter(n => n.type === "condition")
+    
+    if (conditionNodes.length === 0) return
+    
+    let needsUpdate = false
+    const updates: Array<{ nodeId: string; connectedNode: any }> = []
+    
+    conditionNodes.forEach(conditionNode => {
+      // Find incoming edge to this condition node's main target handle
+      const incomingEdge = edges.find(
+        e => e.target === conditionNode.id && !e.targetHandle
+      )
+      
+      if (incomingEdge) {
+        // Find the source node
+        const sourceNode = nodes.find(n => n.id === incomingEdge.source)
+        
+        if (sourceNode) {
+          const expectedConnectedNode = {
+            id: sourceNode.id,
+            type: sourceNode.type,
+            label: sourceNode.data?.label || sourceNode.type
+          }
+          
+          // Check if connectedNode data is missing or outdated
+          const currentConnectedNode = conditionNode.data?.connectedNode as any
+          const needsSync = !currentConnectedNode || 
+            currentConnectedNode?.id !== expectedConnectedNode.id ||
+            currentConnectedNode?.type !== expectedConnectedNode.type
+          
+          if (needsSync) {
+            needsUpdate = true
+            updates.push({ nodeId: conditionNode.id, connectedNode: expectedConnectedNode })
+          }
+        }
+      } else {
+        // No incoming edge, but connectedNode data exists - clear it
+        if (conditionNode.data?.connectedNode) {
+          needsUpdate = true
+          updates.push({ nodeId: conditionNode.id, connectedNode: null })
+        }
+      }
+    })
+    
+    // Apply updates if needed
+    if (needsUpdate && updates.length > 0) {
+      console.log("[v0] 🔄 Syncing condition node connections:", updates)
+      
+      setNodes((nds) =>
+        nds.map((node) => {
+          const update = updates.find(u => u.nodeId === node.id)
+          if (update) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                connectedNode: update.connectedNode
+              }
+            }
+          }
+          return node
+        })
+      )
+      
+      // Also update selectedNode if it's a condition node being updated
+      setSelectedNode((currentSelected) => {
+        if (currentSelected && currentSelected.type === "condition") {
+          const update = updates.find(u => u.nodeId === currentSelected.id)
+          if (update) {
+            return {
+              ...currentSelected,
+              data: {
+                ...currentSelected.data,
+                connectedNode: update.connectedNode
+              }
+            }
+          }
+        }
+        return currentSelected
+      })
+    }
+  }, [nodes, edges, setNodes, setSelectedNode])
 
   // Handle focusing on newly created nodes
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -7,7 +7,7 @@ export interface NodeTemplate {
   icon: any
   label: string
   description: string
-  category: "interaction" | "information" | "fulfillment" | "integration"
+  category: "interaction" | "information" | "fulfillment" | "integration" | "logic"
   isSuperNode?: boolean // Can be double-clicked to see sub-nodes
   platforms: Platform[] // Which platforms support this node
   badge?: string // Optional badge text
@@ -18,6 +18,11 @@ export const NODE_CATEGORIES = {
     label: "Interaction",
     description: "Conversational elements",
     icon: MessageCircle,
+  },
+  logic: {
+    label: "Logic",
+    description: "Flow control & branching",
+    icon: GitBranch,
   },
   information: {
     label: "Information",
@@ -61,6 +66,17 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Interactive list menu",
     category: "interaction",
     platforms: ["whatsapp", "instagram"],
+  },
+  
+  // LOGIC NODES
+  {
+    type: "condition",
+    icon: GitBranch,
+    label: "Condition",
+    description: "Branch flow based on conditions",
+    category: "logic",
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Logic",
   },
   
   // INFORMATION NODES (Super Nodes)

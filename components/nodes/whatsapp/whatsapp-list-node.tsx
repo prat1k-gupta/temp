@@ -274,19 +274,13 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium mr-2">Next</span>
         </div>
         <Handle
           type="source"
           position={Position.Bottom}
           id="next-step"
           className="w-3 h-3 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
-          style={{
-            position: "absolute",
-            bottom: "-6px",
-            left: "50%",
-            transform: "translateX(-50%)",
-          }}
         />
       </Card>
     </div>

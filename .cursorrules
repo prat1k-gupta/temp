@@ -38,15 +38,20 @@ Magic Flow is a Next.js-based visual flow builder for creating conversational fl
 
 ### Key Concepts
 1. **Platforms**: Each flow targets a platform (web, whatsapp, instagram)
-2. **Node Categories**: Nodes are organized into 4 categories
+2. **Node Categories**: Nodes are organized into 5 categories
    - **Interaction**: Conversational elements (Question, Quick Reply, List)
+   - **Logic**: Flow control and branching (Condition nodes with AND/OR logic)
    - **Information**: Super nodes for data collection with validation (Name, Email, DOB, Address)
    - **Fulfillment**: Service delivery nodes (Home Delivery, Event, Retail Store)
    - **Integration**: External platform connections (Shopify, Meta Audiences)
 3. **Super Nodes**: Complex nodes with built-in validation and sub-nodes (double-clickable)
-4. **Edges**: Connections between nodes
-5. **Flows**: Complete conversation flows with multiple nodes
-6. **Versions**: Saved states of flows (draft, published)
+4. **Condition Nodes**: Logic nodes that branch flow based on conditions (multiple output handles)
+   - **Context-Aware**: Automatically detect connected nodes and offer relevant field options
+   - **Smart Operators**: Provide appropriate operators based on field types (numeric, boolean, string)
+   - **Real-time Updates**: Connected node information updates dynamically when edges connect/disconnect
+5. **Edges**: Connections between nodes
+6. **Flows**: Complete conversation flows with multiple nodes
+7. **Versions**: Saved states of flows (draft, published)
 
 ## Theme System - CRITICAL RULES
 
@@ -94,6 +99,10 @@ className="bg-white"
 - Web nodes: `/components/nodes/web/web-{type}-node.tsx`
 - WhatsApp nodes: `/components/nodes/whatsapp/whatsapp-{type}-node.tsx`
 - Instagram nodes: `/components/nodes/instagram/instagram-{type}-node.tsx`
+- Logic nodes: `/components/nodes/logic/{type}-node.tsx`
+- Super nodes: `/components/nodes/super/{type}-node.tsx`
+- Fulfillment nodes: `/components/nodes/fulfillment/{type}-node.tsx`
+- Integration nodes: `/components/nodes/integration/{type}-node.tsx`
 
 ### 2. Node Structure Template
 ```tsx
@@ -261,7 +270,7 @@ const isOverLimit = (text: string) => text.length > maxLength
 - **DO USE** authentic logos to build trust and recognition
 
 ### Handles (Connection Points) - CRITICAL STRUCTURE
-**ALL nodes must follow this exact handle pattern:**
+**Standard nodes must follow this exact handle pattern:**
 
 ```tsx
 {/* Target handle - LEFT side (where other nodes connect TO this node) */}
@@ -288,6 +297,58 @@ const isOverLimit = (text: string) => text.length > maxLength
 - **Source handle (bottom-right with "Next" label)**: Clear visual indicator of flow direction
 - **Positioning**: The absolute positioning ensures the "Next" handle is always in the same spot
 - **User Experience**: Users can easily see where flows connect and what the next step is
+
+### Condition Nodes - Multiple Output Handles
+**Condition nodes have a special pattern with multiple source handles:**
+
+```tsx
+{/* Target handle - same as standard */}
+<Handle type="target" position={Position.Left} />
+
+{/* Multiple source handles for branching */}
+{conditions.map((condition, index) => (
+  <div key={condition.id} className="absolute right-3" style={{ top: `${index === 0 ? 30 : 70}%` }}>
+    <span className="text-[9px] text-muted-foreground">{condition.label}</span>
+    <Handle
+      type="source"
+      position={Position.Right}
+      id={condition.id}
+      className={`w-3 h-3 ${index === 0 ? 'bg-green-500' : 'bg-red-500'} ...`}
+    />
+  </div>
+))}
+```
+
+**Key differences for condition nodes:**
+- Multiple source handles (one per condition branch)
+- Each handle has a unique `id` property
+- Handles are positioned vertically on the right side
+- Color-coded: green for "True", red for "False" (or custom branch colors)
+- Labels indicate the branch logic
+
+### Condition Node Context Awareness
+Condition nodes are **smart** and adapt based on connected nodes:
+
+**When connected to a Name Node:**
+- Fields: Full Name, First Name, Last Name, Name Length
+- Operators: Equals, Not Equals, Contains, Starts With, Ends With, Is Empty, Is Not Empty
+
+**When connected to an Email Node:**
+- Fields: Email Address, Email Domain, Is Valid Email, Is Disposable Email
+- Operators: String operators for text fields, Is True/False for boolean fields
+
+**When connected to a DOB Node:**
+- Fields: Age, Date of Birth, Birth Year, Is Adult (18+)
+- Operators: Numeric operators (>, <, ≥, ≤, =, ≠) for age/year, Is True/False for isAdult
+
+**When connected to an Address Node:**
+- Fields: Street, City, State, ZIP Code, Country, Is Complete
+- Operators: String operators for address fields, Is True/False for isComplete
+
+**Implementation:**
+- When an edge connects to a condition node, the `onConnect` handler updates the condition node's `data.connectedNode`
+- When an edge disconnects, the `onEdgesChange` handler clears the `connectedNode` data
+- The properties panel uses `getAvailableFields()` and `getAvailableOperators()` to show context-aware options
 
 ## State Management Patterns
 

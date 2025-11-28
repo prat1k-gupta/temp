@@ -141,19 +141,19 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
 
   return (
     <>
-      <div className="relative">
+    <div className="relative">
         <Card
           className={`min-w-[280px] max-w-[320px] bg-gradient-to-br ${getPlatformGradient(platform)} ${getPlatformBorder(platform)} shadow-lg cursor-pointer transition-all hover:shadow-xl ${
             selected ? `ring-2 ${getPlatformRing(platform)} scale-105` : ""
-          }`}
+        }`}
           onClick={() => setIsEditingTriggers(true)}
         >
           <CardHeader className="pt-3 px-4">
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getPlatformIconBg(platform)}`}>
                 <Play className={`w-4 h-4 ${getPlatformTextColor(platform)} fill-current`} />
-              </div>
-              <div className="flex-1">
+          </div>
+          <div className="flex-1">
                 <h3 className={`font-semibold text-sm ${getPlatformTextColor(platform)}`}>Start</h3>
               </div>
               <Edit3 className={`w-3.5 h-3.5 ${getPlatformTextColor(platform)} opacity-70`} />
@@ -174,8 +174,8 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                     <div className="flex-1 min-w-0">
                       <p className={`text-xs font-medium ${getPlatformTextColor(platform)}`}>{trigger.title}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">{trigger.category}</p>
-                    </div>
-                  </div>
+          </div>
+        </div>
                 ))}
               </div>
             ) : (
@@ -199,13 +199,13 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
             </Button>
           </CardContent>
 
-          <div className="absolute -right-2 top-1/2 -translate-y-1/2">
-            <Handle
-              type="source"
-              position={Position.Right}
+        <div className="absolute -right-2 top-1/2 -translate-y-1/2">
+          <Handle
+            type="source"
+            position={Position.Right}
               className={`w-4 h-4 ${getPlatformColor(platform)} hover:scale-110 transition-transform shadow-md border-2 border-background`}
-            />
-          </div>
+          />
+        </div>
         </Card>
       </div>
 
@@ -268,8 +268,8 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
               <Button onClick={handleSaveTriggers}>
                 Save Triggers
               </Button>
-            </div>
-          </div>
+      </div>
+    </div>
         </DialogContent>
       </Dialog>
     </>

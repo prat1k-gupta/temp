@@ -210,6 +210,32 @@ export const createFulfillmentNode = (
 }
 
 /**
+ * Create a condition/logic node
+ */
+export const createConditionNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("condition")
+  
+  return {
+    id: nodeId,
+    type: "condition",
+    position,
+    data: {
+      platform,
+      label: "Condition",
+      conditionLogic: "AND",
+      conditionGroups: [
+        { id: "group-1", label: "Group 1", rules: [] }
+      ],
+      conditionRules: [],
+    } as NodeData,
+  }
+}
+
+/**
  * Create an integration node
  */
 export const createIntegrationNode = (
@@ -288,8 +314,12 @@ export const createNode = (
 ): Node => {
   let node: Node
 
+  // Logic nodes
+  if (nodeType === "condition") {
+    node = createConditionNode(platform, position, customId)
+  }
   // Super nodes
-  if (["name", "email", "dob", "address"].includes(nodeType)) {
+  else if (["name", "email", "dob", "address"].includes(nodeType)) {
     node = createSuperNode(nodeType as any, platform, position, customId)
   }
   // Fulfillment nodes
@@ -302,21 +332,21 @@ export const createNode = (
   }
   // Regular interaction nodes
   else {
-    switch (nodeType) {
-      case "question":
-        node = createQuestionNode(platform, position, customId)
-        break
-      case "quickReply":
-        node = createQuickReplyNode(platform, position, customId)
-        break
-      case "whatsappList":
-        node = createListNode(platform, position, customId)
-        break
-      case "comment":
-        node = createCommentNode(platform, position, customId)
-        break
-      default:
-        throw new Error(`Unknown node type: ${nodeType}`)
+  switch (nodeType) {
+    case "question":
+      node = createQuestionNode(platform, position, customId)
+      break
+    case "quickReply":
+      node = createQuickReplyNode(platform, position, customId)
+      break
+    case "whatsappList":
+      node = createListNode(platform, position, customId)
+      break
+    case "comment":
+      node = createCommentNode(platform, position, customId)
+      break
+    default:
+      throw new Error(`Unknown node type: ${nodeType}`)
     }
   }
 

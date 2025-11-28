@@ -216,12 +216,11 @@ export function NameNode({ data, selected }: { data: any; selected?: boolean }) 
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium mr-2">Next</span>
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-purple-500 border-2 border-background opacity-100 hover:scale-110 transition-transform relative"
-            style={{ position: "relative", transform: "none", right: "auto", top: "auto" }}
+            className="w-3 h-3 bg-purple-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

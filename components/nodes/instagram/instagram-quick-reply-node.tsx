@@ -261,18 +261,12 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium">Next</span>
+          <span className="text-[10px] text-muted-foreground font-medium mr-2">Next</span>
           <Handle
             type="source"
             position={Position.Right}
             id="next-step"
             className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
-            style={{
-              position: "absolute",
-              bottom: "8px",
-              right: "-8px",
-              zIndex: 10,
-            }}
           />
         </div>
       </Card>

@@ -127,8 +127,43 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
       id: btn.id,
       value: btn.value
     }))
-    if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+    
+    // If we have more buttons than the Quick Reply limit, trigger conversion to List
+    if (formattedButtons.length > maxButtons) {
+      handleConvertToListWithButtons(formattedButtons)
+    } else {
+      if (data.onNodeUpdate) {
+        data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+      }
+    }
+  }
+
+  const handleConvertToListWithButtons = (buttons: any[]) => {
+    const questionText = editingQuestionValue || data.question
+
+    if (!questionText?.trim()) {
+      toast.error('Please add a question first')
+      return
+    }
+
+    // Convert buttons to options
+    const options = buttons.map((b: any) => ({
+      id: b.id || `opt-${Date.now()}-${Math.random()}`,
+      text: b.text || b.label,
+      value: b.value || b.text?.toLowerCase().replace(/\s+/g, '_')
+    }))
+
+    // Convert to List node
+    if (data.onConvert) {
+      data.onConvert(data.id, 'whatsappList', { 
+        ...data,
+        question: questionText,
+        options,
+        buttons: undefined // Remove buttons field
+      })
+      toast.success('Upgraded to WhatsApp List!', {
+        description: `Now you have ${options.length} options (was limited to 3 buttons)`
+      })
     }
   }
 
@@ -253,18 +288,18 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
               />
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`text-xs ${
-                      isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
-                    }`}
-                  >
-                    {editingQuestionValue.length}/{maxQuestionLength}
-                  </span>
-                  {isOverLimit(editingQuestionValue, "question") && (
-                    <Badge variant="destructive" className="text-xs h-5">
-                      Too long
-                    </Badge>
-                  )}
+                <span
+                  className={`text-xs ${
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
+                  }`}
+                >
+                  {editingQuestionValue.length}/{maxQuestionLength}
+                </span>
+                {isOverLimit(editingQuestionValue, "question") && (
+                  <Badge variant="destructive" className="text-xs h-5">
+                    Too long
+                  </Badge>
+                )}
                 </div>
                 <div className="opacity-0 group-hover/question:opacity-100 transition-opacity">
                   <AIToolbar
@@ -288,12 +323,12 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && buttons.length < maxButtons && (
+          {(data.question || editingQuestionValue) && buttons.length < 10 && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
               buttons={buttons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
               onUpdateButtons={handleUpdateButtons}
-              maxButtons={maxButtons}
+              maxButtons={10} // Allow up to 10, will auto-convert to List if needed
               maxButtonLength={maxButtonLength}
               nodeType={nodeType}
               platform={platform}
@@ -330,11 +365,11 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                     </div>
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-1">
-                        <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
-                          {editingButtonValue.length}/{maxButtonLength}
-                        </span>
-                        {isOverLimit(editingButtonValue, "button") && (
-                          <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
+                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
+                        {editingButtonValue.length}/{maxButtonLength}
+                      </span>
+                      {isOverLimit(editingButtonValue, "button") && (
+                        <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
                         )}
                       </div>
                       {isOverLimit(editingButtonValue, "button") && (

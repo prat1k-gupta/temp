@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3 } from "lucide-react"
+import { Plus, Edit3, Wand2, ArrowRight, X, Check } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
+import { AIToolbar, AIButtonToolbar } from "@/components/ai"
+import { getNodeLimits } from "@/constants"
 import { useState, useEffect } from "react"
+import type { Platform, ButtonData } from "@/types"
+import { toast } from "sonner"
 
 const INSTAGRAM_LIMITS = {
   question: 100,
@@ -20,6 +24,15 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
+  const [manualButtons, setManualButtons] = useState<ButtonData[]>(data.buttons || [])
+  const [editingButtonId, setEditingButtonId] = useState<string | null>(null)
+  const [editingButtonText, setEditingButtonText] = useState("")
+
+  const platform = (data.platform || "instagram") as Platform
+  const nodeType = "instagramQuestion"
+  const nodeLimits = getNodeLimits(nodeType, platform)
+  const maxLength = nodeLimits.question?.max || INSTAGRAM_LIMITS.question
+  const maxButtons = nodeLimits.buttons?.max || 10
 
   useEffect(() => {
     if (!isEditingLabel) {
@@ -34,7 +47,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   }, [data.question, isEditingQuestion])
 
   const isOverLimit = (text: string, type: "question" | "button") => {
-    return text.length > INSTAGRAM_LIMITS[type]
+    return type === "question" ? text.length > maxLength : text.length > INSTAGRAM_LIMITS.button
   }
 
   const startEditingLabel = () => {
@@ -69,6 +82,127 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const cancelEditingQuestion = () => {
     setEditingQuestionValue(data.question || "")
     setIsEditingQuestion(false)
+  }
+
+  // Manual button management
+  const addManualButton = () => {
+    if (manualButtons.length >= maxButtons) {
+      toast.error(`Maximum ${maxButtons} buttons allowed`)
+      return
+    }
+    const buttonId = `btn-${Date.now()}`
+    const newButton: ButtonData = {
+      id: buttonId,
+      text: "",
+      label: "",
+      value: ""
+    }
+    const updated = [...manualButtons, newButton]
+    setManualButtons(updated)
+    setEditingButtonId(buttonId)
+    setEditingButtonText("")
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+    }
+  }
+
+  const startEditingButton = (buttonId: string, currentText: string) => {
+    setEditingButtonId(buttonId)
+    setEditingButtonText(currentText)
+  }
+
+  const finishEditingButton = () => {
+    if (!editingButtonId) return
+    
+    const updated = manualButtons.map(btn => 
+      btn.id === editingButtonId 
+        ? { ...btn, text: editingButtonText, label: editingButtonText, value: editingButtonText.toLowerCase().replace(/\s+/g, '_') }
+        : btn
+    )
+    setManualButtons(updated)
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+    }
+    setEditingButtonId(null)
+    setEditingButtonText("")
+  }
+
+  const deleteManualButton = (buttonId: string) => {
+    const updated = manualButtons.filter(btn => btn.id !== buttonId)
+    setManualButtons(updated)
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+    }
+  }
+
+  // Sync manual buttons with data
+  useEffect(() => {
+    if (data.buttons && JSON.stringify(data.buttons) !== JSON.stringify(manualButtons)) {
+      setManualButtons(data.buttons)
+    }
+  }, [data.buttons])
+
+  const handleUpdateButtons = (newButtons: ButtonData[]) => {
+    const questionText = editingQuestionValue || data.question
+
+    if (!questionText?.trim()) {
+      toast.error('Please add a question first')
+      return
+    }
+
+    // Convert buttons to proper format
+    const formattedButtons = newButtons.map(btn => ({
+      text: btn.label || btn.text,
+      id: btn.id,
+      value: btn.value
+    }))
+
+    // Auto-convert to Quick Reply when buttons are generated
+    if (data.onConvert) {
+      data.onConvert(data.id, 'instagramQuickReply', { 
+        ...data,
+        question: questionText,
+        buttons: formattedButtons
+      })
+      toast.success('Converted to Quick Reply!', {
+        description: `Added ${formattedButtons.length} button${formattedButtons.length > 1 ? 's' : ''}`
+      })
+    }
+  }
+
+  const handleConvertWithManualButtons = () => {
+    const questionText = editingQuestionValue || data.question
+
+    if (!questionText?.trim()) {
+      toast.error('Please add a question first')
+      return
+    }
+
+    if (manualButtons.length === 0) {
+      toast.error('No buttons to convert')
+      return
+    }
+
+    // Check if all manual buttons have text
+    const emptyButtons = manualButtons.filter(b => !b.text?.trim())
+    if (emptyButtons.length > 0) {
+      toast.error('Please fill in all button text')
+      return
+    }
+
+    // Convert to Quick Reply node with manual buttons
+    if (data.onConvert) {
+      data.onConvert(data.id, 'instagramQuickReply', { 
+        ...data,
+        question: questionText,
+        buttons: manualButtons.map(b => ({
+          text: b.text,
+          id: b.id,
+          value: b.value
+        }))
+      })
+      toast.success('Converted to Quick Reply!')
+    }
   }
 
   return (
@@ -109,11 +243,10 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2">
+            <div className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
-                onBlur={finishEditingQuestion}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -127,19 +260,32 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                 placeholder="Enter your message..."
                 autoFocus
               />
+              
               <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
                 <span
                   className={`text-xs ${
                     isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
                   }`}
                 >
-                  {editingQuestionValue.length}/{INSTAGRAM_LIMITS.question}
+                    {editingQuestionValue.length}/{maxLength}
                 </span>
                 {isOverLimit(editingQuestionValue, "question") && (
                   <Badge variant="destructive" className="text-xs h-5">
                     Too long
                   </Badge>
                 )}
+                </div>
+                <div className="opacity-0 group-hover/question:opacity-100 transition-opacity">
+                  <AIToolbar
+                    value={editingQuestionValue}
+                    onChange={setEditingQuestionValue}
+                    nodeType={nodeType}
+                    platform={platform}
+                    field="question"
+                    maxLength={maxLength}
+                  />
+                </div>
               </div>
             </div>
           ) : (
@@ -151,15 +297,145 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
             </div>
           )}
 
-          {selected && <Button
+          {/* AI Button Generator */}
+          {(data.question || editingQuestionValue) && manualButtons.length < 10 && (
+            <AIButtonToolbar
+              questionContext={editingQuestionValue || data.question}
+              buttons={manualButtons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
+              onUpdateButtons={handleUpdateButtons}
+              maxButtons={10}
+              maxButtonLength={INSTAGRAM_LIMITS.button}
+              nodeType={nodeType}
+              platform={platform}
+            />
+          )}
+
+          {/* Manual Buttons Section */}
+          {(
+            <div className="space-y-2">
+              {manualButtons.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-pink-600 dark:text-pink-400">
+                    Buttons ({manualButtons.length}/{maxButtons})
+                  </span>
+                </div>
+              )}
+              
+              {/* Manual Buttons List */}
+              {manualButtons.map((button) => {
+                const buttonId = button.id || ""
+                return (
+                <div key={buttonId} className="flex items-center gap-1.5">
+                  {editingButtonId === buttonId ? (
+                    <div className="flex-1 flex items-center gap-1">
+                      <Input
+                        value={editingButtonText}
+                        onChange={(e) => setEditingButtonText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            finishEditingButton()
+                          } else if (e.key === "Escape") {
+                            setEditingButtonId(null)
+                            setEditingButtonText("")
+                          }
+                        }}
+                        placeholder="Button text"
+                        className="h-7 text-xs"
+                        autoFocus
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => finishEditingButton()}
+                        className="h-7 w-7 p-0"
+                      >
+                        <Check className="w-3 h-3 text-green-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteManualButton(buttonId)}
+                        className="h-7 w-7 p-0"
+                      >
+                        <X className="w-3 h-3 text-red-600" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEditingButton(buttonId, button.text || "")}
+                        className="flex-1 h-7 justify-start text-xs font-normal"
+                      >
+                        {button.text || "Empty button"}
+                      </Button>
+                      <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-muted-foreground"
-            onClick={data.onAddButton}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            Add Button
-          </Button>}
+                        onClick={() => deleteManualButton(buttonId)}
+                        className="h-7 w-7 p-0"
+                      >
+                        <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )
+              })}
+
+              {/* Action Buttons Row */}
+              <div className="flex gap-1.5">
+                {/* Add Manual Button */}
+                {manualButtons.length < maxButtons && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      addManualButton()
+                    }}
+                    className="flex-1 h-7 px-2 text-xs gap-1 border-pink-200 dark:border-pink-800"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Button</span>
+                  </Button>
+                )}
+
+                {/* Convert with Manual Buttons */}
+                {manualButtons.length > 0 && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleConvertWithManualButtons()
+                    }}
+                    className="flex-1 h-7 px-2 text-xs gap-1 bg-pink-500 hover:bg-pink-600"
+                  >
+                    <ArrowRight className="w-3 h-3" />
+                    <span>Convert</span>
+                  </Button>
+                )}
+              </div>
+
+              {/* Divider between Manual and AI (only show if there are no manual buttons yet) */}
+              {manualButtons.length === 0 && (
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-border"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </CardContent>
 
         <Handle

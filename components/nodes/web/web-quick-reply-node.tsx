@@ -254,18 +254,18 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
               />
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`text-xs ${
-                      isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
-                    }`}
-                  >
-                    {editingQuestionValue.length}/{maxQuestionLength}
-                  </span>
-                  {isOverLimit(editingQuestionValue, "question") && (
-                    <Badge variant="destructive" className="text-xs h-5">
-                      Too long
-                    </Badge>
-                  )}
+                <span
+                  className={`text-xs ${
+                    isOverLimit(editingQuestionValue, "question") ? "text-red-500" : "text-muted-foreground"
+                  }`}
+                >
+                  {editingQuestionValue.length}/{maxQuestionLength}
+                </span>
+                {isOverLimit(editingQuestionValue, "question") && (
+                  <Badge variant="destructive" className="text-xs h-5">
+                    Too long
+                  </Badge>
+                )}
                 </div>
                 <div className="opacity-0 group-hover/question:opacity-100 transition-opacity">
                   <AIToolbar
@@ -331,11 +331,11 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                     </div>
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-1">
-                        <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
-                          {editingButtonValue.length}/{maxButtonLength}
-                        </span>
-                        {isOverLimit(editingButtonValue, "button") && (
-                          <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
+                      <span className={`text-xs ${isOverLimit(editingButtonValue, "button") ? "text-red-500" : "text-muted-foreground"}`}>
+                        {editingButtonValue.length}/{maxButtonLength}
+                      </span>
+                      {isOverLimit(editingButtonValue, "button") && (
+                        <Badge variant="destructive" className="text-xs h-5">Too long</Badge>
                         )}
                       </div>
                       {isOverLimit(editingButtonValue, "button") && (

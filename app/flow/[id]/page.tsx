@@ -601,6 +601,16 @@ export default function MagicFlow() {
             const newType = getPlatformSpecificNodeType("whatsappList", platform)
             const newLabel = getPlatformSpecificLabel("whatsappList", platform)
             
+            // Convert buttons to options
+            const convertedOptions = currentButtons.map((btn: ButtonData) => ({
+              id: btn.id || `opt-${Date.now()}-${Math.random()}`,
+              text: btn.text || btn.label || "",
+              value: btn.value || btn.text?.toLowerCase().replace(/\s+/g, '_') || ""
+            }))
+            
+            // Add the new option
+            const newOptions = [...convertedOptions, createOptionData("", currentButtons.length)] as OptionData[]
+            
             // Track the type transition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -608,7 +618,8 @@ export default function MagicFlow() {
             changeTracker.trackNodeUpdate(nodeId, node.data, {
               ...node.data,
               label: newLabel,
-              options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
+              options: newOptions,
+              buttons: undefined, // Remove buttons field
             }, node.type, newType)
             updateDraftChanges()
             
@@ -621,12 +632,21 @@ export default function MagicFlow() {
                       data: {
                         ...n.data,
                         label: newLabel,
-                        options: [...currentButtons, createOptionData("", currentButtons.length)] as OptionData[],
+                        options: newOptions,
+                        buttons: undefined, // Remove buttons field
                       },
                     }
                   : n,
               ),
             )
+            
+            console.log(`[v0] Auto-converted Quick Reply to List (${currentButtons.length} → ${newOptions.length} options)`)
+            
+            // Show toast notification
+            toast.success(`Upgraded to ${newLabel}!`, {
+              description: `You can now add up to 10 options (was limited to 3 buttons)`
+            })
+            
             // Request focus on the converted node
             setNodeToFocus(nodeId)
           } else {
@@ -1412,6 +1432,52 @@ export default function MagicFlow() {
       }
     },
     [setNodes, setSelectedNode, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform, flowId],
+  )
+
+  // Convert node from one type to another
+  const convertNode = useCallback(
+    (nodeId: string, newNodeType: string, updatedData: any) => {
+      try {
+        if (!isValidNodeId(nodeId)) {
+          console.error("[v0] Invalid nodeId provided to convertNode:", nodeId)
+          return
+        }
+
+        console.log("[v0] Converting node:", nodeId, "to", newNodeType)
+
+        const oldNode = nodes.find(n => n.id === nodeId)
+        if (oldNode) {
+          if (!isEditMode) {
+            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+          }
+          // Track the conversion as a type change
+          changeTracker.trackNodeUpdate(nodeId, oldNode.data, updatedData, oldNode.type, newNodeType)
+          updateDraftChanges()
+        }
+
+        setNodes((nds) =>
+          nds.map((node) => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                type: newNodeType,
+                data: {
+                  ...node.data,
+                  ...updatedData,
+                },
+                _timestamp: Date.now(),
+              }
+            }
+            return node
+          })
+        )
+
+        console.log("[v0] Node converted successfully")
+      } catch (error) {
+        console.error(`[v0] Error converting node ${nodeId}:`, error)
+      }
+    },
+    [setNodes, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform],
   )
 
   // Custom onEdgesChange to handle condition node disconnection
@@ -2292,6 +2358,7 @@ export default function MagicFlow() {
                     onAddOption: () => addButtonToNode(node.id),
                     onAddConnection: () => addConnectedNode(node.id),
                     onDelete: () => deleteNode(node.id),
+                    onConvert: convertNode,
                   },
                 }
               })}

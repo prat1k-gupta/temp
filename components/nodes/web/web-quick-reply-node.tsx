@@ -324,7 +324,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                         variant="ghost"
                         size="sm"
                         onClick={() => removeButton(index)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -350,7 +350,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                             }}
                             onMouseDown={(e) => e.preventDefault()}
                             disabled={ai.loading}
-                            className="h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                            className="h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer"
                             title="Shorten with AI"
                           >
                             <Minimize2 className="w-3 h-3 text-purple-500" />
@@ -364,7 +364,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-accent/40 hover:bg-accent/50 text-card-foreground transition-colors cursor-pointer group/btn"
+                    className="w-full justify-start text-xs h-7 bg-accent/40 hover:bg-accent/50 text-card-foreground [&:hover]:text-foreground transition-colors cursor-pointer group/btn"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
@@ -397,7 +397,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-xs h-7 border border-dashed border-border hover:border-accent hover:bg-accent/30 transition-colors text-muted-foreground"
+              className="w-full justify-center text-xs h-7 border border-dashed border-blue-200 dark:border-blue-800 hover:border-solid hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/20 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
               onClick={data.onAddButton}
             >
               <Plus className="w-3 h-3 mr-1" />

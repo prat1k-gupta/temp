@@ -108,9 +108,9 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
 
   const finishEditingButton = () => {
     if (!editingButtonId) return
-    
-    const updated = manualButtons.map(btn => 
-      btn.id === editingButtonId 
+
+    const updated = manualButtons.map(btn =>
+      btn.id === editingButtonId
         ? { ...btn, text: editingButtonText, label: editingButtonText, value: editingButtonText.toLowerCase().replace(/\s+/g, '_') }
         : btn
     )
@@ -154,7 +154,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
 
     // Auto-convert to Quick Reply when buttons are generated
     if (data.onConvert) {
-      data.onConvert(data.id, 'whatsappQuickReply', { 
+      data.onConvert(data.id, 'whatsappQuickReply', {
         ...data,
         question: questionText,
         buttons: formattedButtons
@@ -187,7 +187,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
 
     // Convert to Quick Reply node with manual buttons
     if (data.onConvert) {
-      data.onConvert(data.id, 'whatsappQuickReply', { 
+      data.onConvert(data.id, 'whatsappQuickReply', {
         ...data,
         question: questionText,
         buttons: manualButtons.map(b => ({
@@ -203,9 +203,8 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-card border-green-100 dark:border-green-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-green-200 dark:hover:border-green-800 ${
-          selected ? "ring-1 ring-green-300/50 dark:ring-green-600/50 shadow-md" : ""
-        }`}
+        className={`min-w-[260px] max-w-[300px] bg-card border-green-100 dark:border-green-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-green-200 dark:hover:border-green-800 ${selected ? "ring-1 ring-green-300/50 dark:ring-green-600/50 shadow-md" : ""
+          }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
@@ -249,27 +248,25 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                   }
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className={`text-sm min-h-[60px] resize-none border-green-200 focus:border-green-300 ${
-                  isOverLimit(editingQuestionValue) ? "border-red-300" : ""
-                }`}
+                className={`text-sm min-h-[60px] resize-none border-green-200 focus:border-green-300 ${isOverLimit(editingQuestionValue) ? "border-red-300" : ""
+                  }`}
                 placeholder={nodeLimits.question?.placeholder || "Enter your message..."}
                 autoFocus
               />
-              
+
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs ${
-                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-muted-foreground"
-                  }`}
-                >
-                  {editingQuestionValue.length}/{maxLength}
-                </span>
-                {isOverLimit(editingQuestionValue) && (
-                  <Badge variant="destructive" className="text-xs h-5">
-                    Too long
-                  </Badge>
-                )}
+                  <span
+                    className={`text-xs ${isOverLimit(editingQuestionValue) ? "text-red-500" : "text-muted-foreground"
+                      }`}
+                  >
+                    {editingQuestionValue.length}/{maxLength}
+                  </span>
+                  {isOverLimit(editingQuestionValue) && (
+                    <Badge variant="destructive" className="text-xs h-5">
+                      Too long
+                    </Badge>
+                  )}
                 </div>
                 <div className="opacity-0 group-hover/question:opacity-100 transition-opacity">
                   <AIToolbar
@@ -315,69 +312,69 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                   </span>
                 </div>
               )}
-              
+
               {/* Manual Buttons List */}
               {manualButtons.map((button) => {
                 const buttonId = button.id || ""
                 return (
-                <div key={buttonId} className="flex items-center gap-1.5">
-                  {editingButtonId === buttonId ? (
-                    <div className="flex-1 flex items-center gap-1">
-                      <Input
-                        value={editingButtonText}
-                        onChange={(e) => setEditingButtonText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            finishEditingButton()
-                          } else if (e.key === "Escape") {
-                            setEditingButtonId(null)
-                            setEditingButtonText("")
-                          }
-                        }}
-                        placeholder="Button text"
-                        className="h-7 text-xs"
-                        autoFocus
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => finishEditingButton()}
-                        className="h-7 w-7 p-0"
-                      >
-                        <Check className="w-3 h-3 text-green-600" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0"
-                      >
-                        <X className="w-3 h-3 text-red-600" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditingButton(buttonId, button.text || "")}
-                        className="flex-1 h-7 justify-start text-xs font-normal"
-                      >
-                        {button.text || "Empty button"}
-                      </Button>
-                      <Button
-            variant="ghost"
-            size="sm"
-                        onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0"
-                      >
-                        <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )
+                  <div key={buttonId} className="flex items-center gap-1.5">
+                    {editingButtonId === buttonId ? (
+                      <div className="flex-1 flex items-center gap-1">
+                        <Input
+                          value={editingButtonText}
+                          onChange={(e) => setEditingButtonText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              finishEditingButton()
+                            } else if (e.key === "Escape") {
+                              setEditingButtonId(null)
+                              setEditingButtonText("")
+                            }
+                          }}
+                          placeholder="Button text"
+                          className="h-7 text-xs"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => finishEditingButton()}
+                          className="h-7 w-7 p-0"
+                        >
+                          <Check className="w-3 h-3 text-green-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteManualButton(buttonId)}
+                          className="h-7 w-7 p-0"
+                        >
+                          <X className="w-3 h-3 text-red-600" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditingButton(buttonId, button.text || "")}
+                          className="flex-1 h-7 justify-start text-xs font-normal hover:bg-accent/10"
+                        >
+                          {button.text || "Empty button"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteManualButton(buttonId)}
+                          className="h-7 w-7 p-0"
+                        >
+                          <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )
               })}
 
               {/* Action Buttons Row */}
@@ -392,10 +389,11 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                       e.stopPropagation()
                       addManualButton()
                     }}
-                    className="flex-1 h-7 px-2 text-xs gap-1 border-green-200 dark:border-green-800"
+                    className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-solid hover:border-green-300 hover:bg-green-50/30 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
+
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Add Button</span>
+                    Add Button
                   </Button>
                 )}
 

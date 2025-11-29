@@ -348,7 +348,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                         variant="ghost"
                         size="sm"
                         onClick={() => finishEditingButton()}
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 cursor-pointer"
                       >
                         <Check className="w-3 h-3 text-green-600" />
                       </Button>
@@ -356,7 +356,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                         variant="ghost"
                         size="sm"
                         onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 cursor-pointer"
                       >
                         <X className="w-3 h-3 text-red-600" />
                       </Button>
@@ -367,7 +367,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                         variant="outline"
                         size="sm"
                         onClick={() => startEditingButton(buttonId, button.text || "")}
-                        className="flex-1 h-7 justify-start text-xs font-normal"
+                        className="flex-1 h-7 justify-start text-xs font-normal [&:hover]:text-foreground cursor-pointer"
                       >
                         {button.text || "Empty button"}
                       </Button>
@@ -375,7 +375,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
             variant="ghost"
             size="sm"
                         onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 cursor-pointer"
                       >
                         <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
                       </Button>
@@ -397,7 +397,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                       e.stopPropagation()
                       addManualButton()
                     }}
-                    className="flex-1 h-7 px-2 text-xs gap-1 border-pink-200 dark:border-pink-800"
+                    className="flex-1 h-7 px-2 text-xs gap-1 border-dashed border-pink-200 dark:border-pink-800 hover:border-solid hover:bg-pink-50 dark:hover:bg-pink-950/20 [&:hover]:text-foreground cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add Button</span>
@@ -414,7 +414,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                       e.stopPropagation()
                       handleConvertWithManualButtons()
                     }}
-                    className="flex-1 h-7 px-2 text-xs gap-1 bg-pink-500 hover:bg-pink-600"
+                    className="flex-1 h-7 px-2 text-xs gap-1 bg-pink-500 hover:bg-pink-600 cursor-pointer"
                   >
                     <ArrowRight className="w-3 h-3" />
                     <span>Convert</span>

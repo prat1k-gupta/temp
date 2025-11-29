@@ -213,7 +213,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                         variant="ghost"
                         size="sm"
                         onClick={() => removeOption(index)}
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -253,7 +253,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-xs h-7 border border-dashed border-purple-200 hover:border-purple-300 hover:bg-purple-50/30 transition-colors text-muted-foreground"
+                className="w-full justify-center text-xs h-7 border border-dashed border-pink-200 dark:border-pink-800 hover:border-solid hover:border-pink-300 dark:hover:border-pink-700 hover:bg-pink-50 dark:hover:bg-pink-950/20 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
                 onClick={data.onAddOption}
               >
                 <Plus className="w-3 h-3 mr-1" />

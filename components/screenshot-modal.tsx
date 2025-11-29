@@ -28,12 +28,16 @@ import {
 } from "@/utils/screenshot-utils"
 
 interface ScreenshotModalProps {
-  children: React.ReactNode
+  children?: React.ReactNode
   flowElementRef: React.RefObject<HTMLElement>
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function ScreenshotModal({ children, flowElementRef }: ScreenshotModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export function ScreenshotModal({ children, flowElementRef, open: controlledOpen, onOpenChange }: ScreenshotModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = onOpenChange || setInternalOpen
   const [isCapturing, setIsCapturing] = useState(false)
   const [screenshotResult, setScreenshotResult] = useState<any>(null)
   const [copied, setCopied] = useState(false)
@@ -115,9 +119,11 @@ export function ScreenshotModal({ children, flowElementRef }: ScreenshotModalPro
         resetScreenshot()
       }
     }}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent className="min-w-[60vw] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

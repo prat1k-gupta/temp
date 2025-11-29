@@ -19,11 +19,15 @@ interface ExportModalProps {
     timestamp: string
   }
   onImportFlow: (nodes: Node[], edges: Edge[], platform: Platform) => void
-  children: React.ReactNode
+  children?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function ExportModal({ flowData, onImportFlow, children }: ExportModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange }: ExportModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = onOpenChange || setInternalOpen
   const [copied, setCopied] = useState(false)
   const [importJson, setImportJson] = useState("")
   const [importError, setImportError] = useState("")
@@ -147,9 +151,11 @@ export function ExportModal({ flowData, onImportFlow, children }: ExportModalPro
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

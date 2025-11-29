@@ -54,7 +54,17 @@ import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
+import { getPlatformDisplayName } from "@/utils/platform-labels"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw, ChevronDown } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
@@ -191,6 +201,10 @@ export default function MagicFlow() {
   const [flowLoaded, setFlowLoaded] = useState(false)
   const [showSetupModal, setShowSetupModal] = useState(isSetupMode)
   const [isAISuggestionsPanelOpen, setIsAISuggestionsPanelOpen] = useState(false)
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false)
+  const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false)
+  const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
   
   // Node suggestions hook
   const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
@@ -2840,207 +2854,267 @@ export default function MagicFlow() {
       <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
       <div className="flex-1 relative pb-24">
-        <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
-          <div className="flex items-center justify-between px-6 py-4">
-            {/* Left Section - App Logo and Title */}
-            <div className="flex items-center gap-3">
+        <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
+          <div className="flex items-center justify-between px-6 py-3 gap-2">
+            {/* Left Section - Flow Name, Version, and State */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <div 
-                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
                 onClick={() => router.push('/flows')}
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-white" />
                 </div>
-                <h1 className="text-xl font-bold text-foreground">Magic Flow</h1>
               </div>
-              {currentVersion && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span className="font-medium">{currentVersion.name}</span>
-                  {currentVersion.isPublished && !isEditMode ? (
-                    <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
+              {currentFlow && (
+                <>
+                  <h1 className="text-lg font-semibold text-foreground truncate">
+                    {currentFlow.name}
+                  </h1>
+                  {currentVersion && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
+                      <span className="font-medium">{currentVersion.name}</span>
+                      {currentVersion.isPublished && !isEditMode ? (
+                        <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
+                      )}
+                      {!isEditMode && !currentVersion.isPublished && (
+                        <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
+                      )}
+                    </div>
                   )}
-                  {!isEditMode && !currentVersion.isPublished && (
-                    <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
-                  )}
-                </div>
+                </>
               )}
             </div>
 
-            {/* Center Section - Mode and Actions */}
-            <div className="flex items-center gap-2">
+            {/* Center Section - Edit/View Mode and Publish Button */}
+            <div className="flex items-center gap-2 shrink-0">
               {/* Mode Toggle */}
               <Button 
-                variant={isEditMode ? "default" : "ghost"} 
+                variant={isEditMode ? "default" : "outline"} 
                 size="sm"
                 onClick={handleModeToggle}
-                className="flex items-center gap-2 h-8 px-3"
+                className="flex items-center gap-2 h-9 px-3"
               >
                 <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
                 {isEditMode ? "Edit" : "View"}
               </Button>
-
-              {/* Reset to Published Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm(getAllVersions().find(v => v.isPublished) 
-                    ? "Reset to last published version? All unsaved changes will be lost." 
-                    : "No published version exists. Clear everything?"
-                  )) {
-                    resetToPublished(setNodes, setEdges, setPlatform)
-                    setSelectedNode(null)
-                    setSelectedNodes([])
-                    setIsPropertiesPanelOpen(false)
-                    toast.success(getAllVersions().find(v => v.isPublished) 
-                      ? "Reset to published version" 
-                      : "Flow cleared"
-                    )
+              <PublishModal
+                changes={draftChanges}
+                hasUnsavedChanges={editModeState.hasUnsavedChanges}
+                onCreateVersion={async (name, description) => {
+                  console.log('[App] Creating and publishing new version:', name)
+                  setIsLoadingVersion(true)
+                  const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
+                  if (publishedVersion) {
+                    console.log('[App] Successfully created and published version:', publishedVersion.name)
                   }
                 }}
-                className="flex items-center gap-2 h-8 px-3"
+                onPublishVersion={async (versionId, versionName, description) => {
+                  console.log('[App] Publishing version and switching to view mode', {
+                    versionId, versionName, description,
+                    currentNodes: nodes.length, currentEdges: edges.length, currentPlatform: platform,
+                    isEditMode, currentVersion: currentVersion?.name
+                  })
+                  setIsLoadingVersion(true)
+                  const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
+                  if (publishedVersion) {
+                    console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
+                  } else {
+                    console.log('[App] Failed to publish version')
+                  }
+                }}
+                currentVersion={currentVersion}
               >
-                <RotateCcw className="w-3 h-3" />
-                Reset
-              </Button>
-              
-              {isEditMode && hasActualChanges(nodes, edges, platform) && (
-                <ChangesModal changes={draftChanges}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-orange-600 border-orange-600 hover:bg-orange-50 hover:border-orange-700 transition-colors"
-                  >
-                    <Clock className="w-3 h-3 mr-1" />
-                    {getChangesSummary()}
-                  </Button>
-                </ChangesModal>
-              )}
-
-              {/* Action Icons with Hover Animation */}
-              <div className="flex items-center gap-1">
-                <div className="relative group">
-                  <ExportModal
-                    flowData={{
-                      nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
-                      edges: edges.map(({ style, ...edge }) => edge),
-                      platform,
-                      timestamp: new Date().toISOString(),
-                    }}
-                    onImportFlow={importFlow}
-                  >
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </ExportModal>
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                    Export/Import Flow
-                  </div>
-                </div>
-
-                <div className="relative group">
-                  <VersionHistoryModal
-                    versions={getAllVersions()}
-                    currentVersion={currentVersion}
-                    onLoadVersion={(version) => {
-                      console.log('[App] Loading version from history:', version.name)
-                      setIsLoadingVersion(true)
-                      loadVersion(version, setNodes, setEdges, setPlatform)
-                      setSelectedNode(null)
-                      setSelectedNodes([])
-                      setIsPropertiesPanelOpen(false)
-                    }}
-                    onDeleteVersion={(versionId) => {
-                      console.log("Delete version:", versionId)
-                    }}
-                    onCreateVersion={async (name, description) => {
-                      await createNewVersion(nodes, edges, platform, name, description)
-                    }}
-                    onPublishVersion={async (versionId) => {
-                      await publishVersion(flowId, versionId)
-                    }}
-                    isEditMode={isEditMode}
-                    hasChanges={hasActualChanges(nodes, edges, platform)}
-                  >
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
-                      <History className="w-4 h-4" />
-                    </Button>
-                  </VersionHistoryModal>
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                    Version History
-                  </div>
-                </div>
-
-                <div className="relative group">
-                  <PublishModal
-                    changes={draftChanges}
-                    hasUnsavedChanges={editModeState.hasUnsavedChanges}
-                    onCreateVersion={async (name, description) => {
-                      console.log('[App] Creating and publishing new version:', name)
-                      setIsLoadingVersion(true)
-                      const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
-                      if (publishedVersion) {
-                        console.log('[App] Successfully created and published version:', publishedVersion.name)
-                      }
-                    }}
-                    onPublishVersion={async (versionId, versionName, description) => {
-                      console.log('[App] Publishing version and switching to view mode', {
-                        versionId, versionName, description,
-                        currentNodes: nodes.length, currentEdges: edges.length, currentPlatform: platform,
-                        isEditMode, currentVersion: currentVersion?.name
-                      })
-                      setIsLoadingVersion(true)
-                      const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
-                      if (publishedVersion) {
-                        console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
-                      } else {
-                        console.log('[App] Failed to publish version')
-                      }
-                    }}
-                    currentVersion={currentVersion}
-                  >
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      disabled={(() => {
-                        const hasChanges = hasActualChanges(nodes, edges, platform)
-                        const changesCount = getChangesCount()
-                        const isDisabled = !isEditMode || !hasChanges || changesCount === 0
-                        return isDisabled
-                      })()}
-                      className="h-8 w-8 p-0 cursor-pointer"
-                    >
-                      <Upload className="w-4 h-4" />
-                    </Button>
-                  </PublishModal>
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                    Publish Changes
-                  </div>
-                </div>
-
-                <div className="relative group">
-                  <ScreenshotModal flowElementRef={flowElementRef}>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
-                      <Camera className="w-4 h-4" />
-                    </Button>
-                  </ScreenshotModal>
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                    Take Screenshot
-                  </div>
-                </div>
-              </div>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  disabled={(() => {
+                    const hasChanges = hasActualChanges(nodes, edges, platform)
+                    const changesCount = getChangesCount()
+                    const isDisabled = !isEditMode || !hasChanges || changesCount === 0
+                    return isDisabled
+                  })()}
+                  className="h-9 px-4 gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Publish
+                </Button>
+              </PublishModal>
             </div>
-            {/* Right Section - Theme and Platform */}
-            <div className="flex items-center gap-4">
-              <ThemeToggle />
-              <div className="px-3 py-2 rounded-lg bg-muted/50">
-                <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
-              </div>
+
+            {/* Right Section - Platform and Menu */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Platform Selector - Highlighted */}
+              <button
+                type="button"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 transition-all cursor-pointer hover:shadow-md ${
+                  platform === "web" 
+                    ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50" 
+                    : platform === "whatsapp"
+                    ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50"
+                    : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-950/50"
+                }`}
+                onClick={() => {
+                  const platforms: Platform[] = ["web", "whatsapp", "instagram"]
+                  const currentIndex = platforms.indexOf(platform)
+                  const nextIndex = (currentIndex + 1) % platforms.length
+                  handlePlatformChange(platforms[nextIndex])
+                }}
+                title={`Click to switch platform. Current: ${getPlatformDisplayName(platform)}`}
+              >
+                {platform === "web" && <WebIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                {platform === "whatsapp" && <WhatsAppIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
+                {platform === "instagram" && <InstagramIcon className="w-4 h-4 text-pink-600 dark:text-pink-400" />}
+                <span className={`text-sm font-semibold ${
+                  platform === "web"
+                    ? "text-blue-700 dark:text-blue-300"
+                    : platform === "whatsapp"
+                    ? "text-green-700 dark:text-green-300"
+                    : "text-pink-700 dark:text-pink-300"
+                }`}>
+                  {getPlatformDisplayName(platform)}
+                </span>
+              </button>
+
+              {/* More Options Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                    <span className="sr-only">More options</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Flow Options</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  
+                  {/* Changes Indicator */}
+                  {isEditMode && hasActualChanges(nodes, edges, platform) && (
+                    <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
+                      <Clock className="w-4 h-4 mr-2" />
+                      {getChangesSummary()}
+                    </DropdownMenuItem>
+                  )}
+
+                  <DropdownMenuSeparator />
+
+                  {/* Reset */}
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      if (window.confirm(getAllVersions().find(v => v.isPublished) 
+                        ? "Reset to last published version? All unsaved changes will be lost." 
+                        : "No published version exists. Clear everything?"
+                      )) {
+                        resetToPublished(setNodes, setEdges, setPlatform)
+                        setSelectedNode(null)
+                        setSelectedNodes([])
+                        setIsPropertiesPanelOpen(false)
+                        toast.success(getAllVersions().find(v => v.isPublished) 
+                          ? "Reset to published version" 
+                          : "Flow cleared"
+                        )
+                      }
+                    }}
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Reset to Published
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Export/Import */}
+                  <DropdownMenuItem onSelect={() => setIsExportModalOpen(true)}>
+                    <Eye className="w-4 h-4 mr-2" />
+                    Export/Import Flow
+                  </DropdownMenuItem>
+
+                  {/* Version History */}
+                  <DropdownMenuItem onSelect={() => setIsVersionHistoryModalOpen(true)}>
+                    <History className="w-4 h-4 mr-2" />
+                    Version History
+                  </DropdownMenuItem>
+
+                  {/* Screenshot */}
+                  <DropdownMenuItem onSelect={() => setIsScreenshotModalOpen(true)}>
+                    <Camera className="w-4 h-4 mr-2" />
+                    Take Screenshot
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Platform Selector */}
+                  <DropdownMenuLabel>Platform</DropdownMenuLabel>
+                  <div className="px-2 py-1.5">
+                    <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
+                  </div>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Theme Toggle */}
+                  <div className="px-2 py-1.5">
+                    <ThemeToggle />
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
+
+        {/* Modals with controlled state */}
+        <ExportModal
+          flowData={{
+            nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
+            edges: edges.map(({ style, ...edge }) => edge),
+            platform,
+            timestamp: new Date().toISOString(),
+          }}
+          onImportFlow={importFlow}
+          open={isExportModalOpen}
+          onOpenChange={setIsExportModalOpen}
+        />
+
+        <VersionHistoryModal
+          versions={getAllVersions()}
+          currentVersion={currentVersion}
+          onLoadVersion={(version) => {
+            console.log('[App] Loading version from history:', version.name)
+            setIsLoadingVersion(true)
+            loadVersion(version, setNodes, setEdges, setPlatform)
+            setSelectedNode(null)
+            setSelectedNodes([])
+            setIsPropertiesPanelOpen(false)
+          }}
+          onDeleteVersion={(versionId) => {
+            console.log("Delete version:", versionId)
+          }}
+          onCreateVersion={async (name, description) => {
+            await createNewVersion(nodes, edges, platform, name, description)
+          }}
+          onPublishVersion={async (versionId) => {
+            await publishVersion(flowId, versionId)
+          }}
+          isEditMode={isEditMode}
+          hasChanges={hasActualChanges(nodes, edges, platform)}
+          open={isVersionHistoryModalOpen}
+          onOpenChange={setIsVersionHistoryModalOpen}
+        />
+
+        <ScreenshotModal 
+          flowElementRef={flowElementRef}
+          open={isScreenshotModalOpen}
+          onOpenChange={setIsScreenshotModalOpen}
+        />
+
+        <ChangesModal 
+          changes={draftChanges}
+          open={isChangesModalOpen}
+          onOpenChange={setIsChangesModalOpen}
+        />
 
         <div className="h-full pt-20">
           <ReactFlow

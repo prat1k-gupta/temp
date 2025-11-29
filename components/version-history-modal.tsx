@@ -47,7 +47,9 @@ interface VersionHistoryModalProps {
   onPublishVersion: (versionId: string) => void
   isEditMode: boolean
   hasChanges: boolean
-  children: React.ReactNode
+  children?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function VersionHistoryModal({
@@ -59,9 +61,13 @@ export function VersionHistoryModal({
   onPublishVersion,
   isEditMode,
   hasChanges,
-  children
+  children,
+  open: controlledOpen,
+  onOpenChange
 }: VersionHistoryModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = onOpenChange || setInternalOpen
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newVersionName, setNewVersionName] = useState("")
   const [newVersionDescription, setNewVersionDescription] = useState("")
@@ -242,9 +248,11 @@ export function VersionHistoryModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent className="min-w-2xl h-[80vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">

@@ -30,11 +30,15 @@ import type { FlowChange } from "@/types"
 
 interface ChangesModalProps {
   changes: FlowChange[]
-  children: React.ReactNode
+  children?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function ChangesModal({ changes, children }: ChangesModalProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export function ChangesModal({ changes, children, open: controlledOpen, onOpenChange }: ChangesModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = onOpenChange || setInternalOpen
   const [isGrouped, setIsGrouped] = useState(false)
 
   const getChangeIcon = (type: FlowChange['type']) => {
@@ -175,9 +179,11 @@ export function ChangesModal({ changes, children }: ChangesModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-3xl w-full h-[80vh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">

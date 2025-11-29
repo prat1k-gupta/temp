@@ -12,9 +12,9 @@ export class AIClient {
   constructor(config?: Partial<AIServiceConfig>) {
     this.config = {
       provider: 'openai',
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       maxTokens: 1000,
-      temperature: 0.7,
+      temperature: 0.9,
       ...config
     }
   }

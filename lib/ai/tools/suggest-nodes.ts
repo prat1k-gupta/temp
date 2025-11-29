@@ -97,29 +97,58 @@ ${getAvailableNodeTypes(platform)}
 4. Avoid suggesting nodes that are already in the flow (if provided)
 5. Provide a clear reason for each suggestion
 6. Focus on creating a smooth user experience
-7. **IMPORTANT**: For each suggested node, generate the actual content that should be in that node:
-   - For "question" nodes: Generate the question text
-   - For "quickReply" nodes: Generate the question text AND 2-3 button options
-   - For "list" nodes: Generate the question text AND 3-5 list options
-   - For "name", "email", "dob", "address" nodes: Generate the prompt/question text
-   - For other nodes: Generate appropriate content based on the node type
+7. **CRITICAL - Node Type Selection:**
+   - **For data collection, ALWAYS use super nodes (NOT question nodes):**
+     - To collect email → use "email" (NOT whatsappQuestion/webQuestion)
+     - To collect name → use "name" (NOT whatsappQuestion/webQuestion)
+     - To collect date of birth → use "dob" (NOT whatsappQuestion/webQuestion)
+     - To collect address → use "address" (NOT whatsappQuestion/webQuestion)
+   - **Super nodes have built-in validation** - use them for any data collection needs
+   - **Question nodes are ONLY for general questions**, not for collecting specific data fields
+8. **IMPORTANT**: 
+   - **Use platform-specific node types** for interaction nodes (e.g., "whatsappQuestion", "whatsappQuickReply", "whatsappList" for WhatsApp; "webQuestion", "webQuickReply" for web)
+   - **Super nodes (name, email, dob, address) are platform-agnostic** - use them as-is (e.g., "email", not "whatsappEmail")
+   - For each suggested node, generate the actual content that should be in that node:
+     - For "question" nodes: Generate the question text (for general questions only)
+     - For "quickReply" nodes: Generate the question text AND 2-3 button options, **ALWAYS include "label" field**
+     - For "list" nodes: Generate the question text AND 3-5 list options, **ALWAYS include "label" field**
+     - For "name", "email", "dob", "address" super nodes: Generate the prompt/question text (these nodes have built-in validation)
+     - For other nodes: Generate appropriate content based on the node type
+   - **ALWAYS include "label" field** in generatedContent for all nodes (e.g., "label": "Quick Reply", "label": "Email")
 
 **Response Format (JSON array):**
 [
   {
-    "type": "nodeType",
-    "label": "Display Name",
+    "type": "email" (use "email" for email collection, NOT whatsappQuestion),
+    "label": "Collect Email",
     "reason": "Why this node makes sense",
     "description": "What this node does",
     "previewContent": "A short preview of the generated content",
     "generatedContent": {
-      "question": "The question text (if applicable)",
-      "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes),
-      "options": [{"text": "Option 1"}, {"text": "Option 2"}] (for list nodes),
-      "text": "Content text (for other node types)"
+      "label": "Email" (ALWAYS include this),
+      "question": "The prompt/question text for collecting email"
+    }
+  },
+  {
+    "type": "whatsappQuickReply" (use platform-specific type for interaction nodes),
+    "label": "Quick Reply",
+    "reason": "Why this node makes sense",
+    "description": "What this node does",
+    "previewContent": "A short preview of the generated content",
+    "generatedContent": {
+      "label": "Quick Reply" (ALWAYS include this),
+      "question": "The question text",
+      "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes)
     }
   }
-]`
+]
+
+**Examples of correct node type selection:**
+- Collecting email → type: "email" (super node)
+- Collecting name → type: "name" (super node)
+- Collecting address → type: "address" (super node)
+- General question → type: "whatsappQuestion" (interaction node)
+- Question with buttons → type: "whatsappQuickReply" (interaction node)`
 
   return prompt
 }
@@ -145,35 +174,90 @@ Platform: ${request.platform}`
 }
 
 function getAvailableNodeTypes(platform: Platform): string {
-  const baseTypes = `
-- question: Ask the user a question
-- quickReply: Provide quick reply buttons (max 3 for WhatsApp/Instagram)
-- list: Provide a list of options (max 10 for WhatsApp/Instagram)
-- condition: Branch flow based on conditions
-- name: Collect user's name (super node with validation)
-- email: Collect user's email (super node with validation)
-- dob: Collect date of birth (super node with validation)
-- address: Collect user's address (super node with validation)
-- homeDelivery: Schedule home delivery
-- event: Schedule an event
-- retailStore: Find retail store locations
-- shopify: Integrate with Shopify
-- metaAudiences: Integrate with Meta Audiences`
+  const baseInfo = `
+**INFORMATION NODES (Super Nodes - Use these for data collection, NOT question nodes):**
+- name: Collect and validate user's name (super node with built-in validation)
+- email: Collect and validate user's email (super node with built-in validation)
+- dob: Collect and validate user's date of birth (super node with built-in validation)
+- address: Collect and validate user's address (super node with built-in validation)
+
+⚠️ IMPORTANT: When you need to collect email, name, DOB, or address, use these super nodes (e.g., "email"), NOT question nodes (e.g., "whatsappQuestion"). Super nodes have built-in validation and are specifically designed for data collection.`
+
+  const baseLogic = `
+**LOGIC NODES (Flow Control & Branching):**
+- condition: Branch flow based on conditions (supports AND/OR logic)`
+
+  const baseFulfillment = `
+**FULFILLMENT NODES (Delivery & Services):**
+- homeDelivery: Schedule at-home delivery
+- event: Book event or appointment
+- retailStore: Find nearby retail stores`
+
+  const baseIntegration = `
+**INTEGRATION NODES (External Platforms):**
+- shopify: Connect to Shopify store
+- stripe: Process payments via Stripe
+- zapier: Connect to 5000+ apps via Zapier
+- google: Sync with Google Sheets
+- salesforce: CRM integration
+- mailchimp: Email marketing integration
+- twilio: SMS & Voice integration
+- slack: Team notifications
+- airtable: Database sync`
 
   if (platform === "whatsapp") {
-    return baseTypes + `
+    return `${baseInfo}
+
+**INTERACTION NODES (WhatsApp - Use these exact types):**
+- whatsappQuestion: Ask users a question
+- whatsappQuickReply: Question with button options (max 3 buttons)
+- whatsappList: Interactive list menu (max 10 options)
 - whatsappMessage: Send a WhatsApp message
-- whatsappList: WhatsApp interactive list`
+
+${baseLogic}
+
+${baseFulfillment}
+
+${baseIntegration}
+- metaAudience: Sync with Meta audiences
+
+**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "whatsappQuestion", not "question").`
   }
 
   if (platform === "instagram") {
-    return baseTypes + `
-- instagramDM: Send an Instagram DM
-- instagramStory: Create an Instagram story`
+    return `${baseInfo}
+
+**INTERACTION NODES (Instagram - Use these exact types):**
+- instagramQuestion: Ask users a question
+- instagramQuickReply: Question with button options (max 3 buttons)
+- instagramList: Interactive list menu (max 10 options)
+- instagramDM: Send an Instagram direct message
+- instagramStory: Create an Instagram story
+
+${baseLogic}
+
+${baseFulfillment}
+
+${baseIntegration}
+- metaAudience: Sync with Meta audiences
+
+**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "instagramQuestion", not "question").`
   }
 
-  return baseTypes + `
-- webMessage: Send a web message`
+  // Web platform
+  return `${baseInfo}
+
+**INTERACTION NODES (Web - Use these exact types):**
+- webQuestion: Ask users a question
+- webQuickReply: Question with button options
+
+${baseLogic}
+
+${baseFulfillment}
+
+${baseIntegration}
+
+**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "webQuestion", not "question").`
 }
 
 function parseSuggestions(content: string, maxSuggestions: number): SuggestedNode[] {

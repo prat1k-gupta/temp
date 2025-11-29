@@ -47,7 +47,7 @@ import { GenericFulfillmentNode } from "@/components/nodes/fulfillment/generic-f
 import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
 import { NodeSidebar } from "@/components/node-sidebar"
 import { PropertiesPanel } from "@/components/properties-panel"
-import { AISuggestionsPanel } from "@/components/ai"
+import { AISuggestionsPanel, AIAssistant } from "@/components/ai"
 import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
@@ -95,7 +95,8 @@ import {
   createButtonData,
   createOptionData,
   createNode,
-  createCommentNode
+  createCommentNode,
+  getBaseNodeType
 } from "@/utils"
 import { 
   getAddNodeLabel, 
@@ -155,8 +156,8 @@ const initialNodes: Node[] = [
     type: "start",
     position: { x: 250, y: 25 },
     data: { label: "Start", platform: "web" },
-    draggable: false,
-    selectable: false,
+    draggable: true,
+    selectable: true,
   },
 ]
 
@@ -995,6 +996,29 @@ export default function MagicFlow() {
         return
       }
 
+      // Normalize node type for createNode
+      // createNode expects base types (question, quickReply, whatsappList) not platform-specific types
+      let normalizedType = suggestion.type
+      
+      // Handle list types - createNode only accepts "whatsappList" regardless of platform
+      if (normalizedType === "list" || normalizedType === "whatsappList" || normalizedType === "instagramList" || normalizedType === "whatsappListSpecific") {
+        normalizedType = "whatsappList"
+      }
+      // For platform-specific question/quickReply types, convert to base types
+      else if (normalizedType === "whatsappQuestion" || normalizedType === "instagramQuestion" || normalizedType === "webQuestion") {
+        normalizedType = "question"
+      }
+      else if (normalizedType === "whatsappQuickReply" || normalizedType === "instagramQuickReply" || normalizedType === "webQuickReply") {
+        normalizedType = "quickReply"
+      }
+      // For other types, use getBaseNodeType as fallback
+      else {
+        const baseType = getBaseNodeType(suggestion.type)
+        if (baseType !== suggestion.type) {
+          normalizedType = baseType
+        }
+      }
+
       const newNodeId = `${suggestion.type}-${Date.now()}`
       let newNode: Node
 
@@ -1006,7 +1030,7 @@ export default function MagicFlow() {
         }
 
         // Handle comment nodes specially
-        if (suggestion.type === "comment") {
+        if (normalizedType === "comment") {
           newNode = createCommentNode(
             platform,
             nodePosition,
@@ -1023,7 +1047,7 @@ export default function MagicFlow() {
             () => deleteNode(newNodeId)
           )
         } else {
-          newNode = createNode(suggestion.type, platform, nodePosition, newNodeId)
+          newNode = createNode(normalizedType, platform, nodePosition, newNodeId)
         }
 
         // Populate node with generated content
@@ -1031,12 +1055,19 @@ export default function MagicFlow() {
           const content = suggestion.generatedContent
           const updatedData: any = { ...newNode.data }
 
+          // Set label if provided
+          if (content.label) {
+            updatedData.label = content.label
+          }
+          // Set question if provided
           if (content.question) {
             updatedData.question = content.question
           }
+          // Set text if provided
           if (content.text) {
             updatedData.text = content.text
           }
+          // Set buttons if provided
           if (content.buttons && Array.isArray(content.buttons)) {
             updatedData.buttons = content.buttons.map((btn: any, index: number) => ({
               id: `btn-${Date.now()}-${index}`,
@@ -1044,6 +1075,7 @@ export default function MagicFlow() {
               label: btn.label || btn.text || "",
             }))
           }
+          // Set options if provided
           if (content.options && Array.isArray(content.options)) {
             updatedData.options = content.options.map((opt: any, index: number) => ({
               text: opt.text || "",
@@ -1153,6 +1185,460 @@ export default function MagicFlow() {
       }
     },
     [selectedNode, platform, isEditMode, setNodes, setEdges, setPlatform, nodes, edges, autoEnterEditMode, updateDraftChanges, deleteNode],
+  )
+
+  // Apply AI-generated flow
+  const handleApplyFlow = useCallback(
+    (flowData: { nodes: Node[]; edges: Edge[] }) => {
+      try {
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+
+        // Keep the existing start node (id: "1")
+        const existingStartNode = nodes.find((n) => n.id === "1" && n.type === "start")
+        
+        // Process AI-generated nodes using createNode for proper structure
+        const processedNodes: Node[] = []
+        
+        // Add start node first if it exists
+        if (existingStartNode) {
+          processedNodes.push(existingStartNode)
+        }
+
+        // Process each AI-generated node
+        for (const aiNode of flowData.nodes || []) {
+          if (!aiNode.id || !aiNode.type) {
+            console.warn("[handleApplyFlow] Skipping node without id or type:", aiNode)
+            continue
+          }
+
+          // Skip start nodes (already handled above)
+          if (aiNode.type === "start") {
+            continue
+          }
+
+          try {
+            const nodePlatform = (aiNode.data?.platform as Platform) || platform
+            const nodePosition = aiNode.position || { x: 250, y: 200 }
+            const nodeId = aiNode.id
+            
+            // Use the exact node type from AI (it should already be platform-specific)
+            // Only normalize if it's a generic type
+            const baseType = getBaseNodeType(aiNode.type)
+            let nodeTypeToCreate = aiNode.type
+            
+            // If it's a generic type, convert to platform-specific
+            if (baseType === "list") {
+              nodeTypeToCreate = platform === "whatsapp" ? "whatsappList" 
+                : platform === "instagram" ? "instagramList" 
+                : "whatsappList" // Default fallback
+            } else if (baseType === "question" && !aiNode.type.includes(platform)) {
+              nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
+                : platform === "instagram" ? "instagramQuestion"
+                : "webQuestion"
+            } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
+              nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
+                : platform === "instagram" ? "instagramQuickReply"
+                : "webQuickReply"
+            }
+
+            const newNode = createNode(
+              nodeTypeToCreate,
+              nodePlatform,
+              nodePosition,
+              nodeId
+            )
+
+                // Transform AI data first (especially buttons/options) before merging
+                const transformedAiData = { ...(aiNode.data || {}) }
+                
+                // Transform data structure based on node type
+                if (baseType === "quickReply") {
+                  // Convert options to buttons for quickReply nodes
+                  if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
+                    transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
+                      const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
+                      return {
+                        id: `btn-${Date.now()}-${index}`,
+                        text,
+                        label: text,
+                      }
+                    })
+                    delete transformedAiData.options
+                  }
+                  // Also handle if buttons are provided as strings
+                  if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
+                    transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
+                      if (typeof btn === "string") {
+                        return {
+                          id: `btn-${Date.now()}-${index}`,
+                          text: btn,
+                          label: btn,
+                        }
+                      }
+                      return {
+                        id: btn.id || `btn-${Date.now()}-${index}`,
+                        text: btn.text || btn.label || "",
+                        label: btn.label || btn.text || "",
+                      }
+                    })
+                  }
+                } else if (baseType === "list") {
+                  // Transform options to proper format for list nodes
+                  if (Array.isArray(transformedAiData.options)) {
+                    transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
+                      text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
+                    }))
+                  }
+                }
+                
+                // Now merge with newNode data (transformed buttons will override defaults)
+                let mergedData = { ...newNode.data, ...transformedAiData }
+
+            processedNodes.push({
+              ...newNode,
+              ...aiNode,
+              data: mergedData,
+              position: nodePosition,
+            })
+          } catch (error) {
+            console.error(`[handleApplyFlow] Error creating node ${aiNode.type}:`, error)
+            // Fallback: use AI node as-is with minimal structure
+            processedNodes.push({
+              id: aiNode.id,
+              type: aiNode.type,
+              position: aiNode.position || { x: 250, y: 200 },
+              data: {
+                platform: (aiNode.data?.platform as Platform) || platform,
+                ...(aiNode.data || {}),
+              },
+            } as Node)
+          }
+        }
+
+        // Process edges - ensure they reference valid nodes
+        const processedEdges: Edge[] = []
+        const nodeIds = new Set(processedNodes.map((n) => n.id))
+
+        for (const aiEdge of flowData.edges || []) {
+          if (!aiEdge.source || !aiEdge.target) {
+            console.warn(`[handleApplyFlow] Skipping edge ${aiEdge.id}: missing source or target`)
+            continue
+          }
+
+          // Only add edges where both source and target nodes exist
+          if (nodeIds.has(aiEdge.source) && nodeIds.has(aiEdge.target)) {
+            processedEdges.push({
+              id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
+              source: aiEdge.source,
+              target: aiEdge.target,
+              type: aiEdge.type || "default",
+              sourceHandle: aiEdge.sourceHandle,
+              targetHandle: aiEdge.targetHandle,
+              style: aiEdge.style,
+            } as Edge)
+          } else {
+            console.warn(`[handleApplyFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
+          }
+        }
+
+        // Update nodes and edges
+        setNodes(processedNodes)
+        setEdges(processedEdges)
+
+        // Track changes
+        processedNodes.forEach((node) => {
+          if (node.id !== "1") {
+            changeTracker.trackNodeAdd(node)
+          }
+        })
+        processedEdges.forEach((edge) => changeTracker.trackEdgeAdd(edge))
+        updateDraftChanges()
+
+        toast.success(`AI-generated flow applied successfully! Added ${processedNodes.length - (existingStartNode ? 1 : 0)} nodes and ${processedEdges.length} connections.`)
+      } catch (error) {
+        console.error("[handleApplyFlow] Error:", error)
+        toast.error("Failed to apply AI-generated flow. Please try again.")
+      }
+    },
+    [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform, changeTracker, updateDraftChanges],
+  )
+
+  // Apply AI-suggested updates
+  const handleUpdateFlow = useCallback(
+    (updates: { nodes?: Node[]; edges?: Edge[]; description?: string }) => {
+      try {
+        if (!isEditMode) {
+          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        }
+
+        // Apply node updates
+        if (updates.nodes && updates.nodes.length > 0) {
+          const processedNodes: Node[] = []
+
+          for (const aiNode of updates.nodes) {
+            if (!aiNode.id || !aiNode.type) {
+              console.warn("[handleUpdateFlow] Skipping node without id or type:", aiNode)
+              continue
+            }
+
+            const existingNode = nodes.find((n) => n.id === aiNode.id)
+
+            if (existingNode) {
+              // Transform AI data first (especially buttons/options) before merging
+              const transformedAiData = { ...(aiNode.data || {}) }
+              const baseType = getBaseNodeType(aiNode.type)
+              
+              // Transform data structure if needed
+              if (baseType === "quickReply") {
+                // Convert options to buttons for quickReply nodes
+                if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
+                  transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
+                    const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
+                    return {
+                      id: `btn-${Date.now()}-${index}`,
+                      text,
+                      label: text,
+                    }
+                  })
+                  delete transformedAiData.options
+                }
+                // Also handle if buttons are provided as strings
+                if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
+                  transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
+                    if (typeof btn === "string") {
+                      return {
+                        id: `btn-${Date.now()}-${index}`,
+                        text: btn,
+                        label: btn,
+                      }
+                    }
+                    return {
+                      id: btn.id || `btn-${Date.now()}-${index}`,
+                      text: btn.text || btn.label || "",
+                      label: btn.label || btn.text || "",
+                    }
+                  })
+                }
+              } else if (baseType === "list") {
+                // Transform options to proper format for list nodes
+                if (Array.isArray(transformedAiData.options)) {
+                  transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
+                    text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
+                  }))
+                }
+              }
+              
+              // Now merge with existing node data (transformed buttons will override existing)
+              let updatedData = { ...existingNode.data, ...transformedAiData }
+
+              processedNodes.push({
+                ...existingNode,
+                ...aiNode,
+                data: updatedData,
+              })
+            } else {
+              // Create new node using createNode to ensure proper structure
+              try {
+                const nodePlatform = (aiNode.data?.platform as Platform) || platform
+                const nodePosition = aiNode.position || { x: 250, y: 200 }
+                const nodeId = aiNode.id
+                
+                // Use the exact node type from AI (it should already be platform-specific)
+                // Only normalize if it's a generic type
+                const baseType = getBaseNodeType(aiNode.type)
+                let nodeTypeToCreate = aiNode.type
+                
+                // If it's a generic type, convert to platform-specific
+                if (baseType === "list") {
+                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappList" 
+                    : platform === "instagram" ? "instagramList" 
+                    : "whatsappList" // Default fallback
+                } else if (baseType === "question" && !aiNode.type.includes(platform)) {
+                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
+                    : platform === "instagram" ? "instagramQuestion"
+                    : "webQuestion"
+                } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
+                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
+                    : platform === "instagram" ? "instagramQuickReply"
+                    : "webQuickReply"
+                }
+
+                const newNode = createNode(
+                  nodeTypeToCreate,
+                  nodePlatform,
+                  nodePosition,
+                  nodeId
+                )
+
+                // Transform AI data first (especially buttons/options) before merging
+                const transformedAiData = { ...(aiNode.data || {}) }
+                
+                // Transform data structure based on node type
+                if (baseType === "quickReply") {
+                  // Convert options to buttons for quickReply nodes
+                  if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
+                    transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
+                      const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
+                      return {
+                        id: `btn-${Date.now()}-${index}`,
+                        text,
+                        label: text,
+                      }
+                    })
+                    delete transformedAiData.options
+                  }
+                  // Also handle if buttons are provided as strings
+                  if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
+                    transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
+                      if (typeof btn === "string") {
+                        return {
+                          id: `btn-${Date.now()}-${index}`,
+                          text: btn,
+                          label: btn,
+                        }
+                      }
+                      return {
+                        id: btn.id || `btn-${Date.now()}-${index}`,
+                        text: btn.text || btn.label || "",
+                        label: btn.label || btn.text || "",
+                      }
+                    })
+                  }
+                } else if (baseType === "list") {
+                  // Transform options to proper format for list nodes
+                  if (Array.isArray(transformedAiData.options)) {
+                    transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
+                      text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
+                    }))
+                  }
+                }
+                
+                // Now merge with newNode data (transformed buttons will override defaults)
+                let mergedData = { ...newNode.data, ...transformedAiData }
+
+                processedNodes.push({
+                  ...newNode,
+                  ...aiNode,
+                  data: mergedData,
+                })
+              } catch (error) {
+                console.error(`[handleUpdateFlow] Error creating node ${aiNode.type}:`, error)
+                // Fallback: use AI node as-is with minimal structure
+                processedNodes.push({
+                  id: aiNode.id,
+                  type: aiNode.type,
+                  position: aiNode.position || { x: 250, y: 200 },
+                  data: {
+                    platform: (aiNode.data?.platform as Platform) || platform,
+                    ...(aiNode.data || {}),
+                  },
+                } as Node)
+              }
+            }
+          }
+
+          // Update nodes state
+          setNodes((nds) => {
+            const existingIds = new Set(nds.map((n) => n.id))
+            const newNodes = processedNodes.filter((n) => !existingIds.has(n.id))
+            const updatedNodes = nds.map((node) => {
+              const update = processedNodes.find((n) => n.id === node.id)
+              return update || node
+            })
+            return [...updatedNodes, ...newNodes]
+          })
+
+          // Track new nodes
+          processedNodes.forEach((node) => {
+            if (!nodes.find((n) => n.id === node.id)) {
+              changeTracker.trackNodeAdd(node)
+            }
+          })
+
+          console.log(`[handleUpdateFlow] Processed ${processedNodes.length} nodes`)
+        }
+
+        // Apply edge updates - use addEdge to ensure proper React Flow structure
+        if (updates.edges && updates.edges.length > 0) {
+          setEdges((eds) => {
+            const existingIds = new Set(eds.map((e) => e.id))
+            const newEdges: Edge[] = []
+            
+            // Process each new edge
+            for (const aiEdge of updates.edges!) {
+              // Skip if edge already exists
+              if (existingIds.has(aiEdge.id)) {
+                continue
+              }
+
+              // Verify source and target nodes exist (or will exist)
+              const sourceExists = nodes.some(n => n.id === aiEdge.source) || 
+                                   updates.nodes?.some(n => n.id === aiEdge.source)
+              const targetExists = nodes.some(n => n.id === aiEdge.target) || 
+                                  updates.nodes?.some(n => n.id === aiEdge.target)
+
+              if (!sourceExists || !targetExists) {
+                console.warn(`[handleUpdateFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
+                continue
+              }
+
+              // Create properly formatted edge
+              const newEdge: Edge = {
+                id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
+                source: aiEdge.source,
+                target: aiEdge.target,
+                type: aiEdge.type || "default",
+                style: aiEdge.style || { 
+                  stroke: "#6366f1", 
+                  strokeWidth: 2 
+                },
+                animated: false,
+              }
+
+              newEdges.push(newEdge)
+            }
+
+            // Use addEdge to properly add edges to React Flow
+            let updatedEdges = [...eds]
+            for (const newEdge of newEdges) {
+              // Check if connection already exists
+              const existingConnection = updatedEdges.find(
+                (e) => e.source === newEdge.source && e.target === newEdge.target
+              )
+              if (!existingConnection) {
+                updatedEdges = addEdge(newEdge, updatedEdges)
+              }
+            }
+
+            return updatedEdges
+          })
+
+          // Track new edges
+          updates.edges.forEach((edge) => {
+            if (!edges.find((e) => e.id === edge.id)) {
+              changeTracker.trackEdgeAdd(edge)
+            }
+          })
+
+          console.log(`[handleUpdateFlow] Added ${updates.edges.length} edges`)
+        }
+
+        // Update flow description if provided
+        if (updates.description && flowId) {
+          updateFlow(flowId, { description: updates.description })
+          setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
+        }
+
+        updateDraftChanges()
+        toast.success(`Flow updated successfully! ${updates.nodes?.length || 0} nodes, ${updates.edges?.length || 0} edges`)
+      } catch (error) {
+        console.error("[handleUpdateFlow] Error:", error)
+        toast.error("Failed to apply updates. Please try again.")
+      }
+    },
+    [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform, changeTracker, updateDraftChanges, flowId, updateFlow, setCurrentFlow],
   )
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -2299,7 +2785,7 @@ export default function MagicFlow() {
               triggerId: data.triggerId,
               triggerIds: [data.triggerId]
             },
-            draggable: false,
+            draggable: true,
             selectable: true,
           },
         ],
@@ -2332,7 +2818,7 @@ export default function MagicFlow() {
       
       <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
-      <div className="flex-1 relative">
+      <div className="flex-1 relative pb-24">
         <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border">
           <div className="flex items-center justify-between px-6 py-4">
             {/* Left Section - App Logo and Title */}
@@ -2904,6 +3390,15 @@ export default function MagicFlow() {
           </div>
         )}
       </div>
+      
+      {/* AI Assistant */}
+      <AIAssistant
+        platform={platform}
+        flowContext={currentFlow?.description}
+        existingFlow={{ nodes, edges }}
+        onApplyFlow={handleApplyFlow}
+        onUpdateFlow={handleUpdateFlow}
+      />
       
       {/* Toast notifications */}
       <Toaster position="bottom-right" />

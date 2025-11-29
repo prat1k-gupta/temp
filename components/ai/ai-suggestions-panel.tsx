@@ -53,7 +53,7 @@ export function AISuggestionsPanel({
   const colors = platformColors[platform] || platformColors.web
 
   return (
-    <div className="w-80 h-full bg-background flex flex-col">
+    <div className="w-80 h-full bg-background flex flex-col border-l border-2">
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -25,7 +25,13 @@ export default function FlowsPage() {
 
   const loadFlows = () => {
     const allFlows = getAllFlows()
-    setFlows(allFlows)
+    // Sort flows by updatedAt (newest first)
+    const sortedFlows = allFlows.sort((a, b) => {
+      const dateA = new Date(a.updatedAt).getTime()
+      const dateB = new Date(b.updatedAt).getTime()
+      return dateB - dateA // Descending order (newest first)
+    })
+    setFlows(sortedFlows)
   }
 
   const handleCreateFlow = () => {

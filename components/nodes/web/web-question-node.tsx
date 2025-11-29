@@ -13,6 +13,7 @@ import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
+import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
 export function WebQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -343,7 +344,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                         variant="ghost"
                         size="sm"
                         onClick={() => finishEditingButton()}
-                        className="h-7 w-7 p-0 cursor-pointer"
+                        className={getGhostButtonClasses("h-7 w-7 p-0")}
                       >
                         <Check className="w-3 h-3 text-green-600" />
                       </Button>
@@ -351,7 +352,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                         variant="ghost"
                         size="sm"
                         onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0 cursor-pointer"
+                        className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3 text-red-600" />
                       </Button>
@@ -362,7 +363,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                         variant="outline"
                         size="sm"
                         onClick={() => startEditingButton(buttonId, button.text || "")}
-                        className="flex-1 h-7 justify-start text-xs font-normal bg-blue-50/40 border-blue-100 hover:bg-blue-50 hover:border-blue-200 dark:hover:border-blue-800 [&:hover]:text-foreground cursor-pointer"
+                        className={getCompactButtonItemClasses(platform)}
                       >
                         {button.text || "Empty button"}
                       </Button>
@@ -370,7 +371,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
             variant="ghost"
             size="sm"
                         onClick={() => deleteManualButton(buttonId)}
-                        className="h-7 w-7 p-0 cursor-pointer"
+                        className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
                       </Button>
@@ -392,7 +393,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                       e.stopPropagation()
                       addManualButton()
                     }}
-                    className="flex-1 h-7 px-2 text-xs gap-1 border-dashed border-blue-200 dark:border-blue-800 hover:border-solid hover:bg-blue-50 dark:hover:bg-blue-950/20 [&:hover]:text-foreground cursor-pointer"
+                    className={getAddButtonFlexClasses(platform)}
                   >
                     <Plus className="w-3 h-3" />
                     <span>Add Button</span>
@@ -409,7 +410,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                       e.stopPropagation()
                       handleConvertWithManualButtons()
                     }}
-                    className="flex-1 h-7 px-2 text-xs gap-1 bg-blue-500 hover:bg-blue-600 cursor-pointer"
+                    className={getGhostButtonClasses("flex-1 h-7 px-2 text-xs gap-1 bg-blue-500 hover:bg-blue-600")}
                   >
                     <ArrowRight className="w-3 h-3" />
                     <span>Convert</span>

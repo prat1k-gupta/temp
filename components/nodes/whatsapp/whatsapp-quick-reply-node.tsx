@@ -14,6 +14,7 @@ import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
+import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
 export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
@@ -358,7 +359,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                         variant="ghost"
                         size="sm"
                         onClick={() => removeButton(index)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                        className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -384,7 +385,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                             }}
                             onMouseDown={(e) => e.preventDefault()}
                             disabled={ai.loading}
-                            className="h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer"
+                            className={getGhostButtonClasses("h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20")}
                             title="Shorten with AI"
                           >
                             <Minimize2 className="w-3 h-3 text-purple-500" />
@@ -398,7 +399,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-green-50/40 border-green-100 hover:bg-green-50 hover:border-green-200 dark:hover:border-green-800 text-card-foreground [&:hover]:text-foreground transition-colors cursor-pointer group/btn"
+                    className={`${getButtonItemClasses(platform)} group/btn`}
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
@@ -431,7 +432,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-solid hover:border-green-300 hover:bg-green-50/30 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
+              className={getAddButtonClasses(platform)}
               onClick={data.onAddButton}
             >
               <Plus className="w-3 h-3 mr-1" />

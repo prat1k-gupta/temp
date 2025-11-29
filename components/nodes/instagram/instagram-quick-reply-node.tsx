@@ -14,6 +14,7 @@ import { getNodeLimits } from "@/constants"
 import { useState, useEffect } from "react"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
+import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
 const INSTAGRAM_LIMITS = {
   question: 100,
@@ -354,7 +355,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                         variant="ghost"
                         size="sm"
                         onClick={() => removeButton(index)}
-                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                        className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -380,7 +381,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                             }}
                             onMouseDown={(e) => e.preventDefault()}
                             disabled={ai.loading}
-                            className="h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20 cursor-pointer"
+                            className={getGhostButtonClasses("h-5 px-1.5 text-xs gap-1 hover:bg-purple-50 dark:hover:bg-purple-900/20")}
                             title="Shorten with AI"
                           >
                             <Minimize2 className="w-3 h-3 text-purple-500" />
@@ -394,7 +395,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-purple-50/40 border-purple-100 hover:bg-purple-50 hover:border-purple-200 text-card-foreground [&:hover]:text-foreground transition-colors cursor-pointer group/btn"
+                    className={`${getButtonItemClasses(platform)} group/btn`}
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}
@@ -427,7 +428,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-center text-xs h-7 border border-dashed border-pink-200 dark:border-pink-800 hover:border-solid hover:border-pink-300 dark:hover:border-pink-700 hover:bg-pink-50 dark:hover:bg-pink-950/20 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
+              className={getAddButtonClasses(platform)}
               onClick={data.onAddButton}
             >
               <Plus className="w-3 h-3 mr-1" />

@@ -269,6 +269,173 @@ const isOverLimit = (text: string) => text.length > maxLength
 - **DO NOT** use generic Lucide icons for real services/integrations
 - **DO USE** authentic logos to build trust and recognition
 
+### Button Styling Utilities - CRITICAL RULE
+**⚠️ ALWAYS use button styling utilities from `@/utils/button-styles` - NEVER hardcode button classes!**
+
+#### Why Use Button Utilities?
+- Ensures consistent styling across all platforms
+- Automatic platform-specific colors (blue for web, green for WhatsApp, pink for Instagram)
+- Includes dark mode support automatically
+- Single source of truth for button styles
+- Prevents styling inconsistencies and errors
+
+#### Required Import
+```tsx
+import { 
+  getButtonItemClasses, 
+  getCompactButtonItemClasses,
+  getAddButtonClasses,
+  getAddButtonFlexClasses,
+  getDeleteButtonClasses,
+  getDeleteButtonSmallClasses,
+  getGhostButtonClasses
+} from "@/utils/button-styles"
+```
+
+#### Usage Examples
+
+**Full-width button items (Quick Reply nodes):**
+```tsx
+// ✅ CORRECT
+<Button
+  variant="outline"
+  size="sm"
+  className={getButtonItemClasses(platform)}
+  onClick={() => startEditingButton(index)}
+>
+  {button.text}
+</Button>
+
+// ❌ WRONG - Hardcoded classes
+<Button
+  variant="outline"
+  size="sm"
+  className="w-full justify-start text-xs h-7 bg-green-50/40 border-green-100..."
+  onClick={() => startEditingButton(index)}
+>
+  {button.text}
+</Button>
+```
+
+**Compact buttons in Question nodes (flex-1):**
+```tsx
+// ✅ CORRECT
+<Button
+  variant="outline"
+  size="sm"
+  className={getCompactButtonItemClasses(platform)}
+  onClick={() => startEditingButton(buttonId, button.text)}
+>
+  {button.text || "Empty button"}
+</Button>
+```
+
+**Add Button (full-width, dashed border):**
+```tsx
+// ✅ CORRECT
+<Button
+  variant="ghost"
+  size="sm"
+  className={getAddButtonClasses(platform)}
+  onClick={data.onAddButton}
+>
+  <Plus /> Add Button
+</Button>
+```
+
+**Add Button in flex container (Question nodes):**
+```tsx
+// ✅ CORRECT
+<Button
+  variant="outline"
+  size="sm"
+  className={getAddButtonFlexClasses(platform)}
+  onClick={addManualButton}
+>
+  <Plus /> Add Button
+</Button>
+```
+
+**Delete buttons:**
+```tsx
+// ✅ CORRECT - Standard delete button
+<Button
+  variant="ghost"
+  size="sm"
+  className={getDeleteButtonClasses()}
+  onClick={() => deleteButton(id)}
+>
+  <X />
+</Button>
+
+// ✅ CORRECT - Small delete button (list nodes)
+<Button
+  variant="ghost"
+  size="sm"
+  className={getDeleteButtonSmallClasses()}
+  onClick={() => removeOption(index)}
+>
+  <X />
+</Button>
+```
+
+**Ghost buttons with additional classes:**
+```tsx
+// ✅ CORRECT
+<Button
+  variant="ghost"
+  size="sm"
+  className={getGhostButtonClasses("h-5 px-1.5 text-xs gap-1 hover:bg-purple-50")}
+  onClick={handleAction}
+>
+  Action
+</Button>
+```
+
+#### Available Functions
+- `getButtonItemClasses(platform)` - Full-width button items with light background (Quick Reply nodes)
+- `getCompactButtonItemClasses(platform)` - Compact flex-1 buttons (Question nodes)
+- `getAddButtonClasses(platform)` - Full-width "Add" button with dashed border
+- `getAddButtonFlexClasses(platform)` - Flex "Add" button with dashed border (Question nodes)
+- `getDeleteButtonClasses()` - Standard delete button (h-7 w-7)
+- `getDeleteButtonSmallClasses()` - Small delete button (h-6 w-6) for list nodes
+- `getGhostButtonClasses(additionalClasses?)` - Ghost button with cursor pointer
+
+#### What These Utilities Provide
+All functions automatically include:
+- ✅ Platform-specific colors (blue/green/pink based on platform)
+- ✅ Dark mode variants
+- ✅ Hover states (background, border, text)
+- ✅ Cursor pointer
+- ✅ Text visibility on hover (`[&:hover]:text-foreground`)
+- ✅ Proper border styles (dashed for "Add" buttons, solid on hover)
+- ✅ Consistent spacing and sizing
+
+#### Common Mistakes to Avoid
+```tsx
+// ❌ WRONG - Hardcoding platform colors
+className="bg-green-50/40 border-green-100 hover:bg-green-50"
+
+// ❌ WRONG - Missing dark mode
+className="bg-blue-50/40 border-blue-100"
+
+// ❌ WRONG - Missing hover text color fix
+className="bg-accent/40 hover:bg-accent/50"
+
+// ❌ WRONG - Missing cursor pointer
+className="w-full justify-start text-xs h-7"
+
+// ✅ CORRECT - Use utility function
+className={getButtonItemClasses(platform)}
+```
+
+#### When Adding New Nodes
+1. **ALWAYS** import button styling utilities
+2. **ALWAYS** use the appropriate function based on button type
+3. **NEVER** hardcode button classes with platform colors
+4. **NEVER** forget to pass the `platform` variable to platform-specific functions
+5. If you need a new button style pattern, add it to `utils/button-styles.ts` first, then use it
+
 ### Handles (Connection Points) - CRITICAL STRUCTURE
 **Standard nodes must follow this exact handle pattern:**
 
@@ -392,6 +559,8 @@ const {
 8. Use inline styles instead of Tailwind classes (except for dynamic positioning)
 9. Forget to add `cursor-pointer` to clickable elements (buttons, cards, divs with onClick)
 10. **NEVER** deviate from the standard handle structure (left target, bottom-right source with "Next" label)
+11. **NEVER** hardcode button classes - ALWAYS use button styling utilities from `@/utils/button-styles`
+12. **NEVER** create buttons with platform colors manually - use `getButtonItemClasses(platform)` etc.
 
 ### ✅ DO:
 1. Use theme-aware CSS variables (`bg-card`, `text-muted-foreground`)
@@ -404,6 +573,8 @@ const {
 8. Keep node widths consistent (`min-w-[260px] max-w-[300px]`)
 9. Always add `cursor-pointer` to clickable elements that perform actions (cards, divs, custom buttons)
 10. **ALWAYS** use the standard handle structure: left target handle + bottom-right source handle with "Next" label
+11. **ALWAYS** use button styling utilities (`getButtonItemClasses`, `getAddButtonClasses`, etc.) for all buttons in nodes
+12. **ALWAYS** import button utilities from `@/utils/button-styles` when creating or modifying nodes with buttons
 
 ## Platform-Specific Considerations
 

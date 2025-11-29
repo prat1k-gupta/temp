@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Edit3, X } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
 import { useState, useEffect } from "react"
+import { getAddButtonClasses, getDeleteButtonSmallClasses } from "@/utils/button-styles"
+import type { Platform } from "@/types"
 
 const INSTAGRAM_LIMITS = {
   question: 100,
@@ -35,6 +37,8 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
       setEditingQuestionValue(data.question || "")
     }
   }, [data.question, isEditingQuestion])
+
+  const platform = (data.platform || "instagram") as Platform
 
   const isOverLimit = (text: string, type: "question" | "button") => {
     return text.length > INSTAGRAM_LIMITS[type]
@@ -213,7 +217,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
                         variant="ghost"
                         size="sm"
                         onClick={() => removeOption(index)}
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                        className={getDeleteButtonSmallClasses()}
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -253,7 +257,7 @@ export function InstagramListNode({ data, selected }: { data: any; selected?: bo
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-xs h-7 border border-dashed border-pink-200 dark:border-pink-800 hover:border-solid hover:border-pink-300 dark:hover:border-pink-700 hover:bg-pink-50 dark:hover:bg-pink-950/20 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
+                className={getAddButtonClasses(platform)}
                 onClick={data.onAddOption}
               >
                 <Plus className="w-3 h-3 mr-1" />

@@ -593,6 +593,104 @@ After implementing, test these scenarios:
 
 ## 🎨 Styling Guidelines
 
+### Button Styling Utilities
+
+**⚠️ IMPORTANT:** Always use the button styling utilities from `@/utils/button-styles` instead of hardcoding button classes. This ensures consistency and automatic platform-specific colors.
+
+**Import:**
+```typescript
+import { 
+  getButtonItemClasses, 
+  getCompactButtonItemClasses,
+  getAddButtonClasses,
+  getAddButtonFlexClasses,
+  getDeleteButtonClasses,
+  getDeleteButtonSmallClasses,
+  getGhostButtonClasses
+} from "@/utils/button-styles"
+```
+
+**Usage Examples:**
+
+```typescript
+// Full-width button items (Quick Reply nodes)
+<Button
+  variant="outline"
+  size="sm"
+  className={getButtonItemClasses(platform)}
+  onClick={() => startEditingButton(index)}
+>
+  {button.text}
+</Button>
+
+// Compact buttons in Question nodes (flex-1)
+<Button
+  variant="outline"
+  size="sm"
+  className={getCompactButtonItemClasses(platform)}
+  onClick={() => startEditingButton(buttonId, button.text)}
+>
+  {button.text || "Empty button"}
+</Button>
+
+// Add Button (full-width, dashed border)
+<Button
+  variant="ghost"
+  size="sm"
+  className={getAddButtonClasses(platform)}
+  onClick={data.onAddButton}
+>
+  <Plus /> Add Button
+</Button>
+
+// Add Button in flex container (Question nodes)
+<Button
+  variant="outline"
+  size="sm"
+  className={getAddButtonFlexClasses(platform)}
+  onClick={addManualButton}
+>
+  <Plus /> Add Button
+</Button>
+
+// Delete button
+<Button
+  variant="ghost"
+  size="sm"
+  className={getDeleteButtonClasses()}
+  onClick={() => deleteButton(id)}
+>
+  <X />
+</Button>
+
+// Small delete button (list nodes)
+<Button
+  variant="ghost"
+  size="sm"
+  className={getDeleteButtonSmallClasses()}
+  onClick={() => removeOption(index)}
+>
+  <X />
+</Button>
+```
+
+**Available Functions:**
+- `getButtonItemClasses(platform)` - Full-width button items with light background
+- `getCompactButtonItemClasses(platform)` - Compact flex-1 buttons
+- `getAddButtonClasses(platform)` - Full-width "Add" button with dashed border
+- `getAddButtonFlexClasses(platform)` - Flex "Add" button with dashed border
+- `getDeleteButtonClasses()` - Standard delete button (h-7 w-7)
+- `getDeleteButtonSmallClasses()` - Small delete button (h-6 w-6)
+- `getGhostButtonClasses(additionalClasses?)` - Ghost button with cursor pointer
+
+**Benefits:**
+- ✅ Automatic platform-specific colors (blue/green/pink)
+- ✅ Dark mode support included
+- ✅ Consistent hover states
+- ✅ Text visibility on hover
+- ✅ Cursor pointer always included
+- ✅ Single source of truth for styling
+
 ### Colors by Platform
 
 **WhatsApp:**

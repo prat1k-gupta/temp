@@ -11,6 +11,7 @@ import { WhatsAppIcon } from "@/components/platform-icons"
 import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
+import { getAddButtonClasses, getDeleteButtonSmallClasses } from "@/utils/button-styles"
 
 export function WhatsAppListNode({ data, selected }: { data: any; selected?: boolean }) {
   const options = data.options || []
@@ -33,7 +34,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
     }
   }, [data.question, isEditingQuestion])
 
-  const platform = (data.platform || "web") as Platform
+  const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappList"
   const nodeLimits = getNodeLimits(nodeType, platform)
   const maxQuestionLength = nodeLimits.question?.max || 160
@@ -217,7 +218,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                         variant="ghost"
                         size="sm"
                         onClick={() => removeOption(index)}
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        className={getDeleteButtonSmallClasses()}
                       >
                         <X className="w-3 h-3" />
                       </Button>
@@ -257,7 +258,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-green-300 hover:bg-green-50/30 transition-colors text-muted-foreground"
+                className={getAddButtonClasses(platform)}
                 onClick={data.onAddOption}
               >
                 <Plus className="w-3 h-3 mr-1" />

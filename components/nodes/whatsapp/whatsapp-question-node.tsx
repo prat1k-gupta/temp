@@ -13,6 +13,7 @@ import { useState, useEffect } from "react"
 import { getNodeLimits, getTextFieldLimit } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
+import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses } from "@/utils/button-styles"
 
 export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -359,7 +360,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                           variant="outline"
                           size="sm"
                           onClick={() => startEditingButton(buttonId, button.text || "")}
-                          className="flex-1 h-7 justify-start text-xs font-normal hover:bg-accent/10"
+                          className={getCompactButtonItemClasses(platform)}
                         >
                           {button.text || "Empty button"}
                         </Button>
@@ -367,7 +368,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                           variant="ghost"
                           size="sm"
                           onClick={() => deleteManualButton(buttonId)}
-                          className="h-7 w-7 p-0"
+                          className={getDeleteButtonClasses()}
                         >
                           <X className="w-3 h-3 text-muted-foreground hover:text-red-600" />
                         </Button>
@@ -389,7 +390,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                       e.stopPropagation()
                       addManualButton()
                     }}
-                    className="w-full justify-center text-xs h-7 border border-dashed border-green-200 hover:border-solid hover:border-green-300 hover:bg-green-50/30 [&:hover]:text-foreground transition-colors text-muted-foreground cursor-pointer"
+                    className={getAddButtonFlexClasses(platform)}
 
                   >
                     <Plus className="w-3 h-3" />

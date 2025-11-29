@@ -605,7 +605,8 @@ export function PropertiesPanel({
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-foreground">{getNodeTitle()}</h2>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-col items-start gap-2 mt-1">
+              <div className="flex gap-1">
               {isSuperNode && (
                 <Badge variant="secondary" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 flex items-center gap-1">
                   <Sparkles className="w-3 h-3" />
@@ -615,6 +616,7 @@ export function PropertiesPanel({
               <Badge variant="secondary" className="text-xs">
                 {selectedNode.type === "comment" ? "NOTE" : platform.toUpperCase()}
               </Badge>
+              </div>
               <span className="text-xs text-muted-foreground">ID: {selectedNode.id}</span>
             </div>
           </div>

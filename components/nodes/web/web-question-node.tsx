@@ -362,7 +362,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                         variant="outline"
                         size="sm"
                         onClick={() => startEditingButton(buttonId, button.text || "")}
-                        className="flex-1 h-7 justify-start text-xs font-normal [&:hover]:text-foreground cursor-pointer"
+                        className="flex-1 h-7 justify-start text-xs font-normal bg-blue-50/40 border-blue-100 hover:bg-blue-50 hover:border-blue-200 dark:hover:border-blue-800 [&:hover]:text-foreground cursor-pointer"
                       >
                         {button.text || "Empty button"}
                       </Button>

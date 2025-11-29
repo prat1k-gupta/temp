@@ -364,7 +364,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-start text-xs h-7 bg-accent/40 hover:bg-accent/50 text-card-foreground [&:hover]:text-foreground transition-colors cursor-pointer group/btn"
+                    className="w-full justify-start text-xs h-7 bg-blue-50/40 border-blue-100 hover:bg-blue-50 hover:border-blue-200 dark:hover:border-blue-800 text-card-foreground [&:hover]:text-foreground transition-colors cursor-pointer group/btn"
                     onClick={() => startEditingButton(index)}
                   >
                     {button.text || `Button ${index + 1}`}

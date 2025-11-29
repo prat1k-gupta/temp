@@ -171,7 +171,7 @@ export const createSuperNode = (
 }
 
 /**
- * Create a fulfillment node
+ * Create a fulfillment node with configuration
  */
 export const createFulfillmentNode = (
   nodeType: "homeDelivery" | "event" | "retailStore",
@@ -181,18 +181,51 @@ export const createFulfillmentNode = (
 ): Node => {
   const nodeId = customId || generateNodeId(nodeType)
   
-  const fulfillmentConfig: Record<string, { label: string; description: string }> = {
+  const fulfillmentConfig: Record<string, any> = {
     homeDelivery: {
       label: "At-home Delivery",
-      description: "Schedule a home delivery"
+      description: "Schedule a home delivery",
+      vendor: {
+        name: "Optimized Delivery Vendor",
+        type: "delivery",
+        description: "Highly optimized delivery vendor based on scale",
+        features: ["Real-time tracking", "Scale-based optimization", "Fast delivery"]
+      },
+      configuration: {
+        deliveryWindow: "flexible",
+        trackingEnabled: true,
+        notificationsEnabled: true
+      }
     },
     event: {
       label: "Event",
-      description: "Book an event or appointment"
+      description: "Book event or appointment",
+      vendor: {
+        name: "Promoter App",
+        type: "promoter",
+        description: "Promoter app for brand promoters",
+        features: ["Event management", "Promoter scheduling", "Real-time updates"]
+      },
+      configuration: {
+        eventTypes: ["in-store", "event"],
+        bookingEnabled: true,
+        remindersEnabled: true
+      }
     },
     retailStore: {
       label: "Retail Store",
-      description: "Find nearby stores"
+      description: "Find nearby stores",
+      vendor: {
+        name: "Retailer System",
+        type: "retailer",
+        description: "Retailer system for brand retail stores",
+        features: ["Store locator", "Inventory check", "Store hours"]
+      },
+      configuration: {
+        storeLocatorEnabled: true,
+        inventoryCheckEnabled: true,
+        bookingEnabled: false
+      }
     }
   }
 

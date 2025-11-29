@@ -25,6 +25,10 @@ import {
   Shield,
   CheckCircle2,
   GitBranch,
+  Package,
+  Store,
+  Truck,
+  Users,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -91,6 +95,10 @@ const NODE_ICONS = {
   address: MapPin,
   // Logic nodes
   condition: GitBranch,
+  // Fulfillment nodes
+  homeDelivery: Package,
+  event: Calendar,
+  retailStore: Store,
 }
 
 const NODE_COLORS = {
@@ -118,6 +126,10 @@ const NODE_COLORS = {
   address: "bg-purple-500 text-white",
   // Logic nodes
   condition: "bg-indigo-500 text-white",
+  // Fulfillment nodes
+  homeDelivery: "bg-orange-500 text-white",
+  event: "bg-orange-500 text-white",
+  retailStore: "bg-orange-500 text-white",
 }
 
 function SortableButtonItem({
@@ -464,6 +476,13 @@ export function PropertiesPanel({
         return "Address Validation Node"
       case "condition":
         return "Condition Node"
+      // Fulfillment nodes
+      case "homeDelivery":
+        return "At-home Delivery Node"
+      case "event":
+        return "Event Node"
+      case "retailStore":
+        return "Retail Store Node"
       default:
         return "Node Properties"
     }
@@ -471,6 +490,7 @@ export function PropertiesPanel({
 
   const isSuperNode = ["name", "email", "dob", "address"].includes(selectedNode.type || "")
   const isConditionNode = selectedNode.type === "condition"
+  const isFulfillmentNode = ["homeDelivery", "event", "retailStore"].includes(selectedNode.type || "")
 
   // Get available fields based on connected node type
   const getAvailableFields = (nodeType: string) => {
@@ -566,7 +586,7 @@ export function PropertiesPanel({
   }
 
   return (
-    <div className="overflow-y-auto h-full">
+    <div className="overflow-y-auto h-full pr-2 properties-panel-scroll">
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
@@ -1414,6 +1434,326 @@ export function PropertiesPanel({
               availableFields={selectedNode.data.connectedNode ? getAvailableFields(selectedNode.data.connectedNode.type) : []}
               getOperators={(field: string) => getAvailableOperators(selectedNode.data.connectedNode?.type, field)}
             />
+          )}
+
+          {/* Fulfillment Nodes Configuration */}
+          {isFulfillmentNode && (
+            <>
+              {/* Node Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter node label..."
+                  className="mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This label helps you identify the node in the flow.
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Description */}
+              <div>
+                <Label htmlFor="node-description" className="text-sm font-medium">
+                  Description
+                </Label>
+                <Textarea
+                  id="node-description"
+                  value={selectedNode.data.description || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, description: e.target.value })}
+                  placeholder="Enter description..."
+                  className="mt-2 min-h-[60px]"
+                  rows={2}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Vendor Information */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  {selectedNode.type === "homeDelivery" && <Truck className="w-4 h-4 text-orange-500" />}
+                  {selectedNode.type === "event" && <Users className="w-4 h-4 text-orange-500" />}
+                  {selectedNode.type === "retailStore" && <MapPin className="w-4 h-4 text-orange-500" />}
+                  <h3 className="text-sm font-semibold text-foreground">Vendor Information</h3>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="vendor-name" className="text-sm">Vendor Name</Label>
+                    <Input
+                      id="vendor-name"
+                      value={selectedNode.data.vendor?.name || ""}
+                      onChange={(e) => onNodeUpdate(selectedNode.id, {
+                        ...selectedNode.data,
+                        vendor: { ...(selectedNode.data.vendor || {}), name: e.target.value }
+                      })}
+                      placeholder="Enter vendor name..."
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="vendor-description" className="text-sm">Vendor Description</Label>
+                    <Textarea
+                      id="vendor-description"
+                      value={selectedNode.data.vendor?.description || ""}
+                      onChange={(e) => onNodeUpdate(selectedNode.id, {
+                        ...selectedNode.data,
+                        vendor: { ...(selectedNode.data.vendor || {}), description: e.target.value }
+                      })}
+                      placeholder="Enter vendor description..."
+                      className="mt-1 min-h-[60px]"
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Features */}
+                  <div>
+                    <Label className="text-sm mb-2 block">Features</Label>
+                    <div className="space-y-2">
+                      {(selectedNode.data.vendor?.features || []).map((feature: string, index: number) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            value={feature}
+                            onChange={(e) => {
+                              const features = [...(selectedNode.data.vendor?.features || [])]
+                              features[index] = e.target.value
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                vendor: { ...(selectedNode.data.vendor || {}), features }
+                              })
+                            }}
+                            placeholder="Feature name..."
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const features = (selectedNode.data.vendor?.features || []).filter((_: string, i: number) => i !== index)
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                vendor: { ...(selectedNode.data.vendor || {}), features }
+                              })
+                            }}
+                            className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const features = [...(selectedNode.data.vendor?.features || []), ""]
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            vendor: { ...(selectedNode.data.vendor || {}), features }
+                          })
+                        }}
+                        className="w-full cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Feature
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Configuration Settings */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Settings className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-foreground">Configuration</h3>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Home Delivery Configuration */}
+                  {selectedNode.type === "homeDelivery" && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Real-time Tracking</Label>
+                          <p className="text-xs text-muted-foreground">Enable delivery tracking</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.trackingEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), trackingEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Notifications</Label>
+                          <p className="text-xs text-muted-foreground">Send delivery notifications</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.notificationsEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), notificationsEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="delivery-window" className="text-sm">Delivery Window</Label>
+                        <Select
+                          value={selectedNode.data.configuration?.deliveryWindow || "flexible"}
+                          onValueChange={(value) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), deliveryWindow: value }
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flexible">Flexible</SelectItem>
+                            <SelectItem value="same-day">Same Day</SelectItem>
+                            <SelectItem value="next-day">Next Day</SelectItem>
+                            <SelectItem value="scheduled">Scheduled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Event Configuration */}
+                  {selectedNode.type === "event" && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Booking Enabled</Label>
+                          <p className="text-xs text-muted-foreground">Allow event booking</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.bookingEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), bookingEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Reminders</Label>
+                          <p className="text-xs text-muted-foreground">Send event reminders</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.remindersEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), remindersEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-sm mb-2 block">Event Types</Label>
+                        <div className="space-y-2">
+                          {["in-store", "event"].map((type) => (
+                            <div key={type} className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={(selectedNode.data.configuration?.eventTypes || []).includes(type)}
+                                onChange={(e) => {
+                                  const eventTypes = selectedNode.data.configuration?.eventTypes || []
+                                  const updated = e.target.checked
+                                    ? [...eventTypes, type]
+                                    : eventTypes.filter((t: string) => t !== type)
+                                  onNodeUpdate(selectedNode.id, {
+                                    ...selectedNode.data,
+                                    configuration: { ...(selectedNode.data.configuration || {}), eventTypes: updated }
+                                  })
+                                }}
+                                className="rounded border-border"
+                              />
+                              <Label className="text-sm font-normal cursor-pointer">{type}</Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Retail Store Configuration */}
+                  {selectedNode.type === "retailStore" && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Store Locator</Label>
+                          <p className="text-xs text-muted-foreground">Enable store finder</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.storeLocatorEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), storeLocatorEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Inventory Check</Label>
+                          <p className="text-xs text-muted-foreground">Check product availability</p>
+                        </div>
+                        <Switch
+                          checked={selectedNode.data.configuration?.inventoryCheckEnabled !== false}
+                          onCheckedChange={(checked) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), inventoryCheckEnabled: checked }
+                            })
+                          }
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Package className="w-5 h-5 text-orange-600 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-1">Fulfillment Node</h4>
+                    <p className="text-xs text-orange-700 dark:text-orange-300">
+                      Configure your fulfillment service settings. Changes are applied in real-time and reflected in the node on the canvas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Start Node */}

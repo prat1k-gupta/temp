@@ -42,7 +42,9 @@ import { EmailNode } from "@/components/nodes/super/email-node"
 import { AddressNode } from "@/components/nodes/super/address-node"
 import { DobNode } from "@/components/nodes/super/dob-node"
 // Fulfillment nodes
-import { GenericFulfillmentNode } from "@/components/nodes/fulfillment/generic-fulfillment-node"
+import { HomeDeliveryNode } from "@/components/nodes/fulfillment/home-delivery-node"
+import { EventNode } from "@/components/nodes/fulfillment/event-node"
+import { RetailStoreNode } from "@/components/nodes/fulfillment/retail-store-node"
 // Integration nodes
 import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
 import { NodeSidebar } from "@/components/node-sidebar"
@@ -134,9 +136,9 @@ const nodeTypes = {
   address: AddressNode,
   dob: DobNode,
   // Fulfillment nodes
-  homeDelivery: GenericFulfillmentNode,
-  event: GenericFulfillmentNode,
-  retailStore: GenericFulfillmentNode,
+  homeDelivery: HomeDeliveryNode,
+  event: EventNode,
+  retailStore: RetailStoreNode,
   // Integration nodes
   shopify: GenericIntegrationNode,
   metaAudience: GenericIntegrationNode,
@@ -3301,18 +3303,20 @@ export default function MagicFlow() {
         } overflow-hidden bg-background border-l border-border`}
       >
         {selectedNode && (
-          <div className="w-80">
-            <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="w-80 flex flex-col h-full">
+            <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
               <h2 className="text-lg font-semibold text-foreground">Properties</h2>
               <Button variant="ghost" size="sm" onClick={() => setIsPropertiesPanelOpen(false)} className="h-8 w-8 p-0">
                 <span className="sr-only">Close properties panel</span>×
               </Button>
             </div>
-            <PropertiesPanel 
-              selectedNode={selectedNode} 
-              platform={platform} 
-              onNodeUpdate={updateNodeData}
-            />
+            <div className="flex-1 overflow-hidden">
+              <PropertiesPanel 
+                selectedNode={selectedNode} 
+                platform={platform} 
+                onNodeUpdate={updateNodeData}
+              />
+            </div>
           </div>
         )}
         {!selectedNode && isPropertiesPanelOpen && (

@@ -3,21 +3,21 @@
 import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Package, Truck, CheckCircle2 } from "lucide-react"
+import { Store, MapPin, CheckCircle2 } from "lucide-react"
 import type { Platform } from "@/types"
 
-export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boolean }) {
+export function RetailStoreNode({ data, selected }: { data: any; selected?: boolean }) {
   const platform = (data.platform || "web") as Platform
   const vendor = data.vendor || {
-    name: "Optimized Delivery Vendor",
-    type: "delivery",
-    description: "Highly optimized delivery vendor based on scale",
-    features: ["Real-time tracking", "Scale-based optimization", "Fast delivery"]
+    name: "Retailer System",
+    type: "retailer",
+    description: "Retailer system for brand retail stores",
+    features: ["Store locator", "Inventory check", "Store hours"]
   }
   const configuration = data.configuration || {
-    deliveryWindow: "flexible",
-    trackingEnabled: true,
-    notificationsEnabled: true
+    storeLocatorEnabled: true,
+    inventoryCheckEnabled: true,
+    bookingEnabled: false
   }
 
   const getPlatformColor = (platform: Platform) => {
@@ -52,23 +52,23 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 bg-orange-500 rounded-md flex items-center justify-center flex-shrink-0">
-              <Package className="w-3 h-3 text-white" />
+              <Store className="w-3 h-3 text-white" />
             </div>
             <h3 className="text-xs font-medium text-card-foreground flex-1">
-              {data.label || "At-home Delivery"}
+              {data.label || "Retail Store"}
             </h3>
           </div>
         </CardHeader>
 
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           <p className="text-[10px] text-muted-foreground">
-            {data.description || "Schedule a home delivery"}
+            {data.description || "Find nearby stores"}
           </p>
 
           {/* Vendor Information */}
           <div className="space-y-2 pt-1 border-t border-border">
             <div className="flex items-center gap-2">
-              <Truck className="w-3 h-3 text-orange-500" />
+              <MapPin className="w-3 h-3 text-orange-500" />
               <span className="text-[10px] font-medium text-card-foreground">{vendor.name}</span>
             </div>
             <p className="text-[9px] text-muted-foreground leading-relaxed">
@@ -92,22 +92,16 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
 
             {/* Configuration */}
             <div className="space-y-1.5 pt-1">
-              {configuration.trackingEnabled && (
+              {configuration.storeLocatorEnabled && (
                 <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
                   <CheckCircle2 className="w-3 h-3 text-green-500" />
-                  <span>Real-time tracking enabled</span>
+                  <span>Store locator enabled</span>
                 </div>
               )}
-              {configuration.notificationsEnabled && (
+              {configuration.inventoryCheckEnabled && (
                 <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
                   <CheckCircle2 className="w-3 h-3 text-green-500" />
-                  <span>Notifications enabled</span>
-                </div>
-              )}
-              {configuration.deliveryWindow && (
-                <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
-                  <span>Delivery window: {configuration.deliveryWindow}</span>
+                  <span>Inventory check enabled</span>
                 </div>
               )}
             </div>

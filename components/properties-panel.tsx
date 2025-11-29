@@ -283,6 +283,16 @@ export function PropertiesPanel({
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
   
+  // Ensure autocomplete is disabled for non-web platforms when address node is selected
+  useEffect(() => {
+    if (selectedNode?.type === "address" && platform !== "web" && selectedNode.data.validationRules?.autocomplete) {
+      onNodeUpdate(selectedNode.id, {
+        ...selectedNode.data,
+        validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: false }
+      })
+    }
+  }, [selectedNode?.id, selectedNode?.type, platform, selectedNode?.data.validationRules?.autocomplete, onNodeUpdate])
+  
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -1055,25 +1065,26 @@ export function PropertiesPanel({
 
               <Separator />
 
-              {/* Field Label */}
+              {/* Question/Message */}
               <div>
-                <Label htmlFor="field-label" className="text-sm font-medium">
-                  Field Label
+                <Label htmlFor="super-question" className="text-sm font-medium">
+                  Question/Message
                 </Label>
-                <Input
-                  id="field-label"
-                  value={selectedNode.data.fieldLabel || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, fieldLabel: e.target.value })}
-                  placeholder={`e.g., ${
-                    selectedNode.type === "name" ? "Full Name" :
-                    selectedNode.type === "email" ? "Email Address" :
-                    selectedNode.type === "dob" ? "Date of Birth" :
-                    "Street Address"
-                  }`}
-                  className="mt-2"
+                <Textarea
+                  id="super-question"
+                  value={selectedNode.data.question || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, question: e.target.value })}
+                  placeholder={
+                    selectedNode.type === "name" ? "What's your name?" :
+                    selectedNode.type === "email" ? "What's your email address?" :
+                    selectedNode.type === "dob" ? "What's your date of birth?" :
+                    "Please enter your address in the below format:\n\n🏠 House Number\nSociety/Block\nArea\nCity"
+                  }
+                  className="mt-2 min-h-[100px]"
+                  rows={4}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  The label shown to users when collecting this information.
+                  The message/question that users will receive when they reach this node.
                 </p>
               </div>
 
@@ -1314,6 +1325,62 @@ export function PropertiesPanel({
               {/* Address Validation */}
               {selectedNode.type === "address" && (
                 <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="geography" className="text-sm mb-2 block">Service Geography</Label>
+                    <Select
+                      value={selectedNode.data.validationRules?.geography || "pan-india"}
+                      onValueChange={(value) => 
+                        onNodeUpdate(selectedNode.id, {
+                          ...selectedNode.data,
+                          validationRules: { ...(selectedNode.data.validationRules || {}), geography: value }
+                        })
+                      }
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pan-india">Pan India</SelectItem>
+                        <SelectItem value="metro-cities">Metro Cities</SelectItem>
+                        <SelectItem value="tier-1-cities">Tier 1 Cities</SelectItem>
+                        <SelectItem value="tier-2-cities">Tier 2 Cities</SelectItem>
+                        <SelectItem value="tier-3-cities">Tier 3 Cities</SelectItem>
+                        <SelectItem value="specific-states">Specific States</SelectItem>
+                        <SelectItem value="specific-cities">Specific Cities</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Define the geographical coverage for address collection
+                    </p>
+                  </div>
+
+                  {(selectedNode.data.validationRules?.geography === "specific-states" || 
+                    selectedNode.data.validationRules?.geography === "specific-cities") && (
+                    <div>
+                      <Label className="text-sm mb-2 block">
+                        {selectedNode.data.validationRules?.geography === "specific-states" ? "Select States" : "Select Cities"}
+                      </Label>
+                      <Textarea
+                        value={(selectedNode.data.validationRules?.specificLocations || []).join(", ")}
+                        onChange={(e) => {
+                          const locations = e.target.value.split(",").map((loc: string) => loc.trim()).filter(Boolean)
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), specificLocations: locations }
+                          })
+                        }}
+                        placeholder={selectedNode.data.validationRules?.geography === "specific-states" 
+                          ? "Enter states separated by commas (e.g., Maharashtra, Karnataka, Delhi)" 
+                          : "Enter cities separated by commas (e.g., Mumbai, Bangalore, Delhi)"}
+                        className="min-h-[80px]"
+                        rows={3}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter {selectedNode.data.validationRules?.geography === "specific-states" ? "states" : "cities"} separated by commas
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <Label className="text-sm">Required Field</Label>
@@ -1346,32 +1413,84 @@ export function PropertiesPanel({
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Address Autocomplete</Label>
-                      <p className="text-xs text-muted-foreground">Enable Google Places autocomplete</p>
+                  {platform === "web" && (
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-sm">Address Autocomplete</Label>
+                        <p className="text-xs text-muted-foreground">Enable Google Places autocomplete</p>
+                      </div>
+                      <Switch
+                        checked={selectedNode.data.validationRules?.autocomplete !== false}
+                        onCheckedChange={(checked) => 
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: checked }
+                          })
+                        }
+                      />
                     </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.autocomplete !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: checked }
-                        })
-                      }
-                    />
-                  </div>
+                  )}
+                  {platform !== "web" && (
+                    <div className="p-3 bg-muted/30 rounded-lg">
+                      <p className="text-xs text-muted-foreground">
+                        Address autocomplete is only available for web forms. WhatsApp and Instagram use manual address entry.
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <Label className="text-sm mb-2 block">Address Components</Label>
-                    <div className="p-3 bg-muted/30 rounded-lg space-y-2">
-                      {(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).map((component: string) => (
-                        <div key={component} className="flex items-center gap-2 text-xs">
-                          <CheckCircle2 className="w-3 h-3 text-green-600" />
-                          <span className="text-foreground">{component}</span>
+                    <div className="space-y-2">
+                      {(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).map((component: string, index: number) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            value={component}
+                            onChange={(e) => {
+                              const components = [...(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"])]
+                              components[index] = e.target.value
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                addressComponents: components
+                              })
+                            }}
+                            placeholder="Component name..."
+                            className="flex-1"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const components = (selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).filter((_: string, i: number) => i !== index)
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                addressComponents: components
+                              })
+                            }}
+                            className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const components = [...(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]), ""]
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            addressComponents: components
+                          })
+                        }}
+                        className="w-full cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Component
+                      </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Configure which address fields users need to provide.
+                    </p>
                   </div>
                 </div>
               )}
@@ -1475,96 +1594,45 @@ export function PropertiesPanel({
 
               <Separator />
 
-              {/* Vendor Information */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  {selectedNode.type === "homeDelivery" && <Truck className="w-4 h-4 text-orange-500" />}
-                  {selectedNode.type === "event" && <Users className="w-4 h-4 text-orange-500" />}
-                  {selectedNode.type === "retailStore" && <MapPin className="w-4 h-4 text-orange-500" />}
-                  <h3 className="text-sm font-semibold text-foreground">Vendor Information</h3>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="vendor-name" className="text-sm">Vendor Name</Label>
-                    <Input
-                      id="vendor-name"
-                      value={selectedNode.data.vendor?.name || ""}
-                      onChange={(e) => onNodeUpdate(selectedNode.id, {
-                        ...selectedNode.data,
-                        vendor: { ...(selectedNode.data.vendor || {}), name: e.target.value }
-                      })}
-                      placeholder="Enter vendor name..."
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="vendor-description" className="text-sm">Vendor Description</Label>
-                    <Textarea
-                      id="vendor-description"
-                      value={selectedNode.data.vendor?.description || ""}
-                      onChange={(e) => onNodeUpdate(selectedNode.id, {
-                        ...selectedNode.data,
-                        vendor: { ...(selectedNode.data.vendor || {}), description: e.target.value }
-                      })}
-                      placeholder="Enter vendor description..."
-                      className="mt-1 min-h-[60px]"
-                      rows={2}
-                    />
-                  </div>
-
-                  {/* Features */}
-                  <div>
-                    <Label className="text-sm mb-2 block">Features</Label>
-                    <div className="space-y-2">
-                      {(selectedNode.data.vendor?.features || []).map((feature: string, index: number) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Input
-                            value={feature}
-                            onChange={(e) => {
-                              const features = [...(selectedNode.data.vendor?.features || [])]
-                              features[index] = e.target.value
-                              onNodeUpdate(selectedNode.id, {
-                                ...selectedNode.data,
-                                vendor: { ...(selectedNode.data.vendor || {}), features }
-                              })
-                            }}
-                            placeholder="Feature name..."
-                            className="flex-1"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const features = (selectedNode.data.vendor?.features || []).filter((_: string, i: number) => i !== index)
-                              onNodeUpdate(selectedNode.id, {
-                                ...selectedNode.data,
-                                vendor: { ...(selectedNode.data.vendor || {}), features }
-                              })
-                            }}
-                            className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+              {/* Vendor Selection Info */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">System-Optimized Vendor</h4>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed mb-2">
+                      Our system automatically selects the most optimized vendor based on your configuration settings below. The vendor is intelligently chosen to provide the best service for your specific requirements.
+                    </p>
+                    {selectedNode.data.vendor?.name && (
+                      <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center gap-2">
+                          {selectedNode.type === "homeDelivery" && <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                          {selectedNode.type === "event" && <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                          {selectedNode.type === "retailStore" && <MapPin className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                          <span className="text-xs font-medium text-blue-900 dark:text-blue-100">
+                            {selectedNode.data.vendor.name}
+                          </span>
                         </div>
-                      ))}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const features = [...(selectedNode.data.vendor?.features || []), ""]
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            vendor: { ...(selectedNode.data.vendor || {}), features }
-                          })
-                        }}
-                        className="w-full cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Feature
-                      </Button>
-                    </div>
+                        {selectedNode.data.vendor.description && (
+                          <p className="text-xs text-blue-700 dark:text-blue-300 mt-1.5">
+                            {selectedNode.data.vendor.description}
+                          </p>
+                        )}
+                        {selectedNode.data.vendor?.features && selectedNode.data.vendor.features.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {selectedNode.data.vendor.features.map((feature: string, index: number) => (
+                              <Badge
+                                key={index}
+                                variant="secondary"
+                                className="text-[10px] h-5 px-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                              >
+                                {feature}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1642,6 +1710,30 @@ export function PropertiesPanel({
                   {/* Event Configuration */}
                   {selectedNode.type === "event" && (
                     <>
+                      <div>
+                        <Label htmlFor="promoter-network" className="text-sm mb-2 block">Promoter Network</Label>
+                        <Select
+                          value={selectedNode.data.configuration?.promoterNetwork || "our-network"}
+                          onValueChange={(value) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), promoterNetwork: value }
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="our-network">Our Promoter Network</SelectItem>
+                            <SelectItem value="brand-network">Brand's Own Promoters</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Choose between our network or your brand's own promoters
+                        </p>
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <Label className="text-sm">Booking Enabled</Label>
@@ -1705,6 +1797,30 @@ export function PropertiesPanel({
                   {/* Retail Store Configuration */}
                   {selectedNode.type === "retailStore" && (
                     <>
+                      <div>
+                        <Label htmlFor="retailer-network" className="text-sm mb-2 block">Retailer Network</Label>
+                        <Select
+                          value={selectedNode.data.configuration?.retailerNetwork || "our-network"}
+                          onValueChange={(value) => 
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              configuration: { ...(selectedNode.data.configuration || {}), retailerNetwork: value }
+                            })
+                          }
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="our-network">Our Retailer Network</SelectItem>
+                            <SelectItem value="brand-network">Brand's Own Retailers</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Choose between our network or your brand's own retail stores
+                        </p>
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <Label className="text-sm">Store Locator</Label>
@@ -1748,7 +1864,7 @@ export function PropertiesPanel({
                   <div>
                     <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-1">Fulfillment Node</h4>
                     <p className="text-xs text-orange-700 dark:text-orange-300">
-                      Configure your fulfillment service settings. Changes are applied in real-time and reflected in the node on the canvas.
+                      Configure your fulfillment service settings below. The system will automatically select the most optimized vendor based on your configuration. Changes are applied in real-time and reflected in the node on the canvas.
                     </p>
                   </div>
                 </div>

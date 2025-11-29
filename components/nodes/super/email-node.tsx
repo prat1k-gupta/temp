@@ -5,23 +5,29 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Mail, Edit3, Check, X, Sparkles } from "lucide-react"
 import type { Platform } from "@/types"
+import { CHARACTER_LIMITS } from "@/constants/platform-limits"
 
 export function EmailNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
-  const [isEditingField, setIsEditingField] = useState(false)
+  const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
-  const [editingFieldValue, setEditingFieldValue] = useState("")
+  const [editingQuestionValue, setEditingQuestionValue] = useState("")
 
   const platform = (data.platform || "web") as Platform
-  const fieldLabel = data.fieldLabel || "Email Address"
+  const maxLength = CHARACTER_LIMITS[platform].question
   const validationRules = data.validationRules || {
     format: "RFC 5322",
     checkDomain: true,
     blockDisposable: true,
     required: true
+  }
+
+  const isOverLimit = (text: string) => {
+    return text.length > maxLength
   }
 
   useEffect(() => {
@@ -31,10 +37,10 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
   }, [data.label, isEditingLabel])
 
   useEffect(() => {
-    if (!isEditingField) {
-      setEditingFieldValue(fieldLabel)
+    if (!isEditingQuestion) {
+      setEditingQuestionValue(data.question || "")
     }
-  }, [fieldLabel, isEditingField])
+  }, [data.question, isEditingQuestion])
 
   const finishEditingLabel = () => {
     if (editingLabelValue.trim() && data.onNodeUpdate) {
@@ -43,11 +49,21 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
     setIsEditingLabel(false)
   }
 
-  const finishEditingField = () => {
-    if (editingFieldValue.trim() && data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, fieldLabel: editingFieldValue.trim() })
+  const startEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(true)
+  }
+
+  const finishEditingQuestion = () => {
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
-    setIsEditingField(false)
+    setIsEditingQuestion(false)
+  }
+
+  const cancelEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(false)
   }
 
   const getPlatformColor = (platform: Platform) => {
@@ -120,58 +136,45 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
         </CardHeader>
 
         <CardContent className="pt-0 space-y-3 pb-3 px-4">
-          {/* Field Name */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-muted-foreground">Field Name</label>
-              {isEditingField ? (
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={finishEditingField}
-                  >
-                    <Check className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={() => setIsEditingField(false)}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  onClick={() => setIsEditingField(true)}
-                >
-                  <Edit3 className="w-3 h-3" />
-                </Button>
-              )}
-            </div>
-            {isEditingField ? (
-              <Input
-                value={editingFieldValue}
-                onChange={(e) => setEditingFieldValue(e.target.value)}
+          {/* Question/Message - Editable */}
+          {isEditingQuestion ? (
+            <div className="space-y-2">
+              <Textarea
+                value={editingQuestionValue}
+                onChange={(e) => setEditingQuestionValue(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") finishEditingField()
-                  if (e.key === "Escape") setIsEditingField(false)
+                  if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className="h-7 text-xs"
-                placeholder="e.g., Email Address"
+                onBlur={finishEditingQuestion}
+                className={`text-sm min-h-[60px] resize-none ${
+                  isOverLimit(editingQuestionValue) ? "border-red-300 focus:border-red-400" : ""
+                }`}
+                placeholder="What's your email address?"
                 autoFocus
               />
-            ) : (
-              <div className="text-xs text-card-foreground font-medium px-2 py-1 bg-muted/50 rounded">
-                {fieldLabel}
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs ${
+                    isOverLimit(editingQuestionValue) ? "text-red-500" : "text-muted-foreground"
+                  }`}
+                >
+                  {editingQuestionValue.length}/{maxLength}
+                </span>
+                {isOverLimit(editingQuestionValue) && (
+                  <Badge variant="destructive" className="text-xs h-5">
+                    Too long
+                  </Badge>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-purple-50/30 dark:hover:bg-purple-950/20 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 dark:hover:border-purple-800 transition-colors whitespace-pre-wrap"
+              onClick={startEditingQuestion}
+            >
+              {data.question || "What's your email address?"}
+            </div>
+          )}
 
           {/* Validation Info */}
           <div className="space-y-1">

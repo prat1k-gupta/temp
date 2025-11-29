@@ -5,13 +5,16 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Edit3, Check, X, Sparkles } from "lucide-react"
 import type { Platform } from "@/types"
 
 export function AddressNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
+  const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
+  const [editingQuestionValue, setEditingQuestionValue] = useState("")
 
   const platform = (data.platform || "web") as Platform
   const addressComponents = data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]
@@ -27,11 +30,34 @@ export function AddressNode({ data, selected }: { data: any; selected?: boolean 
     }
   }, [data.label, isEditingLabel])
 
+  useEffect(() => {
+    if (!isEditingQuestion) {
+      setEditingQuestionValue(data.question || "")
+    }
+  }, [data.question, isEditingQuestion])
+
   const finishEditingLabel = () => {
     if (editingLabelValue.trim() && data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, label: editingLabelValue.trim() })
     }
     setIsEditingLabel(false)
+  }
+
+  const startEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(true)
+  }
+
+  const finishEditingQuestion = () => {
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
+    }
+    setIsEditingQuestion(false)
+  }
+
+  const cancelEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(false)
   }
 
   const getPlatformColor = (platform: Platform) => {
@@ -104,13 +130,47 @@ export function AddressNode({ data, selected }: { data: any; selected?: boolean 
         </CardHeader>
 
         <CardContent className="pt-0 space-y-3 pb-3 px-4">
+          {/* Question/Message - Editable */}
+          {isEditingQuestion ? (
+            <div className="space-y-2">
+              <Textarea
+                value={editingQuestionValue}
+                onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelEditingQuestion()
+                }}
+                onBlur={finishEditingQuestion}
+                className="text-sm min-h-[80px] resize-none"
+                placeholder="Please enter your address in the below format:&#10;&#10;🏠 House Number&#10;Society/Block&#10;Area&#10;City"
+                autoFocus
+              />
+              <div className="flex justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={finishEditingQuestion}
+                  className="h-6 text-xs"
+                >
+                  Done
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="text-sm text-muted-foreground line-clamp-4 cursor-pointer hover:bg-purple-50/30 dark:hover:bg-purple-950/20 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 dark:hover:border-purple-800 transition-colors whitespace-pre-wrap"
+              onClick={startEditingQuestion}
+            >
+              {data.question || "Please enter your address in the below format:\n\n🏠 House Number\nSociety/Block\nArea\nCity"}
+            </div>
+          )}
+
           {/* Address Components */}
           <div className="space-y-1">
             <label className="text-[10px] text-muted-foreground">Components</label>
             <div className="flex flex-wrap gap-1">
-              {addressComponents.map((component: string) => (
+              {addressComponents.map((component: string, index: number) => (
                 <Badge
-                  key={component}
+                  key={index}
                   variant="outline"
                   className="text-[9px] h-5 px-2 bg-muted/20"
                 >

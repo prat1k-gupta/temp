@@ -5,16 +5,18 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, Edit3, Sparkles } from "lucide-react"
 import type { Platform } from "@/types"
 
 export function DobNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
+  const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
+  const [editingQuestionValue, setEditingQuestionValue] = useState("")
 
   const platform = (data.platform || "web") as Platform
-  const fieldLabel = data.fieldLabel || "Date of Birth"
   const validationRules = data.validationRules || {
     minAge: 13,
     maxAge: 120,
@@ -28,11 +30,34 @@ export function DobNode({ data, selected }: { data: any; selected?: boolean }) {
     }
   }, [data.label, isEditingLabel])
 
+  useEffect(() => {
+    if (!isEditingQuestion) {
+      setEditingQuestionValue(data.question || "")
+    }
+  }, [data.question, isEditingQuestion])
+
   const finishEditingLabel = () => {
     if (editingLabelValue.trim() && data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, label: editingLabelValue.trim() })
     }
     setIsEditingLabel(false)
+  }
+
+  const startEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(true)
+  }
+
+  const finishEditingQuestion = () => {
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
+    }
+    setIsEditingQuestion(false)
+  }
+
+  const cancelEditingQuestion = () => {
+    setEditingQuestionValue(data.question || "")
+    setIsEditingQuestion(false)
   }
 
   const getPlatformColor = (platform: Platform) => {
@@ -105,13 +130,39 @@ export function DobNode({ data, selected }: { data: any; selected?: boolean }) {
         </CardHeader>
 
         <CardContent className="pt-0 space-y-3 pb-3 px-4">
-          {/* Field Label */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-muted-foreground">Field Name</label>
-            <div className="text-xs text-card-foreground font-medium px-2 py-1 bg-muted/50 rounded">
-              {fieldLabel}
+          {/* Question/Message - Editable */}
+          {isEditingQuestion ? (
+            <div className="space-y-2">
+              <Textarea
+                value={editingQuestionValue}
+                onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelEditingQuestion()
+                }}
+                onBlur={finishEditingQuestion}
+                className="text-sm min-h-[60px] resize-none"
+                placeholder="What's your date of birth?"
+                autoFocus
+              />
+              <div className="flex justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={finishEditingQuestion}
+                  className="h-6 text-xs"
+                >
+                  Done
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-purple-50/30 dark:hover:bg-purple-950/20 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 dark:hover:border-purple-800 transition-colors whitespace-pre-wrap"
+              onClick={startEditingQuestion}
+            >
+              {data.question || "What's your date of birth?"}
+            </div>
+          )}
 
           {/* Validation Info */}
           <div className="space-y-1">

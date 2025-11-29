@@ -117,7 +117,7 @@ export const createSuperNode = (
   const superNodeConfig: Record<string, any> = {
     name: {
       label: "Name",
-      fieldLabel: "Full Name",
+      question: "What's your name?",
       validationRules: {
         minLength: 2,
         maxLength: 50,
@@ -127,7 +127,7 @@ export const createSuperNode = (
     },
     email: {
       label: "Email",
-      fieldLabel: "Email Address",
+      question: "What's your email address?",
       validationRules: {
         format: "RFC 5322",
         checkDomain: true,
@@ -137,7 +137,7 @@ export const createSuperNode = (
     },
     dob: {
       label: "DOB",
-      fieldLabel: "Date of Birth",
+      question: "What's your date of birth?",
       validationRules: {
         minAge: 13,
         maxAge: 120,
@@ -147,17 +147,23 @@ export const createSuperNode = (
     },
     address: {
       label: "Address",
-      fieldLabel: "Address",
+      question: "Please enter your address",
       validationRules: {
+        geography: "pan-india",
         required: true,
         validatePostalCode: true,
-        autocomplete: true
+        autocomplete: false // Will be set based on platform below
       },
-      addressComponents: ["Street", "City", "State", "ZIP", "Country"]
+      addressComponents: ["House Number", "Society/Block", "Area", "City"]
     }
   }
 
   const config = superNodeConfig[nodeType]
+  
+  // For address nodes, set autocomplete based on platform
+  if (nodeType === "address" && config.validationRules) {
+    config.validationRules.autocomplete = platform === "web"
+  }
   
   return {
     id: nodeId,
@@ -207,6 +213,7 @@ export const createFulfillmentNode = (
         features: ["Event management", "Promoter scheduling", "Real-time updates"]
       },
       configuration: {
+        promoterNetwork: "our-network",
         eventTypes: ["in-store", "event"],
         bookingEnabled: true,
         remindersEnabled: true
@@ -222,6 +229,7 @@ export const createFulfillmentNode = (
         features: ["Store locator", "Inventory check", "Store hours"]
       },
       configuration: {
+        retailerNetwork: "our-network",
         storeLocatorEnabled: true,
         inventoryCheckEnabled: true,
         bookingEnabled: false

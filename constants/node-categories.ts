@@ -67,6 +67,30 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: "interaction",
     platforms: ["whatsapp", "instagram"],
   },
+  {
+    type: "whatsappMessage",
+    icon: MessageCircle,
+    label: "WhatsApp Message",
+    description: "Send a WhatsApp message",
+    category: "interaction",
+    platforms: ["whatsapp"],
+  },
+  {
+    type: "instagramDM",
+    icon: MessageCircle,
+    label: "Instagram DM",
+    description: "Send an Instagram direct message",
+    category: "interaction",
+    platforms: ["instagram"],
+  },
+  {
+    type: "instagramStory",
+    icon: MessageCircle,
+    label: "Instagram Story",
+    description: "Add story reply prompt",
+    category: "interaction",
+    platforms: ["instagram"],
+  },
   
   // LOGIC NODES
   {

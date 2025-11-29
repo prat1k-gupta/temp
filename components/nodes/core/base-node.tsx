@@ -1,6 +1,6 @@
 import type React from "react"
 import { memo } from "react"
-import { Handle, Position } from "reactflow"
+import { Handle, Position } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { getPlatformConfig } from "@/lib/platform-config"
 

@@ -343,6 +343,45 @@ export const createIntegrationNode = (
 }
 
 /**
+ * Create a platform-specific message node (WhatsApp Message, Instagram DM, Instagram Story)
+ */
+export const createMessageNode = (
+  nodeType: "whatsappMessage" | "instagramDM" | "instagramStory",
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId(nodeType)
+  
+  const messageConfig: Record<string, { label: string; text: string }> = {
+    whatsappMessage: {
+      label: "WhatsApp Message",
+      text: "Type your WhatsApp message..."
+    },
+    instagramDM: {
+      label: "Instagram DM",
+      text: "Type your Instagram message..."
+    },
+    instagramStory: {
+      label: "Instagram Story",
+      text: "Add story reply prompt..."
+    }
+  }
+
+  const config = messageConfig[nodeType]
+  
+  return {
+    id: nodeId,
+    type: nodeType,
+    position,
+    data: {
+      platform,
+      ...config,
+    } as NodeData,
+  }
+}
+
+/**
  * Factory function to create any node type
  */
 export const createNode = (
@@ -369,6 +408,10 @@ export const createNode = (
   // Integration nodes
   else if (["shopify", "metaAudience", "stripe", "zapier", "google", "salesforce", "mailchimp", "twilio", "slack", "airtable"].includes(nodeType)) {
     node = createIntegrationNode(nodeType as any, platform, position, customId)
+  }
+  // Platform-specific message nodes
+  else if (["whatsappMessage", "instagramDM", "instagramStory"].includes(nodeType)) {
+    node = createMessageNode(nodeType as any, platform, position, customId)
   }
   // Regular interaction nodes
   else {

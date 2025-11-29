@@ -1000,6 +1000,7 @@ export default function MagicFlow() {
 
       // Normalize node type for createNode
       // createNode expects base types (question, quickReply, whatsappList) not platform-specific types
+      // BUT it also accepts platform-specific message nodes (whatsappMessage, instagramDM, instagramStory) as-is
       let normalizedType = suggestion.type
       
       // Handle list types - createNode only accepts "whatsappList" regardless of platform
@@ -1012,6 +1013,11 @@ export default function MagicFlow() {
       }
       else if (normalizedType === "whatsappQuickReply" || normalizedType === "instagramQuickReply" || normalizedType === "webQuickReply") {
         normalizedType = "quickReply"
+      }
+      // Platform-specific message nodes are passed as-is (whatsappMessage, instagramDM, instagramStory)
+      else if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
+        // Keep as-is - createNode now supports these
+        normalizedType = normalizedType
       }
       // For other types, use getBaseNodeType as fallback
       else {
@@ -1061,14 +1067,27 @@ export default function MagicFlow() {
           if (content.label) {
             updatedData.label = content.label
           }
-          // Set question if provided
-          if (content.question) {
-            updatedData.question = content.question
+          
+          // Handle message nodes (whatsappMessage, instagramDM, instagramStory) - they use "text" field
+          if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
+            // Message nodes use "text" field, not "question"
+            if (content.text) {
+              updatedData.text = content.text
+            } else if (content.question) {
+              // Fallback: if question is provided, use it as text
+              updatedData.text = content.question
+            }
+          } else {
+            // For other nodes, use question field
+            if (content.question) {
+              updatedData.question = content.question
+            }
+            // Also set text if provided (for nodes that might use both)
+            if (content.text) {
+              updatedData.text = content.text
+            }
           }
-          // Set text if provided
-          if (content.text) {
-            updatedData.text = content.text
-          }
+          
           // Set buttons if provided
           if (content.buttons && Array.isArray(content.buttons)) {
             updatedData.buttons = content.buttons.map((btn: any, index: number) => ({

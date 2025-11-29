@@ -1,5 +1,6 @@
-import { generateText } from 'ai'
+import { generateText, generateObject } from 'ai'
 import { openai } from '@ai-sdk/openai'
+import { z } from 'zod'
 import type { AIServiceConfig } from '@/types/ai'
 
 /**
@@ -63,24 +64,102 @@ export class AIClient {
   }
 
   /**
+   * Extract JSON from text, handling markdown code blocks
+   */
+  extractJSON(text: string): string | null {
+    // First, try to find JSON in markdown code blocks
+    const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*\}|\[[\s\S]*\])\s*```/)
+    if (codeBlockMatch) {
+      return codeBlockMatch[1].trim()
+    }
+
+    // Try to find JSON object or array directly
+    const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
+    if (jsonMatch) {
+      return jsonMatch[1].trim()
+    }
+
+    return null
+  }
+
+  /**
    * Generate structured JSON output
+   * Uses structured outputs when schema is provided, falls back to text generation with JSON extraction
    */
   async generateJSON<T = any>(params: {
     systemPrompt: string
     userPrompt: string
-    schema?: any
+    schema?: z.ZodSchema<T>
   }): Promise<T> {
-    const response = await this.generate({
-      systemPrompt: params.systemPrompt + '\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code blocks, just raw JSON.',
-      userPrompt: params.userPrompt,
-      temperature: 0.3, // Lower temperature for more consistent JSON
-    })
+    const startTime = Date.now()
 
     try {
-      return JSON.parse(response.text) as T
+      // If schema is provided, use structured outputs (more reliable)
+      if (params.schema) {
+        const response = await generateObject({
+          model: openai(this.config.model!),
+          schema: params.schema,
+          system: params.systemPrompt,
+          prompt: params.userPrompt,
+          temperature: 0.3, // Lower temperature for more consistent JSON
+        })
+
+        const duration = Date.now() - startTime
+        console.log(`[AI Client] Generated structured JSON in ${duration}ms`)
+
+        return response.object as T
+      }
+
+      // Fallback to text generation with strict JSON instructions
+      const enhancedSystemPrompt = `${params.systemPrompt}
+
+**CRITICAL JSON FORMATTING RULES:**
+- You MUST respond with ONLY valid JSON
+- Do NOT wrap the JSON in markdown code blocks (no \`\`\`json or \`\`\`)
+- Do NOT add any text before or after the JSON
+- Do NOT include explanations or comments
+- Start directly with { or [ and end with } or ]
+- The response must be parseable JSON only
+
+Example of CORRECT format:
+{"key": "value"}
+
+Example of WRONG format:
+\`\`\`json
+{"key": "value"}
+\`\`\`
+
+Respond with raw JSON only.`
+
+      const response = await this.generate({
+        systemPrompt: enhancedSystemPrompt,
+        userPrompt: params.userPrompt,
+        temperature: 0.3, // Lower temperature for more consistent JSON
+      })
+
+      // Try to extract JSON from the response
+      let jsonText = response.text.trim()
+
+      // Remove markdown code blocks if present
+      const extracted = this.extractJSON(jsonText)
+      if (extracted) {
+        jsonText = extracted
+      }
+
+      // Try to parse the JSON
+      try {
+        const parsed = JSON.parse(jsonText) as T
+        const duration = Date.now() - startTime
+        console.log(`[AI Client] Generated JSON in ${duration}ms`)
+        return parsed
+      } catch (parseError) {
+        console.error('[AI Client] Failed to parse JSON response:', jsonText)
+        console.error('[AI Client] Parse error:', parseError)
+        throw new Error(`Invalid JSON response from AI. Response: ${jsonText.substring(0, 200)}...`)
+      }
     } catch (error) {
-      console.error('[AI Client] Failed to parse JSON response:', response.text)
-      throw new Error('Invalid JSON response from AI')
+      console.error('[AI Client] Error generating JSON:', error)
+      throw error
     }
   }
 

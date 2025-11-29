@@ -1,6 +1,7 @@
 import type { AITool, AIToolResult, ImproveCopyRequest, ImproveCopyResponse } from '@/types/ai'
 import { getAIClient } from '../core/ai-client'
-import { buildContextDescription, getPlatformGuidelines, getNodeTypeGuidelines, buildAIContext } from '../core/ai-context'
+import { buildContextDescription, getPlatformGuidelines, getNodeTypeGuidelines, buildAIContext, getNodeDocumentationForPrompt } from '../core/ai-context'
+import { z } from 'zod'
 
 /**
  * Improve Copy Tool
@@ -26,14 +27,21 @@ export const improveCopyTool: AITool<ImproveCopyRequest, ImproveCopyResponse> = 
       // Build user prompt
       const userPrompt = buildUserPrompt(text, context)
 
-      // Call AI
+      // Define Zod schema for structured output
+      const responseSchema = z.object({
+        improvedText: z.string().describe(`Improved text${maxLength ? ` (max ${maxLength} characters, STRICT LIMIT)` : ''}`),
+        improvements: z.array(z.string()).describe('List of specific improvements made to the text')
+      })
+
+      // Call AI with structured output schema
       const aiClient = getAIClient()
       const response = await aiClient.generateJSON<{
         improvedText: string
         improvements: string[]
       }>({
         systemPrompt,
-        userPrompt
+        userPrompt,
+        schema: responseSchema
       })
 
       // Return result
@@ -66,7 +74,13 @@ function buildSystemPrompt(
 ): string {
   const contextDesc = buildContextDescription(context)
   const platformGuidelines = getPlatformGuidelines(context.platform)
-  const nodeGuidelines = getNodeTypeGuidelines(context.nodeType)
+  const nodeGuidelines = getNodeTypeGuidelines(context.nodeType, context.platform)
+  
+  // Get relevant node documentation
+  let nodeDocs = ''
+  if (context.nodeType) {
+    nodeDocs = getNodeDocumentationForPrompt(context.platform, [context.nodeType])
+  }
 
   return `You are an expert copywriter specializing in conversational UI and ${context.platform} messaging.
 
@@ -78,6 +92,7 @@ ${platformGuidelines}
 
 NODE TYPE:
 ${nodeGuidelines}
+${nodeDocs ? `\n\nNODE DOCUMENTATION:\n${nodeDocs}` : ''}
 
 FIELD: ${field}
 ${maxLength ? `CHARACTER LIMIT: ${maxLength} characters (STRICT - must not exceed)` : ''}
@@ -86,20 +101,24 @@ YOUR TASK:
 1. Improve the provided text for clarity, engagement, and effectiveness
 2. Maintain the core message and intent
 3. Apply platform-specific best practices
-4. ${maxLength ? `Keep it under ${maxLength} characters` : 'Keep it concise'}
+4. ${maxLength ? `Keep it under ${maxLength} characters (STRICT LIMIT)` : 'Keep it concise'}
 5. Use appropriate tone for the platform and context
+6. Follow the node type guidelines and best practices
 
 IMPORTANT:
 - Make the text more engaging and clear
 - Fix any grammar or spelling issues
 - Ensure it's appropriate for the ${context.platform} platform
-- ${maxLength ? `DO NOT exceed ${maxLength} characters` : ''}
+- ${maxLength ? `DO NOT exceed ${maxLength} characters (STRICT LIMIT)` : ''}
+- Consider the flow context and purpose
+- Apply best practices from the node documentation
 
-Respond with JSON in this format:
-{
-  "improvedText": "the improved text",
-  "improvements": ["list", "of", "specific", "improvements", "made"]
-}`
+**OUTPUT FORMAT:**
+Return a JSON object with:
+- "improvedText": The improved text${maxLength ? ` (max ${maxLength} chars, STRICT LIMIT)` : ''}
+- "improvements": Array of strings describing specific improvements made
+
+**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`
 }
 
 /**
@@ -115,17 +134,18 @@ function buildUserPrompt(
   
   if (context) {
     if (context.purpose) {
-      parts.push(`Purpose: ${context.purpose}`)
+      parts.push(`\nPurpose: ${context.purpose}`)
     }
     if (context.flowContext) {
-      parts.push(`Flow Context: ${context.flowContext}`)
+      parts.push(`\nFlow Context: ${context.flowContext}`)
     }
     if (context.previousNodes && context.previousNodes.length > 0) {
-      parts.push(`Previous nodes: ${context.previousNodes.join(', ')}`)
+      parts.push(`\nPrevious nodes in flow: ${context.previousNodes.join(', ')}`)
+      parts.push(`Consider how this text fits with the flow context.`)
     }
   }
   
-  parts.push('\nPlease improve this text according to the guidelines.')
+  parts.push('\nPlease improve this text according to the guidelines, maintaining the core message while making it more engaging and effective.')
   
   return parts.join('\n')
 }

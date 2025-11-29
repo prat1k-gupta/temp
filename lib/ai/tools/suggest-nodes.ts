@@ -1,6 +1,7 @@
-import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines } from "../core/ai-context"
+import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines, getNodeDocumentationForPrompt } from "../core/ai-context"
 import { getAIClient } from "../core/ai-client"
 import type { Platform } from "@/types"
+import { z } from "zod"
 
 export interface SuggestNodesRequest {
   currentNodeType: string
@@ -39,27 +40,77 @@ export async function suggestNodes(
     // Build user prompt
     const userPrompt = buildUserPrompt(request)
 
+    // Define Zod schema for structured output
+    const generatedContentSchema = z.object({
+      label: z.string().describe("Node label"),
+      question: z.string().optional().describe("Question text (for question/quickReply/list nodes)"),
+      buttons: z.array(z.object({
+        text: z.string()
+      })).optional().describe("Button options (for quickReply nodes)"),
+      options: z.array(z.object({
+        text: z.string(),
+        description: z.string().optional()
+      })).optional().describe("List options (for list nodes)"),
+      text: z.string().optional().describe("Message text (for message nodes)")
+    }).passthrough()
+
+    const suggestionSchema = z.object({
+      type: z.string().describe("Node type (use exact platform-specific types)"),
+      label: z.string().describe("Display label for the node"),
+      reason: z.string().describe("Why this node makes sense after the current node"),
+      description: z.string().describe("What this node does"),
+      previewContent: z.string().optional().describe("Short preview of the generated content"),
+      generatedContent: generatedContentSchema.describe("The actual content for this node")
+    })
+
+    const responseSchema = z.object({
+      suggestions: z.array(suggestionSchema).length(maxSuggestions).describe(`Array of exactly ${maxSuggestions} suggested nodes`)
+    })
+
     // Get AI client
     const aiClient = getAIClient()
 
-    // Call AI
-    const response = await aiClient.generate({
-      systemPrompt,
-      userPrompt,
-      temperature: 0.7,
-      maxTokens: 500,
-    })
+    // Call AI with structured output
+    try {
+      const response = await aiClient.generateJSON<{
+        suggestions: SuggestedNode[]
+      }>({
+        systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object with exactly ${maxSuggestions} suggestions.`,
+        userPrompt,
+        schema: responseSchema
+      })
 
-    const content = response.text
-    if (!content) {
-      console.error("[suggest-nodes] No content in AI response")
-      return null
+      // Transform and validate suggestions
+      const suggestions = (response.suggestions || []).slice(0, maxSuggestions).map((item: any) => ({
+        type: item.type || "",
+        label: item.label || item.type,
+        reason: item.reason || "",
+        description: item.description || "",
+        previewContent: item.previewContent || generatePreviewContent(item),
+        generatedContent: item.generatedContent || {},
+      }))
+
+      return { suggestions }
+    } catch (error) {
+      console.error("[suggest-nodes] Error generating suggestions:", error)
+      // Fallback to text generation with parsing
+      const response = await aiClient.generate({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.7,
+        maxTokens: 500,
+      })
+
+      const content = response.text
+      if (!content) {
+        console.error("[suggest-nodes] No content in AI response")
+        return null
+      }
+
+      // Parse AI response using existing parser
+      const suggestions = parseSuggestions(content, maxSuggestions)
+      return { suggestions }
     }
-
-    // Parse AI response
-    const suggestions = parseSuggestions(content, maxSuggestions)
-
-    return { suggestions }
   } catch (error) {
     console.error("[suggest-nodes] Error suggesting nodes:", error)
     return null
@@ -74,21 +125,27 @@ function buildSystemPrompt(
   const currentNodeType = request.currentNodeType
 
   const platformGuidelines = getPlatformGuidelines(platform)
-  const nodeTypeGuidelines = getNodeTypeGuidelines(currentNodeType)
+  const nodeTypeGuidelines = getNodeTypeGuidelines(currentNodeType, platform)
+  
+  // Get comprehensive node documentation
+  const nodeDocs = getNodeDocumentationForPrompt(platform)
 
   let prompt = `You are an expert conversational flow designer for ${platform} platforms.
 
-Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node.
+Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node. Understand the user need and context of current conversation
+collect information ask questions to enhance user experience.
 
-**Context:**
+**Platform Guidelines:**
 ${platformGuidelines}
+
+**Current Node Context:**
 ${nodeTypeGuidelines}
 
 **Flow Purpose:**
 ${request.flowContext || "General conversational flow"}
 
-**Available Node Types for ${platform}:**
-${getAvailableNodeTypes(platform)}
+**COMPREHENSIVE NODE DOCUMENTATION:**
+${nodeDocs}
 
 **Guidelines:**
 1. Suggest exactly ${request.maxSuggestions || 2} nodes
@@ -116,32 +173,37 @@ ${getAvailableNodeTypes(platform)}
      - For other nodes: Generate appropriate content based on the node type
    - **ALWAYS include "label" field** in generatedContent for all nodes (e.g., "label": "Quick Reply", "label": "Email")
 
-**Response Format (JSON array):**
-[
-  {
-    "type": "email" (use "email" for email collection, NOT whatsappQuestion),
-    "label": "Collect Email",
-    "reason": "Why this node makes sense",
-    "description": "What this node does",
-    "previewContent": "A short preview of the generated content",
-    "generatedContent": {
-      "label": "Email" (ALWAYS include this),
-      "question": "The prompt/question text for collecting email"
+**OUTPUT FORMAT:**
+Return a JSON object with exactly ${request.maxSuggestions || 2} suggestions in this format:
+{
+  "suggestions": [
+    {
+      "type": "email" (use "email" for email collection, NOT whatsappQuestion),
+      "label": "Collect Email",
+      "reason": "Why this node makes sense",
+      "description": "What this node does",
+      "previewContent": "A short preview of the generated content",
+      "generatedContent": {
+        "label": "Email" (ALWAYS include this),
+        "question": "The prompt/question text for collecting email"
+      }
+    },
+    {
+      "type": "whatsappQuickReply" (use platform-specific type for interaction nodes),
+      "label": "Quick Reply",
+      "reason": "Why this node makes sense",
+      "description": "What this node does",
+      "previewContent": "A short preview of the generated content",
+      "generatedContent": {
+        "label": "Quick Reply" (ALWAYS include this),
+        "question": "The question text",
+        "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes)
+      }
     }
-  },
-  {
-    "type": "whatsappQuickReply" (use platform-specific type for interaction nodes),
-    "label": "Quick Reply",
-    "reason": "Why this node makes sense",
-    "description": "What this node does",
-    "previewContent": "A short preview of the generated content",
-    "generatedContent": {
-      "label": "Quick Reply" (ALWAYS include this),
-      "question": "The question text",
-      "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes)
-    }
-  }
-]
+  ]
+}
+
+**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.
 
 **Examples of correct node type selection:**
 - Collecting email → type: "email" (super node)
@@ -158,106 +220,26 @@ function buildUserPrompt(request: SuggestNodesRequest): string {
 Platform: ${request.platform}`
 
   if (request.flowContext) {
-    prompt += `\nFlow context: ${request.flowContext}`
+    prompt += `\n\nFlow Context: ${request.flowContext}`
   }
 
   if (request.existingNodes && request.existingNodes.length > 0) {
-    prompt += `\n\nExisting nodes in flow:`
+    prompt += `\n\nExisting nodes in flow (${request.existingNodes.length}):`
     request.existingNodes.forEach((node, index) => {
-      prompt += `\n${index + 1}. ${node.type}${node.label ? ` (${node.label})` : ""}`
+      prompt += `\n${index + 1}. ${node.type}${node.label ? ` - "${node.label}"` : ""}`
     })
+    prompt += `\n\nAvoid suggesting nodes that are already in the flow unless they serve a different purpose.`
   }
 
-  prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes.`
+  prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes that would logically follow after the current "${request.currentNodeType}" node.`
 
   return prompt
 }
 
 function getAvailableNodeTypes(platform: Platform): string {
-  const baseInfo = `
-**INFORMATION NODES (Super Nodes - Use these for data collection, NOT question nodes):**
-- name: Collect and validate user's name (super node with built-in validation)
-- email: Collect and validate user's email (super node with built-in validation)
-- dob: Collect and validate user's date of birth (super node with built-in validation)
-- address: Collect and validate user's address (super node with built-in validation)
-
-⚠️ IMPORTANT: When you need to collect email, name, DOB, or address, use these super nodes (e.g., "email"), NOT question nodes (e.g., "whatsappQuestion"). Super nodes have built-in validation and are specifically designed for data collection.`
-
-  const baseLogic = `
-**LOGIC NODES (Flow Control & Branching):**
-- condition: Branch flow based on conditions (supports AND/OR logic)`
-
-  const baseFulfillment = `
-**FULFILLMENT NODES (Delivery & Services):**
-- homeDelivery: Schedule at-home delivery
-- event: Book event or appointment
-- retailStore: Find nearby retail stores`
-
-  const baseIntegration = `
-**INTEGRATION NODES (External Platforms):**
-- shopify: Connect to Shopify store
-- stripe: Process payments via Stripe
-- zapier: Connect to 5000+ apps via Zapier
-- google: Sync with Google Sheets
-- salesforce: CRM integration
-- mailchimp: Email marketing integration
-- twilio: SMS & Voice integration
-- slack: Team notifications
-- airtable: Database sync`
-
-  if (platform === "whatsapp") {
-    return `${baseInfo}
-
-**INTERACTION NODES (WhatsApp - Use these exact types):**
-- whatsappQuestion: Ask users a question
-- whatsappQuickReply: Question with button options (max 3 buttons)
-- whatsappList: Interactive list menu (max 10 options)
-- whatsappMessage: Send a WhatsApp message
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-- metaAudience: Sync with Meta audiences
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "whatsappQuestion", not "question").`
-  }
-
-  if (platform === "instagram") {
-    return `${baseInfo}
-
-**INTERACTION NODES (Instagram - Use these exact types):**
-- instagramQuestion: Ask users a question
-- instagramQuickReply: Question with button options (max 3 buttons)
-- instagramList: Interactive list menu (max 10 options)
-- instagramDM: Send an Instagram direct message
-- instagramStory: Create an Instagram story
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-- metaAudience: Sync with Meta audiences
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "instagramQuestion", not "question").`
-  }
-
-  // Web platform
-  return `${baseInfo}
-
-**INTERACTION NODES (Web - Use these exact types):**
-- webQuestion: Ask users a question
-- webQuickReply: Question with button options
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "webQuestion", not "question").`
+  // This function is now replaced by getNodeDocumentationForPrompt
+  // But keeping it for backward compatibility - it will be overridden by the comprehensive docs
+  return "See COMPREHENSIVE NODE DOCUMENTATION section above for detailed information about all available node types, their properties, limits, and usage guidelines."
 }
 
 function parseSuggestions(content: string, maxSuggestions: number): SuggestedNode[] {

@@ -2,6 +2,7 @@ import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import type { AIContext } from "@/types/ai"
 import { getNodeLimits } from "@/constants"
+import { getNodeDocumentationString, getNodeDocumentation } from "./node-documentation"
 
 /**
  * Build AI context from node information
@@ -148,7 +149,32 @@ Web Guidelines:
 /**
  * Build node-specific guidelines for AI
  */
-export function getNodeTypeGuidelines(nodeType: string): string {
+export function getNodeTypeGuidelines(nodeType: string, platform?: Platform): string {
+  // Try to get comprehensive documentation first
+  if (platform) {
+    const doc = getNodeDocumentation(nodeType, platform)
+    if (doc) {
+      return `Node Type: ${doc.type}
+Category: ${doc.category}
+Description: ${doc.description}
+${doc.isSuperNode ? '⚠️ SUPER NODE - Use this for data collection, NOT question nodes' : ''}
+
+Properties:
+- Required: ${doc.properties.required.join(", ") || "None"}
+- Optional: ${doc.properties.optional.join(", ") || "None"}
+
+Limits:
+${formatLimitsForGuidelines(doc.limits)}
+
+Best Practices:
+${doc.usage.bestPractices.map(p => `- ${p}`).join("\n")}
+
+Examples:
+${doc.usage.examples.map(e => `- ${e}`).join("\n")}`
+    }
+  }
+
+  // Fallback to simple guidelines
   const guidelines: Record<string, string> = {
     question: 'This is a question node. The text should be clear, specific, and encourage a response.',
     quickReply: 'These are quick reply buttons. Keep labels short, action-oriented, and easy to tap.',
@@ -162,5 +188,29 @@ export function getNodeTypeGuidelines(nodeType: string): string {
   }
 
   return guidelines[nodeType] || `This is a ${nodeType} node.`
+}
+
+function formatLimitsForGuidelines(limits: any): string {
+  const parts: string[] = []
+  if (limits.text) {
+    parts.push(`- Text: ${limits.text.min || 0}-${limits.text.max} characters`)
+  }
+  if (limits.buttons) {
+    parts.push(`- Buttons: ${limits.buttons.min}-${limits.buttons.max} buttons (max ${limits.buttons.textMaxLength} chars each)`)
+  }
+  if (limits.options) {
+    parts.push(`- Options: ${limits.options.min}-${limits.options.max} options (max ${limits.options.textMaxLength} chars each)`)
+  }
+  if (limits.maxConnections) {
+    parts.push(`- Max connections: ${limits.maxConnections}`)
+  }
+  return parts.join("\n") || "- No specific limits"
+}
+
+/**
+ * Get comprehensive node documentation for AI prompts
+ */
+export function getNodeDocumentationForPrompt(platform: Platform, nodeTypes?: string[]): string {
+  return getNodeDocumentationString(platform, nodeTypes)
 }
 

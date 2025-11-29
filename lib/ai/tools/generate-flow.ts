@@ -1,8 +1,9 @@
 import { getAIClient } from "../core/ai-client"
-import { getPlatformGuidelines } from "../core/ai-context"
+import { getPlatformGuidelines, getNodeDocumentationForPrompt } from "../core/ai-context"
 import type { Platform } from "@/types"
 import { createNode } from "@/utils"
 import type { Node, Edge } from "@xyflow/react"
+import { z } from "zod"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -69,17 +70,18 @@ function getNodeTypeLabel(nodeType: string, platform: Platform): string {
   return typeMap[nodeType] || nodeType.charAt(0).toUpperCase() + nodeType.slice(1)
 }
 
-function parseFlowResponse(
-  content: string,
+/**
+ * Process flow response (from structured output or parsed text)
+ */
+function processFlowResponse(
+  parsed: any,
   platform: Platform,
   isEdit: boolean,
   existingFlow?: { nodes: Node[]; edges: Edge[] }
 ): GenerateFlowResponse {
   try {
-    // Try to extract JSON from the response
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
+    // Process the parsed response
+    if (parsed) {
       
       // Get platform-specific node type prefix
       const platformPrefix = platform === "whatsapp" ? "whatsapp" : platform === "instagram" ? "instagram" : "web"
@@ -273,6 +275,42 @@ function parseFlowResponse(
 
     // Fallback: Return message only
     return {
+      message: "Flow generated successfully",
+      action: isEdit ? "edit" : "create",
+    }
+  } catch (error) {
+    console.error("[generate-flow] Error processing response:", error)
+    return {
+      message: "I've processed your request. Please review the flow.",
+      action: isEdit ? "edit" : "suggest",
+    }
+  }
+}
+
+/**
+ * Parse flow response from text (fallback method)
+ */
+function parseFlowResponse(
+  content: string,
+  platform: Platform,
+  isEdit: boolean,
+  existingFlow?: { nodes: Node[]; edges: Edge[] }
+): GenerateFlowResponse {
+  try {
+    // Try to extract JSON from the response using enhanced extraction
+    const aiClient = getAIClient()
+    const extracted = aiClient.extractJSON(content)
+    const jsonText = extracted || content
+    
+    // Try to find JSON object
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0])
+      return processFlowResponse(parsed, platform, isEdit, existingFlow)
+    }
+
+    // Fallback: Return message only
+    return {
       message: content,
       action: isEdit ? "edit" : "suggest",
     }
@@ -307,23 +345,88 @@ export async function generateFlow(
     const systemPrompt = buildSystemPrompt(request, platformGuidelines, isEditRequest)
     const userPrompt = buildUserPrompt(request, isEditRequest)
 
-    const response = await aiClient.generate({
-      systemPrompt,
-      userPrompt,
-      temperature: 0.7,
-      maxTokens: 2000,
-    })
+    // Try structured output first, fallback to text generation
+    try {
+      // Define schema based on action type
+      const nodeDataSchema = z.object({
+        id: z.string(),
+        type: z.string(),
+        position: z.object({
+          x: z.number(),
+          y: z.number()
+        }),
+        data: z.record(z.any())
+      }).passthrough()
 
-    const content = response.text
-    if (!content) {
-      console.error("[generate-flow] No content in AI response")
-      return null
+      const edgeSchema = z.object({
+        id: z.string(),
+        source: z.string(),
+        target: z.string(),
+        sourceHandle: z.string().optional(),
+        type: z.string().optional()
+      }).passthrough()
+
+      if (isEditRequest) {
+        const editResponseSchema = z.object({
+          message: z.string(),
+          action: z.literal("edit"),
+          updates: z.object({
+            nodes: z.array(nodeDataSchema).optional(),
+            edges: z.array(edgeSchema).optional(),
+            description: z.string().optional()
+          }).optional()
+        }) as z.ZodType<GenerateFlowResponse>
+
+        const response = await aiClient.generateJSON<GenerateFlowResponse>({
+          systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
+          userPrompt,
+          schema: editResponseSchema
+        })
+
+        // Process the structured response
+        const parsed = processFlowResponse(response, request.platform, isEditRequest, request.existingFlow)
+        return parsed
+      } else {
+        const createResponseSchema = z.object({
+          message: z.string(),
+          action: z.literal("create"),
+          flowData: z.object({
+            nodes: z.array(nodeDataSchema),
+            edges: z.array(edgeSchema)
+          })
+        }) as z.ZodType<GenerateFlowResponse>
+
+        const response = await aiClient.generateJSON<GenerateFlowResponse>({
+          systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
+          userPrompt,
+          schema: createResponseSchema
+        })
+
+        // Process the structured response
+        const parsed = processFlowResponse(response, request.platform, isEditRequest, request.existingFlow)
+        return parsed
+      }
+    } catch (error) {
+      console.warn("[generate-flow] Structured output failed, falling back to text generation:", error)
+      
+      // Fallback to text generation with parsing
+      const response = await aiClient.generate({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.7,
+        maxTokens: 2000,
+      })
+
+      const content = response.text
+      if (!content) {
+        console.error("[generate-flow] No content in AI response")
+        return null
+      }
+
+      // Parse AI response using existing parser
+      const parsed = parseFlowResponse(content, request.platform, isEditRequest, request.existingFlow)
+      return parsed
     }
-
-    // Parse AI response
-    const parsed = parseFlowResponse(content, request.platform, isEditRequest, request.existingFlow)
-
-    return parsed
   } catch (error) {
     console.error("[generate-flow] Error generating flow:", error)
     return null
@@ -337,6 +440,9 @@ function buildSystemPrompt(
 ): string {
   const action = isEdit ? "edit" : "create"
 
+  // Get comprehensive node documentation
+  const nodeDocs = getNodeDocumentationForPrompt(request.platform)
+
   let prompt = `You are an expert conversational flow designer for ${request.platform} platforms.
 
 Your task is to ${action} a conversational flow based on user requirements.
@@ -344,8 +450,8 @@ Your task is to ${action} a conversational flow based on user requirements.
 **Platform Guidelines:**
 ${platformGuidelines}
 
-**Available Node Types:**
-${getAvailableNodeTypes(request.platform)}
+**COMPREHENSIVE NODE DOCUMENTATION:**
+${nodeDocs}
 
 **Flow Context:**
 ${request.flowContext || "General conversational flow"}
@@ -363,56 +469,73 @@ function buildUserPrompt(request: GenerateFlowRequest, isEdit: boolean): string 
   let prompt = `User Request: ${request.prompt}
 Platform: ${request.platform}`
 
+  // Add flow context if provided
+  if (request.flowContext) {
+    prompt += `\n\nFlow Context: ${request.flowContext}`
+  }
+
+  // Add existing flow information if editing
+  if (isEdit && request.existingFlow) {
+    prompt += `\n\nExisting Flow Structure:`
+    const startNode = request.existingFlow.nodes.find(n => n.type === "start")
+    if (startNode) {
+      prompt += `\n- Start Node: id="${startNode.id}" (DO NOT create a new start node, connect to this one)`
+    }
+    prompt += `\n- Total Nodes: ${request.existingFlow.nodes.length}`
+    prompt += `\n- Total Edges: ${request.existingFlow.edges.length}`
+    
+    // List existing nodes with their types and labels
+    if (request.existingFlow.nodes.length > 0) {
+      prompt += `\n\nExisting Nodes:`
+      request.existingFlow.nodes.forEach((node, index) => {
+        const labelPart = node.data.label ? ` - "${node.data.label}"` : ""
+        const question = typeof node.data.question === 'string' ? node.data.question : ''
+        const questionPart = question ? ` - Question: "${question.substring(0, 50)}${question.length > 50 ? '...' : ''}"` : ""
+        prompt += `\n${index + 1}. ${node.id} - ${node.type}${labelPart}${questionPart}`
+      })
+    }
+    
+    // List existing edges
+    if (request.existingFlow.edges.length > 0) {
+      prompt += `\n\nExisting Connections:`
+      request.existingFlow.edges.forEach((edge, index) => {
+        const handlePart = edge.sourceHandle ? ` (button: ${edge.sourceHandle})` : ""
+        prompt += `\n${index + 1}. ${edge.source} → ${edge.target}${handlePart}`
+      })
+    }
+    
+    prompt += `\n\nIMPORTANT: Each source node can only have ONE edge per sourceHandle. If you need to change a connection, replace the existing edge.`
+  }
+
   // Detect if delivery is mentioned and emphasize address collection
   const promptLower = request.prompt.toLowerCase()
   const mentionsDelivery = promptLower.includes("deliver") || promptLower.includes("delivery") || promptLower.includes("ship") || promptLower.includes("home") || promptLower.includes("sample")
   
   if (mentionsDelivery && !isEdit) {
     prompt += `\n\n⚠️ DELIVERY FLOW REQUIRED:
-Flow: Start → name (collect) → Quick Reply (offer with buttons) → Address (collect) → homeDelivery (fulfill)
-- ALWAYS start with "name" node to collect user information
+Flow Pattern: Start → name (collect) → Quick Reply (offer with buttons) → Address (collect) → homeDelivery (fulfill)
+- ALWAYS start with "name" node (super node) to collect user information
 - Use Quick Reply node (not Question) for the offer
 - Create branching from Quick Reply buttons (button-0, button-1, button-2)
-- MUST include "address" node
+- MUST include "address" node (super node)
 - MUST include "homeDelivery" node
 - Consider adding metaAudience integration for WhatsApp/Instagram`
   } else if (!isEdit) {
     prompt += `\n\n💡 CREATE COMPREHENSIVE FLOW:
 - Start with information collection: Start → name (or email/dob) → first interaction
+- Use super nodes (name, email, dob, address) for data collection - NOT question nodes
 - Include branching: Quick Reply buttons should connect to different paths using sourceHandle
 - Add integrations: Include metaAudience (WhatsApp/Instagram), shopify, or other relevant integrations
 - Add fulfillment: Include homeDelivery, event, or retailStore when appropriate
 - Create multiple paths, not just linear chains`
   }
 
-  if (request.flowContext) {
-    prompt += `\nFlow Purpose: ${request.flowContext}`
-  }
-
-  // Always include start node info
+  // Always include start node info for new flows
   if (!isEdit || !request.existingFlow) {
     prompt += `\n\nIMPORTANT: The flow already has a start node with id "1". Connect your first node to it (source: "1").`
   }
 
-  if (isEdit && request.existingFlow) {
-    prompt += `\n\nExisting Flow:`
-    const startNode = request.existingFlow.nodes.find(n => n.type === "start")
-    if (startNode) {
-      prompt += `\nStart Node: id="${startNode.id}" (DO NOT create a new start node, connect to this one)`
-    }
-    prompt += `\nNodes (${request.existingFlow.nodes.length}):`
-    request.existingFlow.nodes.forEach((node, index) => {
-      const labelPart = node.data.label ? ` - ${node.data.label}` : ""
-      const questionPart = node.data.question ? ` - "${node.data.question}"` : ""
-      prompt += `\n${index + 1}. ${node.id} - ${node.type}${labelPart}${questionPart}`
-    })
-    prompt += `\nEdges (${request.existingFlow.edges.length}):`
-    request.existingFlow.edges.forEach((edge, index) => {
-      prompt += `\n${index + 1}. ${edge.source} → ${edge.target}`
-    })
-    prompt += `\n\nIMPORTANT: Each source node can only have ONE edge. If you need to change a connection, replace the existing edge.`
-  }
-
+  // Add conversation history if available
   if (request.conversationHistory && request.conversationHistory.length > 0) {
     prompt += `\n\nConversation History:`
     request.conversationHistory.slice(-5).forEach((msg) => {
@@ -747,86 +870,7 @@ function getEditResponseFormat(): string {
 }
 
 function getAvailableNodeTypes(platform: Platform): string {
-  const baseInfo = `
-**INFORMATION NODES (Super Nodes - Collect & Validate User Data):**
-- name: Collect and validate user's name
-- email: Collect and validate user's email address
-- dob: Collect user's date of birth
-- address: Collect and validate user's address`
-
-  const baseLogic = `
-**LOGIC NODES (Flow Control & Branching):**
-- condition: Branch flow based on conditions (supports AND/OR logic)`
-
-  const baseFulfillment = `
-**FULFILLMENT NODES (Delivery & Services):**
-- homeDelivery: Schedule at-home delivery
-- event: Book event or appointment
-- retailStore: Find nearby retail stores`
-
-  const baseIntegration = `
-**INTEGRATION NODES (External Platforms):**
-- shopify: Connect to Shopify store
-- stripe: Process payments via Stripe
-- zapier: Connect to 5000+ apps via Zapier
-- google: Sync with Google Sheets
-- salesforce: CRM integration
-- mailchimp: Email marketing integration
-- twilio: SMS & Voice integration
-- slack: Team notifications
-- airtable: Database sync`
-
-  if (platform === "whatsapp") {
-  return `${baseInfo}
-
-**INTERACTION NODES (WhatsApp - Use these exact types):**
-- whatsappQuestion: Ask users a question
-- whatsappQuickReply: Question with button options (max 3 buttons)
-- whatsappList: Interactive list menu (max 10 options)
-- whatsappMessage: Send a WhatsApp message
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-- metaAudience: Sync with Meta audiences
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "whatsappQuestion", not "question").`
-  }
-
-  if (platform === "instagram") {
-    return `${baseInfo}
-
-**INTERACTION NODES (Instagram - Use these exact types):**
-- instagramQuestion: Ask users a question
-- instagramQuickReply: Question with button options (max 3 buttons)
-- instagramList: Interactive list menu (max 10 options)
-- instagramDM: Send an Instagram direct message
-- instagramStory: Create an Instagram story
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-- metaAudience: Sync with Meta audiences
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "instagramQuestion", not "question").`
-  }
-
-  // Web platform
-  return `${baseInfo}
-
-**INTERACTION NODES (Web - Use these exact types):**
-- webQuestion: Ask users a question
-- webQuickReply: Question with button options
-
-${baseLogic}
-
-${baseFulfillment}
-
-${baseIntegration}
-
-**IMPORTANT:** Only use the node types listed above. Use exact type names (e.g., "webQuestion", not "question").`
+  // This function is now replaced by getNodeDocumentationForPrompt
+  // But keeping it for backward compatibility - it will be overridden by the comprehensive docs
+  return "See COMPREHENSIVE NODE DOCUMENTATION section above for detailed information about all available node types, their properties, limits, and usage guidelines."
 }

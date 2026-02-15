@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3, X, Sparkles, Minimize2 } from "lucide-react"
+import { Plus, Edit3, X, Sparkles, Minimize2, Loader2 } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useAIButtonGenerator } from "@/hooks/use-node-ai"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
@@ -24,6 +24,8 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
   const [editingButtonValue, setEditingButtonValue] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
+  const [improvingButtonIndex, setImprovingButtonIndex] = useState<number | null>(null)
 
   const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappQuickReply"
@@ -76,7 +78,11 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
     setIsEditingQuestion(true)
   }
 
-  const finishEditingQuestion = () => {
+  const finishEditingQuestion = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       if (editingQuestionValue.length > maxQuestionLength) {
         return
@@ -170,28 +176,38 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
 
   const handleImproveButton = async (index: number) => {
     const button = buttons[index]
-    if (!button) return
+    if (!button || !button.text?.trim()) {
+      toast.error('Please add text to the button first')
+      return
+    }
 
-    const result = await ai.improveCopy(button.text, 'button', {
-      maxLength: maxButtonLength,
-      context: {
-        purpose: 'WhatsApp button label',
-        flowContext: data.question || ''
-      }
-    })
-
-    if (result) {
-      const updatedButtons = [...buttons]
-      updatedButtons[index] = {
-        ...button,
-        text: result.improvedText
-      }
-      if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
-      }
-      toast.success('Button improved!', {
-        description: result.improvements[0] || 'Label enhanced'
+    setImprovingButtonIndex(index)
+    try {
+      const result = await ai.improveCopy(button.text, 'button', {
+        maxLength: maxButtonLength,
+        context: {
+          purpose: 'WhatsApp button label',
+          flowContext: data.question || ''
+        }
       })
+
+      if (result) {
+        const updatedButtons = [...buttons]
+        updatedButtons[index] = {
+          ...button,
+          text: result.improvedText
+        }
+        if (data.onNodeUpdate) {
+          data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+        }
+        toast.success('Button improved!', {
+          description: result.improvements[0] || 'Label enhanced'
+        })
+      }
+    } catch (error) {
+      toast.error('Failed to improve button text')
+    } finally {
+      setImprovingButtonIndex(null)
     }
   }
 
@@ -270,10 +286,11 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
         </CardHeader>
         <CardContent className="pt-0 space-y-2 pb-12 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2 group/question">
+            <div ref={editingContainerRef} className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onBlur={(e) => finishEditingQuestion(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -400,19 +417,36 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                     variant="outline"
                     size="sm"
                     className={`${getButtonItemClasses(platform)} group/btn`}
-                    onClick={() => startEditingButton(index)}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('[data-sparkle-container]')) {
+                        return
+                      }
+                      startEditingButton(index)
+                    }}
                   >
                     {button.text || `Button ${index + 1}`}
                     <div className="ml-auto flex items-center gap-1">
-                      <Sparkles 
-                        className="w-3 h-3 text-purple-500 opacity-0 group-hover/btn:opacity-100 transition-opacity cursor-pointer" 
+                      <div 
+                        data-sparkle-container
+                        className="flex items-center"
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                           handleImproveButton(index)
                         }}
-                        onMouseDown={(e) => e.preventDefault()}
-                      />
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                      >
+                        {improvingButtonIndex === index ? (
+                          <Loader2 className="w-3 h-3 text-primary animate-spin" />
+                        ) : (
+                          <Sparkles 
+                            className="w-3 h-3 text-primary opacity-60 group-hover/btn:opacity-100 transition-opacity cursor-pointer hover:opacity-100" 
+                          />
+                        )}
+                      </div>
                       <Edit3 className="w-3 h-3 opacity-40" />
                     </div>
                   </Button>

@@ -1,4 +1,5 @@
 import type { FlowVersion, FlowChange, Platform } from "@/types"
+import { getPreviewUrl } from "@/utils/preview-url"
 
 // Storage keys are now flow-specific to prevent data leakage between flows
 const getStorageKeys = (flowId: string) => ({
@@ -193,6 +194,7 @@ export function createVersion(
 /**
  * Publish a version (mark as published) for a specific flow
  * Only one version can be published at a time
+ * Automatically sets previewUrl based on platform from environment variables
  */
 export function publishVersion(flowId: string, versionId: string): FlowVersion | null {
   const versions = getStoredVersions(flowId)
@@ -203,11 +205,17 @@ export function publishVersion(flowId: string, versionId: string): FlowVersion |
     return null
   }
   
+  const versionToPublish = versions[versionIndex]
+  
+  // Get preview URL from environment variables based on platform
+  const previewUrl = getPreviewUrl(versionToPublish.platform)
+  
   // Unpublish all other versions (only one can be published at a time)
   const updatedVersions = versions.map(version => ({
     ...version,
     isPublished: version.id === versionId,
-    publishedAt: version.id === versionId ? new Date().toISOString() : undefined
+    publishedAt: version.id === versionId ? new Date().toISOString() : undefined,
+    previewUrl: version.id === versionId ? previewUrl : version.previewUrl
   }))
   
   saveVersions(flowId, updatedVersions)

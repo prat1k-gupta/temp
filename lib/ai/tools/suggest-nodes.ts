@@ -81,7 +81,7 @@ export async function suggestNodes(
       })
 
       // Transform and validate suggestions
-      const suggestions = (response.suggestions || []).slice(0, maxSuggestions).map((item: any) => ({
+      let suggestions = (response.suggestions || []).slice(0, maxSuggestions).map((item: any) => ({
         type: item.type || "",
         label: item.label || item.type,
         reason: item.reason || "",
@@ -90,7 +90,31 @@ export async function suggestNodes(
         generatedContent: item.generatedContent || {},
       }))
 
-      return { suggestions }
+      // Filter out duplicate node types that already exist
+      const existingNodeTypes = new Set((request.existingNodes || []).map(n => n.type.toLowerCase()))
+      const hasHomeDelivery = existingNodeTypes.has("homedelivery") || 
+        (request.existingNodes || []).some(n => n.type.toLowerCase().includes("homedelivery"))
+      
+      suggestions = suggestions.filter(s => {
+        const suggestionType = s.type.toLowerCase()
+        
+        // CRITICAL: trackingNotification should ONLY be suggested when homeDelivery exists
+        if (suggestionType === "trackingnotification" && !hasHomeDelivery) {
+          console.log("[suggest-nodes] Filtering out trackingNotification - homeDelivery not found in flow")
+          return false
+        }
+        
+        // Allow if it's a different type, or if it's a super node that might be used multiple times in different contexts
+        const isSuperNode = ['name', 'email', 'dob', 'address'].includes(suggestionType)
+        return !existingNodeTypes.has(suggestionType) || isSuperNode
+      })
+
+      // If we filtered out suggestions, try to get more (but don't exceed max)
+      if (suggestions.length < maxSuggestions && existingNodeTypes.size > 0) {
+        console.log(`[suggest-nodes] Filtered out ${maxSuggestions - suggestions.length} duplicate suggestions`)
+      }
+
+      return { suggestions: suggestions.slice(0, maxSuggestions) }
     } catch (error) {
       console.error("[suggest-nodes] Error generating suggestions:", error)
       // Fallback to text generation with parsing
@@ -130,10 +154,13 @@ function buildSystemPrompt(
   // Get comprehensive node documentation
   const nodeDocs = getNodeDocumentationForPrompt(platform)
 
+  // Analyze existing nodes to determine flow pattern
+  const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
+  const flowPattern = detectFlowPattern(request.flowContext, existingNodeTypes, currentNodeType)
+
   let prompt = `You are an expert conversational flow designer for ${platform} platforms.
 
-Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node. Understand the user need and context of current conversation
-collect information ask questions to enhance user experience.
+Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node. Understand the user need and context of current conversation and suggest nodes that enhance user experience.
 
 **Platform Guidelines:**
 ${platformGuidelines}
@@ -144,16 +171,24 @@ ${nodeTypeGuidelines}
 **Flow Purpose:**
 ${request.flowContext || "General conversational flow"}
 
+**Detected Flow Pattern:**
+${flowPattern.description}
+
+**Flow Pattern Guidelines:**
+${flowPattern.guidelines}
+
 **COMPREHENSIVE NODE DOCUMENTATION:**
 ${nodeDocs}
 
 **Guidelines:**
 1. Suggest exactly ${request.maxSuggestions || 2} nodes
-2. Choose nodes that make logical sense after the current node
-3. Consider the flow context and purpose
-4. Avoid suggesting nodes that are already in the flow (if provided)
-5. Provide a clear reason for each suggestion
-6. Focus on creating a smooth user experience
+2. **CRITICAL - Follow the flow pattern**: ${flowPattern.description}
+3. **CRITICAL - Avoid duplicates**: DO NOT suggest nodes that already exist in the flow. Check the existing nodes list carefully.
+4. Choose nodes that make logical sense after the current node based on the flow pattern
+5. Consider the flow context and purpose
+6. Provide a clear reason for each suggestion
+7. Focus on creating a smooth user experience
+8. **Suggest nodes in logical sequence**: Follow the pattern ${flowPattern.sequence}
 7. **CRITICAL - Node Type Selection:**
    - **For data collection, ALWAYS use super nodes (NOT question nodes):**
      - To collect email → use "email" (NOT whatsappQuestion/webQuestion)
@@ -224,16 +259,142 @@ Platform: ${request.platform}`
   }
 
   if (request.existingNodes && request.existingNodes.length > 0) {
-    prompt += `\n\nExisting nodes in flow (${request.existingNodes.length}):`
+    prompt += `\n\n**EXISTING NODES IN FLOW (${request.existingNodes.length}) - DO NOT SUGGEST THESE AGAIN:**`
     request.existingNodes.forEach((node, index) => {
-      prompt += `\n${index + 1}. ${node.type}${node.label ? ` - "${node.label}"` : ""}`
+      prompt += `\n${index + 1}. Type: "${node.type}"${node.label ? `, Label: "${node.label}"` : ""}`
     })
-    prompt += `\n\nAvoid suggesting nodes that are already in the flow unless they serve a different purpose.`
+    prompt += `\n\n**CRITICAL**: You MUST NOT suggest any of the above node types unless they serve a completely different purpose. Check the type field carefully - if a node type already exists, suggest a DIFFERENT node type.`
+    
+    // List node types that already exist for clarity
+    const existingTypes = [...new Set(request.existingNodes.map(n => n.type))]
+    prompt += `\n\n**Already used node types (DO NOT repeat):** ${existingTypes.join(", ")}`
   }
 
-  prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes that would logically follow after the current "${request.currentNodeType}" node.`
+  prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes that would logically follow after the current "${request.currentNodeType}" node. Make sure each suggestion is a DIFFERENT node type that doesn't already exist in the flow.`
 
   return prompt
+}
+
+function detectFlowPattern(
+  flowContext: string | undefined,
+  existingNodeTypes: string[],
+  currentNodeType: string
+): { description: string; guidelines: string; sequence: string } {
+  const contextLower = (flowContext || "").toLowerCase()
+  const allNodeTypes = [...existingNodeTypes, currentNodeType]
+  const nodeTypesLower = allNodeTypes.map(t => t.toLowerCase())
+
+  // Check for fulfillment-related keywords and nodes
+  const hasFulfillmentKeywords = 
+    contextLower.includes("delivery") || 
+    contextLower.includes("fulfillment") || 
+    contextLower.includes("shipping") ||
+    contextLower.includes("order") ||
+    contextLower.includes("purchase") ||
+    contextLower.includes("product")
+  
+  const hasFulfillmentNodes = 
+    nodeTypesLower.some(t => t.includes("address")) ||
+    nodeTypesLower.some(t => t.includes("delivery")) ||
+    nodeTypesLower.some(t => t.includes("homeDelivery"))
+  
+  const hasHomeDelivery = nodeTypesLower.some(t => t === "homedelivery")
+
+  // Check for feedback-related keywords
+  const hasFeedbackKeywords = 
+    contextLower.includes("feedback") || 
+    contextLower.includes("review") || 
+    contextLower.includes("rating") ||
+    contextLower.includes("experience") ||
+    contextLower.includes("trial") ||
+    contextLower.includes("survey")
+
+  // Check for interaction/data collection patterns
+  const hasDataCollectionNodes = 
+    nodeTypesLower.some(t => t === "name" || t === "email" || t === "dob" || t === "address")
+  
+  const hasInteractionNodes = 
+    nodeTypesLower.some(t => t.includes("question") || t.includes("quickReply") || t.includes("list"))
+
+  // Determine flow pattern
+  if (hasFulfillmentKeywords || hasFulfillmentNodes) {
+    return {
+      description: "Fulfillment Flow - Focus on order processing, delivery, and tracking",
+      guidelines: `
+**Fulfillment Flow Pattern:**
+1. **Address Collection** → Use "address" super node to collect delivery address
+2. **Schedule Delivery** → Use fulfillment nodes (homeDelivery, event, retailStore) or interaction nodes to schedule
+3. **Tracking Notification** → Use message/question nodes to provide tracking information
+4. **Thank You Message** → End with a confirmation/thank you message
+5. **Integrations** → Add in the middle if needed (Shopify, Stripe, etc.)
+
+**Current Stage Analysis:**
+- Has address collection: ${nodeTypesLower.some(t => t.includes("address")) ? "Yes" : "No"}
+- Has delivery scheduling: ${nodeTypesLower.some(t => t.includes("delivery") || t.includes("event") || t.includes("store")) ? "Yes" : "No"}
+- Has tracking: ${nodeTypesLower.some(t => t.includes("track") || t.includes("notification")) ? "Yes" : "No"}
+
+**Next Steps:**
+- If no address → suggest "address" node
+- If address exists but no delivery → suggest "homeDelivery" node
+- If homeDelivery exists but no tracking → suggest "trackingNotification" node (ONLY suggest trackingNotification when homeDelivery exists)
+- If delivery and tracking exist → suggest thank you message
+- If all fulfillment steps done → suggest thank you message
+
+**CRITICAL - Tracking Notification Rules:**
+- trackingNotification node should ONLY be suggested when homeDelivery node exists in the flow
+- trackingNotification comes AFTER homeDelivery in the flow sequence
+- Use type "trackingNotification" (not question/message nodes) for delivery tracking
+- Current flow has homeDelivery: ${hasHomeDelivery ? "Yes - trackingNotification can be suggested" : "No - DO NOT suggest trackingNotification"}`,
+      sequence: "Address Collection → Schedule Delivery → Tracking Notification → Thank You"
+    }
+  }
+
+  if (hasFeedbackKeywords) {
+    return {
+      description: "Feedback Flow - Focus on collecting user feedback and reviews",
+      guidelines: `
+**Feedback Flow Pattern:**
+1. **Initial Interaction** → Start with question/quickReply to understand feedback type
+2. **Data Collection** → Collect relevant info (email for follow-up, name for personalization)
+3. **Feedback Questions** → Use question/quickReply nodes to ask about experience, product, or trial
+4. **Thank You Message** → End with appreciation message
+5. **Integrations** → Add in the middle if needed (Mailchimp, Salesforce, etc.)
+
+**Current Stage Analysis:**
+- Has data collection: ${hasDataCollectionNodes ? "Yes" : "No"}
+- Has feedback questions: ${hasInteractionNodes ? "Yes" : "No"}
+
+**Next Steps:**
+- If no data collection → suggest "email" or "name" nodes
+- If data collected but no feedback questions → suggest question/quickReply nodes for feedback
+- If feedback collected → suggest thank you message`,
+      sequence: "Interaction → Data Collection → Feedback Questions → Thank You"
+    }
+  }
+
+  // Default: Interaction/Data Collection flow
+  return {
+    description: "Interaction Flow - Focus on engagement, data collection, and user experience",
+    guidelines: `
+**Interaction Flow Pattern:**
+1. **Initial Interaction** → Start with question/quickReply/list nodes to engage user
+2. **Data Collection** → Use super nodes (name, email, dob, address) to collect information
+3. **Questionnaire** → Use question/quickReply nodes to gather more details
+4. **Thank You Message** → End with confirmation or next steps message
+5. **Integrations** → Add in the middle if needed (Shopify, Meta, etc.)
+
+**Current Stage Analysis:**
+- Has interaction nodes: ${hasInteractionNodes ? "Yes" : "No"}
+- Has data collection: ${hasDataCollectionNodes ? "Yes" : "No"}
+- Has questionnaire: ${hasInteractionNodes && hasDataCollectionNodes ? "Yes" : "No"}
+
+**Next Steps:**
+- If no interaction yet → suggest question/quickReply nodes
+- If interaction exists but no data collection → suggest super nodes (email, name, etc.)
+- If data collected but no questionnaire → suggest question/quickReply for additional info
+- If questionnaire done → suggest thank you message or next steps`,
+    sequence: "Interaction → Data Collection → Questionnaire → Thank You"
+  }
 }
 
 function getAvailableNodeTypes(platform: Platform): string {

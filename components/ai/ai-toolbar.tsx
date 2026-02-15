@@ -127,14 +127,14 @@ export function AIToolbar({
                 e.preventDefault()
               }}
               disabled={isImproving || isShortening || !value.trim()}
-              className="h-6 px-1.5 text-xs gap-0 group hover:gap-1 hover:px-2 transition-all hover:bg-purple-50 dark:hover:bg-purple-900/20"
+              className="h-6 px-1.5 text-xs gap-0 group hover:gap-1 hover:px-2 transition-all hover:bg-blue-50 dark:hover:bg-blue-900/20"
             >
               {isImproving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2872F4]" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
               )}
-              <span className="text-purple-600 dark:text-purple-400 max-w-0 overflow-hidden group-hover:max-w-[60px] transition-all duration-200 whitespace-nowrap">
+              <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent max-w-0 overflow-hidden group-hover:max-w-[60px] transition-all duration-200 whitespace-nowrap font-medium">
                 Improve
               </span>
             </Button>

@@ -15,14 +15,19 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <Button variant="ghost" size="sm" disabled>
+      <Button variant="ghost" size="sm" disabled className="cursor-pointer">
         <Sun className="h-4 w-4" />
       </Button>
     )
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+    <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+      className="hover:bg-primary hover:text-primary-foreground"
+    >
       {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
     </Button>
   )

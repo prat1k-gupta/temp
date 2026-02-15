@@ -814,6 +814,51 @@ function getFulfillmentNodeDocs(platform?: Platform): NodeDocumentation[] {
     })
   })
 
+  // Tracking Notification
+  platforms.forEach(p => {
+    if (platform && platform !== p) return
+    
+    docs.push({
+      type: "trackingNotification",
+      category: "fulfillment",
+      platforms: [p],
+      description: "Send tracking notification for delivery orders. Provides real-time tracking information and delivery updates. ONLY suggest this node when homeDelivery node exists in the flow.",
+      properties: {
+        required: ["label", "platform", "message"],
+        optional: ["trackingNumber", "estimatedDelivery"]
+      },
+      limits: {
+        text: { max: CHARACTER_LIMITS[p].question || 500 },
+        maxConnections: 1,
+        allowMultipleOutputs: false
+      },
+      usage: {
+        whenToUse: "ONLY use this node when a homeDelivery node exists in the flow. Use this to notify users about their delivery status, provide tracking numbers, and estimated delivery times.",
+        bestPractices: [
+          "Always include tracking number if available",
+          "Provide estimated delivery time",
+          "Use clear, reassuring language",
+          "Include next steps or contact information if needed",
+          "This node should come AFTER homeDelivery node in the flow"
+        ],
+        examples: [
+          "Your order is on the way! Track your delivery in real-time. Tracking: #123456789",
+          "Great news! Your package has been shipped. Expected delivery: 3-5 business days",
+          "Your delivery is out for delivery today! Track it here: [link]"
+        ]
+      },
+      dataStructure: {
+        id: "string (unique)",
+        type: "trackingNotification",
+        platform: p,
+        label: "string (e.g., 'Tracking Notification')",
+        message: "string (the notification message, max 500 chars)",
+        trackingNumber: "string (optional, e.g., 'TRACK123456')",
+        estimatedDelivery: "string (optional, e.g., '3-5 business days')"
+      }
+    })
+  })
+
   return docs
 }
 

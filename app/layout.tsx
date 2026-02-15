@@ -1,15 +1,13 @@
 import type { Metadata } from 'next'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
 
 export const metadata: Metadata = {
-  title: 'Magic Flow',
-  description: 'Created with Magic Flow',
-  generator: 'Magic Flow',
+  title: 'Freestand Flow Builder',
+  description: 'Build conversational experiences with Freestand',
+  generator: 'Freestand',
 }
 
 export default function RootLayout({
@@ -19,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className="font-sans" style={{ fontFamily: 'Roboto, Arial, Helvetica, sans-serif' }}>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

@@ -21,22 +21,11 @@ interface SuggestedNodesProps {
   platform: "web" | "whatsapp" | "instagram"
 }
 
-const platformColors = {
-  web: {
-    card: "border-blue-200 dark:border-blue-800",
-    accent: "text-blue-600 dark:text-blue-400",
-    button: "bg-blue-500 hover:bg-blue-600",
-  },
-  whatsapp: {
-    card: "border-green-200 dark:border-green-800",
-    accent: "text-green-600 dark:text-green-400",
-    button: "bg-green-500 hover:bg-green-600",
-  },
-  instagram: {
-    card: "border-pink-200 dark:border-pink-800",
-    accent: "text-pink-600 dark:text-pink-400",
-    button: "bg-pink-500 hover:bg-pink-600",
-  },
+// All AI suggestions use FS blue to indicate they're powered by Freestand AI
+const aiColors = {
+  card: "border-blue-200 dark:border-blue-800",
+  accent: "text-[#052762] dark:text-[#2872F4]",
+  button: "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] shadow-md hover:shadow-lg",
 }
 
 export function SuggestedNodes({
@@ -46,17 +35,17 @@ export function SuggestedNodes({
   onReject,
   platform,
 }: SuggestedNodesProps) {
-  const colors = platformColors[platform] || platformColors.web
+  const colors = aiColors
 
   if (loading) {
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-2">
-          <Sparkles className="w-3 h-3 text-purple-500" />
-          <span>AI is suggesting nodes...</span>
+          <Sparkles className="w-3 h-3 text-[#2872F4]" />
+          <span>Freestand AI is suggesting nodes...</span>
         </div>
         <div className="flex items-center justify-center py-4">
-          <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+          <Loader2 className="w-4 h-4 animate-spin text-[#2872F4]" />
         </div>
       </div>
     )
@@ -69,7 +58,7 @@ export function SuggestedNodes({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-2">
-        <Sparkles className="w-3 h-3 text-purple-500" />
+        <Sparkles className="w-3 h-3 text-[#2872F4]" />
         <span>Suggested Nodes</span>
       </div>
       <div className="space-y-2">

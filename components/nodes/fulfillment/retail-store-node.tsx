@@ -51,7 +51,7 @@ export function RetailStoreNode({ data, selected }: { data: any; selected?: bool
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-orange-500 rounded-md flex items-center justify-center flex-shrink-0">
+            <div className="w-5 h-5 bg-[#052762] rounded-md flex items-center justify-center flex-shrink-0">
               <Store className="w-3 h-3 text-white" />
             </div>
             <h3 className="text-xs font-medium text-card-foreground flex-1">
@@ -68,7 +68,7 @@ export function RetailStoreNode({ data, selected }: { data: any; selected?: bool
           {/* Vendor Information */}
           <div className="space-y-2 pt-1 border-t border-border">
             <div className="flex items-center gap-2">
-              <MapPin className="w-3 h-3 text-orange-500" />
+              <MapPin className="w-3 h-3 text-[#2872F4]" />
               <span className="text-[10px] font-medium text-card-foreground">{vendor.name}</span>
             </div>
             <p className="text-[9px] text-muted-foreground leading-relaxed">
@@ -82,7 +82,7 @@ export function RetailStoreNode({ data, selected }: { data: any; selected?: bool
                   <Badge
                     key={index}
                     variant="secondary"
-                    className="text-[8px] h-4 px-1.5 bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800"
+                    className="text-[8px] h-4 px-1.5 bg-blue-50 dark:bg-blue-950/20 text-[#052762] dark:text-blue-300 border-blue-200 dark:border-blue-800"
                   >
                     {feature}
                   </Badge>
@@ -111,7 +111,7 @@ export function RetailStoreNode({ data, selected }: { data: any; selected?: bool
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-orange-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -119,7 +119,7 @@ export function RetailStoreNode({ data, selected }: { data: any; selected?: bool
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-orange-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

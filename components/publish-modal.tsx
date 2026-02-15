@@ -131,8 +131,17 @@ export function PublishModal({
     }
   }
 
+  // Prevent closing dialog while publishing
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setIsOpen(true)
+    } else if (!isPublishing) {
+      setIsOpen(false)
+    }
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -163,6 +172,7 @@ export function PublishModal({
                 <Button
                   variant={publishMode === 'publish' ? 'default' : 'outline'}
                   size="sm"
+                  disabled={isPublishing}
                   onClick={() => setPublishMode('publish')}
                   className="flex items-center gap-2"
                 >
@@ -183,6 +193,7 @@ export function PublishModal({
                   value={versionName}
                   onChange={(e) => setVersionName(e.target.value)}
                   placeholder="e.g., v1.2.0 - User Onboarding Flow"
+                  disabled={isPublishing}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Leave empty to use default name: {generateDefaultVersionName()}
@@ -196,6 +207,7 @@ export function PublishModal({
                   onChange={(e) => setVersionDescription(e.target.value)}
                   placeholder="Describe the changes in this version..."
                   rows={3}
+                  disabled={isPublishing}
                 />
               </div>
             </div>
@@ -267,16 +279,19 @@ export function PublishModal({
 
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => setIsOpen(false)}>
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isPublishing}>
               Cancel
             </Button>
             <Button
               onClick={handlePublish}
-              disabled={isPublishing || changes.length === 0}
+              disabled={isPublishing || (publishMode === 'create' && changes.length === 0)}
               className="flex items-center gap-2"
             >
               {isPublishing && <Loader2 className="w-4 h-4 animate-spin" />}
-              {publishMode === 'create' ? 'Create & Publish' : 'Publish Version'}
+              {isPublishing 
+                ? (publishMode === 'create' ? 'Creating...' : 'Publishing...')
+                : (publishMode === 'create' ? 'Create & Publish' : 'Publish Version')
+              }
             </Button>
           </div>
         </div>

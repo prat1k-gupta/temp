@@ -280,3 +280,5 @@ const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
 - [Architecture](ARCHITECTURE.md)
 - [Cursor Rules](.cursorrules)
 
+
+

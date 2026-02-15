@@ -43,6 +43,7 @@ import { AddressNode } from "@/components/nodes/super/address-node"
 import { DobNode } from "@/components/nodes/super/dob-node"
 // Fulfillment nodes
 import { HomeDeliveryNode } from "@/components/nodes/fulfillment/home-delivery-node"
+import { TrackingNotificationNode } from "@/components/nodes/fulfillment/tracking-notification-node"
 import { EventNode } from "@/components/nodes/fulfillment/event-node"
 import { RetailStoreNode } from "@/components/nodes/fulfillment/retail-store-node"
 // Integration nodes
@@ -54,6 +55,7 @@ import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
 import { PlatformSelector } from "@/components/platform-selector"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,9 +64,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw, ChevronDown } from "lucide-react"
+import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw, ChevronDown, Edit3, ExternalLink, Pencil, EyeOff, ArrowLeft, Loader2, Trash2 } from "lucide-react"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ExportModal } from "@/components/export-modal"
@@ -80,23 +92,23 @@ import { Toaster } from "@/components/ui/sonner"
 import { useSearchParams, useParams, useRouter } from "next/navigation"
 
 // Modular imports
-import type { 
-  Platform, 
-  NodeData, 
-  ButtonData, 
-  OptionData, 
+import type {
+  Platform,
+  NodeData,
+  ButtonData,
+  OptionData,
   ContextMenuState,
-  ConnectionMenuState, 
-  Coordinates 
+  ConnectionMenuState,
+  Coordinates
 } from "@/types"
-import { 
-  OPTION_LIMITS, 
+import {
+  OPTION_LIMITS,
   INTERACTION_THRESHOLDS,
   getNodeLimits,
   areButtonsWithinNodeLimits,
   areOptionsWithinNodeLimits
 } from "@/constants"
-import { 
+import {
   getClientCoordinates,
   isDoubleClick,
   getPlatformSpecificNodeType,
@@ -110,12 +122,12 @@ import {
   createCommentNode,
   getBaseNodeType
 } from "@/utils"
-import { 
-  getAddNodeLabel, 
-  platformSupportsNodeType 
+import {
+  getAddNodeLabel,
+  platformSupportsNodeType
 } from "@/utils/platform-labels"
 import { publishVersion } from "@/utils/version-storage"
-import { getFlow, updateFlow, type FlowData } from "@/utils/flow-storage"
+import { getFlow, updateFlow, createFlow, deleteSharedFlow, type FlowData } from "@/utils/flow-storage"
 
 const nodeTypes = {
   start: StartNode,
@@ -147,6 +159,7 @@ const nodeTypes = {
   dob: DobNode,
   // Fulfillment nodes
   homeDelivery: HomeDeliveryNode,
+  trackingNotification: TrackingNotificationNode,
   event: EventNode,
   retailStore: RetailStoreNode,
   // Integration nodes
@@ -179,7 +192,7 @@ const initialEdges: Edge[] = [
     source: "1",
     target: "2",
     type: "default",
-    style: { stroke: "#6366f1", strokeWidth: 2 },
+    style: { stroke: "#2872F4", strokeWidth: 2 }, // Freestand info blue
   },
 ]
 
@@ -188,7 +201,9 @@ export default function MagicFlow() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const flowId = params?.id as string
-  const isSetupMode = searchParams?.get("setup") === "true"
+  const isNewFlow = flowId === "new"
+  const isSetupMode = searchParams?.get("setup") === "true" || isNewFlow
+  const loadFromDb = searchParams?.get("loadFrom") === "db"
   const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChangeOriginal] = useEdgesState(initialEdges)
@@ -205,10 +220,21 @@ export default function MagicFlow() {
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false)
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false)
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
-  
+  const [isEditingFlowName, setIsEditingFlowName] = useState(false)
+  const [editingFlowNameValue, setEditingFlowNameValue] = useState("")
+  const [isLoadingFromDb, setIsLoadingFromDb] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
+  // Sync editing value when flow changes
+  useEffect(() => {
+    if (currentFlow && !isEditingFlowName) {
+      setEditingFlowNameValue(currentFlow.name)
+    }
+  }, [currentFlow?.name, isEditingFlowName])
+
   // Node suggestions hook
   const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
-  
+
   // Fetch suggestions when node is selected (skip start and comment nodes)
   useEffect(() => {
     if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
@@ -226,14 +252,14 @@ export default function MagicFlow() {
       setIsAISuggestionsPanelOpen(false)
       clearSuggestions()
     }
-    
+
     // Cleanup on unmount
     return () => {
       clearSuggestions()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id, selectedNode?.type, platform, currentFlow?.description])
-  
+
   // Version management
   const {
     editModeState,
@@ -299,44 +325,158 @@ export default function MagicFlow() {
 
   // Load flow data when flowId changes
   useEffect(() => {
-    if (flowId && !isSetupMode) {
-      console.log('[App] Loading flow data for flowId:', flowId)
-      const flowData = getFlow(flowId)
-      
-      if (flowData) {
-        console.log('[App] Flow data loaded:', {
-          name: flowData.name,
-          nodes: flowData.nodes.length,
-          edges: flowData.edges.length,
-          platform: flowData.platform
-        })
-        
-        setCurrentFlow(flowData)
-        setNodes(flowData.nodes)
-        setEdges(flowData.edges)
-        setPlatform(flowData.platform)
-        setFlowLoaded(false) // Reset flow loaded flag for new flow
-      } else {
-        console.log('[App] No flow data found for flowId:', flowId)
+    if (flowId && !isSetupMode && !isNewFlow) {
+      const loadFlowData = async () => {
+        if (loadFromDb) {
+          // Load from database via API
+          console.log('[App] Loading flow from database for flowId:', flowId)
+          setIsLoadingFromDb(true)
+
+          try {
+            const response = await fetch(`/api/flows/${flowId}`)
+
+            if (!response.ok) {
+              throw new Error(`Failed to fetch flow: ${response.statusText}`)
+            }
+
+            const flowData = await response.json()
+
+            console.log('[App] Flow data loaded from database:', {
+              name: flowData.name,
+              nodes: flowData.nodes?.length || 0,
+              edges: flowData.edges?.length || 0,
+              platform: flowData.platform
+            })
+
+            // Ensure nodes and edges are arrays
+            const formattedFlowData: FlowData = {
+              ...flowData,
+              nodes: flowData.nodes || [],
+              edges: flowData.edges || [],
+            }
+
+            setCurrentFlow(formattedFlowData)
+            setNodes(formattedFlowData.nodes)
+            setEdges(formattedFlowData.edges)
+            setPlatform(formattedFlowData.platform)
+            setFlowLoaded(true)
+
+            toast.success("Flow loaded from database")
+          } catch (error) {
+            console.error('[App] Error loading flow from database:', error)
+            toast.error("Failed to load flow from database")
+          } finally {
+            setIsLoadingFromDb(false)
+          }
+        } else {
+          // Load from localStorage (existing behavior)
+          console.log('[App] Loading flow data from localStorage for flowId:', flowId)
+          const flowData = getFlow(flowId)
+
+          if (flowData) {
+            console.log('[App] Flow data loaded:', {
+              name: flowData.name,
+              nodes: flowData.nodes.length,
+              edges: flowData.edges.length,
+              platform: flowData.platform
+            })
+
+            setCurrentFlow(flowData)
+            setNodes(flowData.nodes)
+            setEdges(flowData.edges)
+            setPlatform(flowData.platform)
+            setFlowLoaded(true)
+          } else {
+            console.log('[App] No flow data found for flowId:', flowId)
+          }
+        }
       }
+
+      loadFlowData()
     }
-  }, [flowId, isSetupMode])
+  }, [flowId, isSetupMode, isNewFlow, loadFromDb])
+
+  // Track if we're currently saving to prevent infinite loops
+  const isSavingRef = useRef(false)
+  const lastSavedDataRef = useRef<string>('')
 
   // Auto-save flow data when nodes, edges, or platform change
   useEffect(() => {
-    if (flowId && currentFlow && !isSetupMode && nodes.length > 0) {
-      const timeoutId = setTimeout(() => {
+    if (flowId && currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && !isSavingRef.current) {
+      // Create a hash of the data we're about to save to avoid saving if nothing changed
+      const dataToSave = JSON.stringify({ nodes, edges, platform })
+
+      // Skip if this is the same data we last saved
+      if (dataToSave === lastSavedDataRef.current) {
+        return
+      }
+
+      const timeoutId = setTimeout(async () => {
+        // Prevent concurrent saves
+        if (isSavingRef.current) {
+          return
+        }
+
+        isSavingRef.current = true
         console.log('[App] Auto-saving flow data for flowId:', flowId)
-        updateFlow(flowId, {
-          nodes,
-          edges,
-          platform
-        })
+
+        if (loadFromDb) {
+          // Save to database via API
+          try {
+            const response = await fetch(`/api/flows/${flowId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                nodes,
+                edges,
+                platform,
+                name: currentFlow.name,
+                description: currentFlow.description,
+                triggerId: currentFlow.triggerId,
+                triggerIds: currentFlow.triggerIds,
+              }),
+            })
+
+            if (!response.ok) {
+              throw new Error(`Failed to update flow: ${response.statusText}`)
+            }
+
+            const updatedFlow = await response.json()
+
+            // Update last saved data hash to prevent re-saving the same data
+            lastSavedDataRef.current = dataToSave
+
+            // Update currentFlow with the response (includes updatedAt timestamp)
+            // This won't trigger the useEffect since we removed currentFlow from dependencies
+            setCurrentFlow(updatedFlow)
+
+            console.log('[App] Flow saved to database successfully')
+          } catch (error) {
+            console.error('[App] Error saving flow to database:', error)
+            // Don't show toast for auto-save errors to avoid spam
+          } finally {
+            isSavingRef.current = false
+          }
+        } else {
+          // Save to localStorage (existing behavior)
+          updateFlow(flowId, {
+            nodes,
+            edges,
+            platform
+          })
+          lastSavedDataRef.current = dataToSave
+          isSavingRef.current = false
+        }
       }, 1000) // Debounce for 1 second
-      
-      return () => clearTimeout(timeoutId)
+
+      return () => {
+        clearTimeout(timeoutId)
+        isSavingRef.current = false
+      }
     }
-  }, [nodes, edges, platform, flowId, currentFlow, isSetupMode])
+  }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow, loadFromDb]) // Removed currentFlow from dependencies
 
   // Custom onNodesChange to prevent deletion of start nodes
   const onNodesChange = useCallback((changes: any[]) => {
@@ -351,7 +491,7 @@ export default function MagicFlow() {
       }
       return true
     })
-    
+
     // Apply the filtered changes
     onNodesChangeOriginal(filteredChanges)
   }, [nodes, onNodesChangeOriginal])
@@ -359,13 +499,13 @@ export default function MagicFlow() {
   const deleteNode = useCallback(
     (nodeId: string) => {
       const nodeToDelete = nodes.find(n => n.id === nodeId)
-      
+
       // Prevent deletion of start nodes
       if (nodeToDelete?.type === "start") {
         toast.error("Start node cannot be deleted")
         return
       }
-      
+
       // Track the deletion
       if (nodeToDelete) {
         if (!isEditMode) {
@@ -374,14 +514,14 @@ export default function MagicFlow() {
         changeTracker.trackNodeDelete(nodeId, nodeToDelete.type, nodeToDelete.data?.label as string | undefined)
         updateDraftChanges()
       }
-      
+
       setNodes((nds) => nds.filter((n) => n.id !== nodeId))
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
       if (selectedNode?.id === nodeId) {
         setSelectedNode(null)
         setIsPropertiesPanelOpen(false)
       }
-      
+
       // Show toast notification
       if (nodeToDelete) {
         toast.success(`"${nodeToDelete.data.label || nodeToDelete.type}" deleted`)
@@ -392,47 +532,47 @@ export default function MagicFlow() {
 
   const copyNodes = useCallback(() => {
     if (selectedNodes.length === 0) return
-    
+
     // Filter out start nodes from copying
     const copyableNodes = selectedNodes.filter(node => node.type !== "start")
-    
+
     if (copyableNodes.length === 0) {
       toast.error("Start nodes cannot be copied")
       return
     }
-    
+
     if (copyableNodes.length !== selectedNodes.length) {
       toast.warning("Start nodes were excluded from copy operation")
     }
-    
+
     // Get all edges that connect the copyable nodes
     const copyableNodeIds = copyableNodes.map(node => node.id)
-    const connectedEdges = edges.filter(edge => 
+    const connectedEdges = edges.filter(edge =>
       copyableNodeIds.includes(edge.source) && copyableNodeIds.includes(edge.target)
     )
-    
+
     setClipboard({
       nodes: copyableNodes.map(node => ({ ...node })),
       edges: connectedEdges.map(edge => ({ ...edge }))
     })
-    
+
     // Show toast notification for copy
     toast.success(`${copyableNodes.length} node${copyableNodes.length > 1 ? 's' : ''} copied to clipboard`)
-    
+
     console.log("[v0] Copied nodes:", copyableNodes.length, "edges:", connectedEdges.length)
   }, [selectedNodes, edges])
 
   const pasteNodes = useCallback((cursorPosition?: { x: number, y: number }) => {
     if (!clipboard) return
-    
+
     const nodeIdMap = new Map<string, string>()
-    
+
     // Calculate the center of the original nodes for offset calculation
     const originalCenter = {
       x: clipboard.nodes.reduce((sum, node) => sum + node.position.x, 0) / clipboard.nodes.length,
       y: clipboard.nodes.reduce((sum, node) => sum + node.position.y, 0) / clipboard.nodes.length
     }
-    
+
     // Use cursor position if provided, otherwise use stored paste position or default offset
     let targetPosition: { x: number, y: number }
     if (cursorPosition) {
@@ -442,18 +582,18 @@ export default function MagicFlow() {
     } else {
       targetPosition = { x: originalCenter.x + 50, y: originalCenter.y + 50 }
     }
-    
+
     // Create new nodes with updated IDs and positions relative to cursor
     const newNodes = clipboard.nodes.map(node => {
       const newNodeId = `${node.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       nodeIdMap.set(node.id, newNodeId)
-      
+
       // Calculate offset from original center to this node
       const offsetFromCenter = {
         x: node.position.x - originalCenter.x,
         y: node.position.y - originalCenter.y
       }
-      
+
       return {
         ...node,
         id: newNodeId,
@@ -467,14 +607,14 @@ export default function MagicFlow() {
         }
       }
     })
-    
+
     // Create new edges with updated node IDs
     const newEdges = clipboard.edges.map(edge => {
       const newSourceId = nodeIdMap.get(edge.source)
       const newTargetId = nodeIdMap.get(edge.target)
-      
+
       if (!newSourceId || !newTargetId) return null
-      
+
       return {
         ...edge,
         id: `e${newSourceId}-${newTargetId}-${Date.now()}`,
@@ -482,16 +622,16 @@ export default function MagicFlow() {
         target: newTargetId
       }
     }).filter(Boolean) as Edge[]
-    
+
     // Add new nodes and edges
     setNodes(nds => [...nds, ...newNodes])
     setEdges(eds => [...eds, ...newEdges])
-    
+
     // Select the newly pasted nodes
     setSelectedNodes(newNodes)
     setSelectedNode(newNodes[0] || null)
     setIsPropertiesPanelOpen(true)
-    
+
     // Focus on the first pasted non-comment node (skip focusing comment nodes)
     if (newNodes.length > 0) {
       const firstNonComment = newNodes.find(n => n.type !== "comment")
@@ -499,9 +639,9 @@ export default function MagicFlow() {
         setNodeToFocus(firstNonComment.id)
       }
     }
-    
+
     // No toast for paste - user requested only copy, delete, and multiple selection
-    
+
     console.log("[v0] Pasted nodes:", newNodes.length, "edges:", newEdges.length, "at position:", targetPosition)
   }, [clipboard, setNodes, setEdges, pastePosition])
 
@@ -512,7 +652,7 @@ export default function MagicFlow() {
     setSelectedNodes(selectableNodes)
     setSelectedNode(selectableNodes[0] || null)
     setIsPropertiesPanelOpen(true)
-    
+
     // No toast for select all - user requested only copy, delete, and multiple selection
   }, [getNodes])
 
@@ -552,30 +692,30 @@ export default function MagicFlow() {
 
       console.log("[v0] Creating new connection:", params)
       setEdges((eds) => addEdge(newEdge, eds))
-      
+
       // SCENARIO 2: If connecting TO a condition node, update its connectedNode data
       setNodes((nds) => {
         const targetNode = nds.find(n => n.id === params.target)
         const sourceNode = nds.find(n => n.id === params.source)
-        
+
         // Only update connectedNode when connecting to a condition node's main target handle
         if (targetNode?.type === "condition" && sourceNode && !params.targetHandle) {
           const updatedNodes = nds.map((node) =>
             node.id === params.target
               ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    connectedNode: {
-                      id: sourceNode.id,
-                      type: sourceNode.type,
-                      label: sourceNode.data?.label || sourceNode.type
-                    }
+                ...node,
+                data: {
+                  ...node.data,
+                  connectedNode: {
+                    id: sourceNode.id,
+                    type: sourceNode.type,
+                    label: sourceNode.data?.label || sourceNode.type
                   }
                 }
+              }
               : node
           )
-          
+
           // Also update selectedNode if this condition node is currently selected
           setSelectedNode((currentSelected) => {
             if (currentSelected?.id === params.target) {
@@ -583,10 +723,10 @@ export default function MagicFlow() {
             }
             return currentSelected
           })
-          
+
           return updatedNodes
         }
-        
+
         return nds
       })
     },
@@ -606,7 +746,7 @@ export default function MagicFlow() {
         if (node.type === "question" || node.type === "webQuestion" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
           const platform = (node.data.platform as Platform) || "web"
           const newType = getPlatformSpecificNodeType("quickReply", platform)
-          
+
           // Track the type transition
           if (!isEditMode) {
             autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -617,48 +757,48 @@ export default function MagicFlow() {
             buttons: [{ text: "Option 1" }],
           }, node.type, newType)
           updateDraftChanges()
-          
+
           setNodes((nds) =>
             nds.map((n) =>
               n.id === nodeId
                 ? {
-                    ...n,
-                    type: newType,
-                    data: {
-                      ...n.data,
-                      label: "Quick Reply",
-                      buttons: [{ text: "Option 1" }],
-                    },
-                  }
+                  ...n,
+                  type: newType,
+                  data: {
+                    ...n.data,
+                    label: "Quick Reply",
+                    buttons: [{ text: "Option 1" }],
+                  },
+                }
                 : n,
             ),
           )
           // Request focus on the converted node
           setNodeToFocus(nodeId)
-        } 
+        }
         // Handle quick reply nodes (add button or convert to list)
         else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
           const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
           const platform = (node.data.platform as Platform) || "web"
-          
+
           // Check if adding one more button would exceed the limit
           const canAddButton = areButtonsWithinNodeLimits(currentButtons.length + 1, node.type, platform)
-          
+
           if (!canAddButton.valid) {
             // Convert to list node if at max buttons
             const newType = getPlatformSpecificNodeType("whatsappList", platform)
             const newLabel = getPlatformSpecificLabel("whatsappList", platform)
-            
+
             // Convert buttons to options
             const convertedOptions = currentButtons.map((btn: ButtonData) => ({
               id: btn.id || `opt-${Date.now()}-${Math.random()}`,
               text: btn.text || btn.label || "",
               value: btn.value || btn.text?.toLowerCase().replace(/\s+/g, '_') || ""
             }))
-            
+
             // Add the new option
             const newOptions = [...convertedOptions, createOptionData("", currentButtons.length)] as OptionData[]
-            
+
             // Track the type transition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -670,37 +810,37 @@ export default function MagicFlow() {
               buttons: undefined, // Remove buttons field
             }, node.type, newType)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      type: newType,
-                      data: {
-                        ...n.data,
-                        label: newLabel,
-                        options: newOptions,
-                        buttons: undefined, // Remove buttons field
-                      },
-                    }
+                    ...n,
+                    type: newType,
+                    data: {
+                      ...n.data,
+                      label: newLabel,
+                      options: newOptions,
+                      buttons: undefined, // Remove buttons field
+                    },
+                  }
                   : n,
               ),
             )
-            
+
             console.log(`[v0] Auto-converted Quick Reply to List (${currentButtons.length} → ${newOptions.length} options)`)
-            
+
             // Show toast notification
             toast.success(`Upgraded to ${newLabel}!`, {
               description: `You can now add up to 10 options (was limited to 3 buttons)`
             })
-            
+
             // Request focus on the converted node
             setNodeToFocus(nodeId)
           } else {
             // Add button
             const newButtons = [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[]
-            
+
             // Track button addition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -710,33 +850,33 @@ export default function MagicFlow() {
               buttons: newButtons,
             }, node.type, node.type)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        buttons: newButtons,
-                      },
-                    }
+                    ...n,
+                    data: {
+                      ...n.data,
+                      buttons: newButtons,
+                    },
+                  }
                   : n,
               ),
             )
           }
-        } 
+        }
         // Handle list nodes (add option)
         else if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
           const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
           const platform = (node.data.platform as Platform) || "web"
-          
+
           // Check if adding one more option would exceed the limit
           const canAddOption = areOptionsWithinNodeLimits(currentOptions.length + 1, node.type, platform)
-          
+
           if (canAddOption.valid) {
             const newOptions = [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[]
-            
+
             // Track option addition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -746,17 +886,17 @@ export default function MagicFlow() {
               options: newOptions,
             }, node.type, node.type)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        options: newOptions,
-                      },
-                    }
+                    ...n,
+                    data: {
+                      ...n.data,
+                      options: newOptions,
+                    },
+                  }
                   : n,
               ),
             )
@@ -785,12 +925,12 @@ export default function MagicFlow() {
         // Handle list nodes (remove option and potentially convert back to quick reply)
         if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
           const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
-          
+
           // If we have 3 or fewer options, convert back to quick reply
           if (newOptions.length <= 3) {
             const newType = getPlatformSpecificNodeType("quickReply", platform)
             const buttonsFromOptions = newOptions.map(opt => ({ text: opt.text || "" }))
-            
+
             // Track the reverse transition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -801,19 +941,19 @@ export default function MagicFlow() {
               buttons: buttonsFromOptions,
             }, node.type, newType)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      type: newType,
-                      data: {
-                        ...n.data,
-                        label: "Quick Reply",
-                        buttons: buttonsFromOptions,
-                      },
-                    }
+                    ...n,
+                    type: newType,
+                    data: {
+                      ...n.data,
+                      label: "Quick Reply",
+                      buttons: buttonsFromOptions,
+                    },
+                  }
                   : n,
               ),
             )
@@ -827,17 +967,17 @@ export default function MagicFlow() {
               options: newOptions,
             }, node.type, node.type)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        options: newOptions,
-                      },
-                    }
+                    ...n,
+                    data: {
+                      ...n.data,
+                      options: newOptions,
+                    },
+                  }
                   : n,
               ),
             )
@@ -846,11 +986,11 @@ export default function MagicFlow() {
         // Handle quick reply nodes (remove button and potentially convert back to question)
         else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
           const newButtons = currentButtons.filter((_, i) => i !== buttonIndex)
-          
+
           // If no buttons left, convert back to question
           if (newButtons.length === 0) {
             const newType = getPlatformSpecificNodeType("question", platform)
-            
+
             // Track the reverse transition
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -860,18 +1000,18 @@ export default function MagicFlow() {
               label: "Question",
             }, node.type, newType)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      type: newType,
-                      data: {
-                        ...n.data,
-                        label: "Question",
-                      },
-                    }
+                    ...n,
+                    type: newType,
+                    data: {
+                      ...n.data,
+                      label: "Question",
+                    },
+                  }
                   : n,
               ),
             )
@@ -885,17 +1025,17 @@ export default function MagicFlow() {
               buttons: newButtons,
             }, node.type, node.type)
             updateDraftChanges()
-            
+
             setNodes((nds) =>
               nds.map((n) =>
                 n.id === nodeId
                   ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        buttons: newButtons,
-                      },
-                    }
+                    ...n,
+                    data: {
+                      ...n.data,
+                      buttons: newButtons,
+                    },
+                  }
                   : n,
               ),
             )
@@ -971,10 +1111,10 @@ export default function MagicFlow() {
   }, [nodes, edges, platform])
 
   const importFlow = useCallback((importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
-    console.log("[v0] Importing flow:", { 
-      nodes: importedNodes.length, 
-      edges: importedEdges.length, 
-      platform: importedPlatform 
+    console.log("[v0] Importing flow:", {
+      nodes: importedNodes.length,
+      edges: importedEdges.length,
+      platform: importedPlatform
     })
 
     // Track flow import
@@ -1016,7 +1156,7 @@ export default function MagicFlow() {
       // createNode expects base types (question, quickReply, whatsappList) not platform-specific types
       // BUT it also accepts platform-specific message nodes (whatsappMessage, instagramDM, instagramStory) as-is
       let normalizedType = suggestion.type
-      
+
       // Handle list types - createNode only accepts "whatsappList" regardless of platform
       if (normalizedType === "list" || normalizedType === "whatsappList" || normalizedType === "instagramList" || normalizedType === "whatsappListSpecific") {
         normalizedType = "whatsappList"
@@ -1081,7 +1221,7 @@ export default function MagicFlow() {
           if (content.label) {
             updatedData.label = content.label
           }
-          
+
           // Handle message nodes (whatsappMessage, instagramDM, instagramStory) - they use "text" field
           if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
             // Message nodes use "text" field, not "question"
@@ -1101,7 +1241,7 @@ export default function MagicFlow() {
               updatedData.text = content.text
             }
           }
-          
+
           // Set buttons if provided
           if (content.buttons && Array.isArray(content.buttons)) {
             updatedData.buttons = content.buttons.map((btn: any, index: number) => ({
@@ -1154,7 +1294,7 @@ export default function MagicFlow() {
         // Clear suggestions and close panel
         clearSuggestions()
         setIsAISuggestionsPanelOpen(false)
-        
+
         setNodeToFocus(newNodeId)
         toast.success(`Added ${newNode.data.label || suggestion.type} node with AI-generated content`)
       } catch (error) {
@@ -1232,10 +1372,10 @@ export default function MagicFlow() {
 
         // Keep the existing start node (id: "1")
         const existingStartNode = nodes.find((n) => n.id === "1" && n.type === "start")
-        
+
         // Process AI-generated nodes using createNode for proper structure
         const processedNodes: Node[] = []
-        
+
         // Add start node first if it exists
         if (existingStartNode) {
           processedNodes.push(existingStartNode)
@@ -1257,25 +1397,25 @@ export default function MagicFlow() {
             const nodePlatform = (aiNode.data?.platform as Platform) || platform
             const nodePosition = aiNode.position || { x: 250, y: 200 }
             const nodeId = aiNode.id
-            
+
             // Use the exact node type from AI (it should already be platform-specific)
             // Only normalize if it's a generic type
             const baseType = getBaseNodeType(aiNode.type)
             let nodeTypeToCreate = aiNode.type
-            
+
             // If it's a generic type, convert to platform-specific
             if (baseType === "list") {
-              nodeTypeToCreate = platform === "whatsapp" ? "whatsappList" 
-                : platform === "instagram" ? "instagramList" 
-                : "whatsappList" // Default fallback
+              nodeTypeToCreate = platform === "whatsapp" ? "whatsappList"
+                : platform === "instagram" ? "instagramList"
+                  : "whatsappList" // Default fallback
             } else if (baseType === "question" && !aiNode.type.includes(platform)) {
               nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
                 : platform === "instagram" ? "instagramQuestion"
-                : "webQuestion"
+                  : "webQuestion"
             } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
               nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
                 : platform === "instagram" ? "instagramQuickReply"
-                : "webQuickReply"
+                  : "webQuickReply"
             }
 
             const newNode = createNode(
@@ -1285,51 +1425,51 @@ export default function MagicFlow() {
               nodeId
             )
 
-                // Transform AI data first (especially buttons/options) before merging
-                const transformedAiData = { ...(aiNode.data || {}) }
-                
-                // Transform data structure based on node type
-                if (baseType === "quickReply") {
-                  // Convert options to buttons for quickReply nodes
-                  if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
-                    transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
-                      const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-                      return {
-                        id: `btn-${Date.now()}-${index}`,
-                        text,
-                        label: text,
-                      }
-                    })
-                    delete transformedAiData.options
+            // Transform AI data first (especially buttons/options) before merging
+            const transformedAiData = { ...(aiNode.data || {}) }
+
+            // Transform data structure based on node type
+            if (baseType === "quickReply") {
+              // Convert options to buttons for quickReply nodes
+              if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
+                transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
+                  const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
+                  return {
+                    id: `btn-${Date.now()}-${index}`,
+                    text,
+                    label: text,
                   }
-                  // Also handle if buttons are provided as strings
-                  if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
-                    transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
-                      if (typeof btn === "string") {
-                        return {
-                          id: `btn-${Date.now()}-${index}`,
-                          text: btn,
-                          label: btn,
-                        }
-                      }
-                      return {
-                        id: btn.id || `btn-${Date.now()}-${index}`,
-                        text: btn.text || btn.label || "",
-                        label: btn.label || btn.text || "",
-                      }
-                    })
+                })
+                delete transformedAiData.options
+              }
+              // Also handle if buttons are provided as strings
+              if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
+                transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
+                  if (typeof btn === "string") {
+                    return {
+                      id: `btn-${Date.now()}-${index}`,
+                      text: btn,
+                      label: btn,
+                    }
                   }
-                } else if (baseType === "list") {
-                  // Transform options to proper format for list nodes
-                  if (Array.isArray(transformedAiData.options)) {
-                    transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
-                      text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
-                    }))
+                  return {
+                    id: btn.id || `btn-${Date.now()}-${index}`,
+                    text: btn.text || btn.label || "",
+                    label: btn.label || btn.text || "",
                   }
-                }
-                
-                // Now merge with newNode data (transformed buttons will override defaults)
-                let mergedData = { ...newNode.data, ...transformedAiData }
+                })
+              }
+            } else if (baseType === "list") {
+              // Transform options to proper format for list nodes
+              if (Array.isArray(transformedAiData.options)) {
+                transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
+                  text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
+                }))
+              }
+            }
+
+            // Now merge with newNode data (transformed buttons will override defaults)
+            let mergedData = { ...newNode.data, ...transformedAiData }
 
             processedNodes.push({
               ...newNode,
@@ -1424,7 +1564,7 @@ export default function MagicFlow() {
               // Transform AI data first (especially buttons/options) before merging
               const transformedAiData = { ...(aiNode.data || {}) }
               const baseType = getBaseNodeType(aiNode.type)
-              
+
               // Transform data structure if needed
               if (baseType === "quickReply") {
                 // Convert options to buttons for quickReply nodes
@@ -1464,7 +1604,7 @@ export default function MagicFlow() {
                   }))
                 }
               }
-              
+
               // Now merge with existing node data (transformed buttons will override existing)
               let updatedData = { ...existingNode.data, ...transformedAiData }
 
@@ -1479,25 +1619,25 @@ export default function MagicFlow() {
                 const nodePlatform = (aiNode.data?.platform as Platform) || platform
                 const nodePosition = aiNode.position || { x: 250, y: 200 }
                 const nodeId = aiNode.id
-                
+
                 // Use the exact node type from AI (it should already be platform-specific)
                 // Only normalize if it's a generic type
                 const baseType = getBaseNodeType(aiNode.type)
                 let nodeTypeToCreate = aiNode.type
-                
+
                 // If it's a generic type, convert to platform-specific
                 if (baseType === "list") {
-                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappList" 
-                    : platform === "instagram" ? "instagramList" 
-                    : "whatsappList" // Default fallback
+                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappList"
+                    : platform === "instagram" ? "instagramList"
+                      : "whatsappList" // Default fallback
                 } else if (baseType === "question" && !aiNode.type.includes(platform)) {
                   nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
                     : platform === "instagram" ? "instagramQuestion"
-                    : "webQuestion"
+                      : "webQuestion"
                 } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
                   nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
                     : platform === "instagram" ? "instagramQuickReply"
-                    : "webQuickReply"
+                      : "webQuickReply"
                 }
 
                 const newNode = createNode(
@@ -1509,7 +1649,7 @@ export default function MagicFlow() {
 
                 // Transform AI data first (especially buttons/options) before merging
                 const transformedAiData = { ...(aiNode.data || {}) }
-                
+
                 // Transform data structure based on node type
                 if (baseType === "quickReply") {
                   // Convert options to buttons for quickReply nodes
@@ -1549,7 +1689,7 @@ export default function MagicFlow() {
                     }))
                   }
                 }
-                
+
                 // Now merge with newNode data (transformed buttons will override defaults)
                 let mergedData = { ...newNode.data, ...transformedAiData }
 
@@ -1600,7 +1740,7 @@ export default function MagicFlow() {
           setEdges((eds) => {
             const existingIds = new Set(eds.map((e) => e.id))
             const newEdges: Edge[] = []
-            
+
             // Process each new edge
             for (const aiEdge of updates.edges!) {
               // Skip if edge already exists
@@ -1609,10 +1749,10 @@ export default function MagicFlow() {
               }
 
               // Verify source and target nodes exist (or will exist)
-              const sourceExists = nodes.some(n => n.id === aiEdge.source) || 
-                                   updates.nodes?.some(n => n.id === aiEdge.source)
-              const targetExists = nodes.some(n => n.id === aiEdge.target) || 
-                                  updates.nodes?.some(n => n.id === aiEdge.target)
+              const sourceExists = nodes.some(n => n.id === aiEdge.source) ||
+                updates.nodes?.some(n => n.id === aiEdge.source)
+              const targetExists = nodes.some(n => n.id === aiEdge.target) ||
+                updates.nodes?.some(n => n.id === aiEdge.target)
 
               if (!sourceExists || !targetExists) {
                 console.warn(`[handleUpdateFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
@@ -1625,9 +1765,9 @@ export default function MagicFlow() {
                 source: aiEdge.source,
                 target: aiEdge.target,
                 type: aiEdge.type || "default",
-                style: aiEdge.style || { 
-                  stroke: "#6366f1", 
-                  strokeWidth: 2 
+                style: aiEdge.style || {
+                  stroke: "#6366f1",
+                  strokeWidth: 2
                 },
                 animated: false,
               }
@@ -1731,7 +1871,7 @@ export default function MagicFlow() {
           newNodeId,
           currentNodes: nodes.length
         })
-        
+
         if (!isEditMode) {
           console.log('[App] Auto-entering edit mode before adding node')
           autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
@@ -1750,7 +1890,7 @@ export default function MagicFlow() {
         if (draggedNodeType !== "comment") {
           setNodeToFocus(newNodeId)
         }
-        
+
         // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
         console.error(`[v0] Error creating dragged node ${draggedNodeType}:`, error)
@@ -1762,12 +1902,12 @@ export default function MagicFlow() {
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
     event.preventDefault()
-    
+
     // Type guard to check if event has React properties
     if (!('clientX' in event) || !('clientY' in event)) {
       return
     }
-    
+
     setContextMenu({
       isOpen: true,
       x: (event as any).clientX,
@@ -1786,7 +1926,7 @@ export default function MagicFlow() {
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault()
     event.stopPropagation()
-    
+
     setNodeContextMenu({
       isOpen: true,
       x: event.clientX,
@@ -1801,7 +1941,7 @@ export default function MagicFlow() {
         x: contextMenu.x,
         y: contextMenu.y,
       })
-      
+
       const position = { x: flowX, y: flowY }
       const newNodeId = `${nodeType}-${Date.now()}`
       let newNode: Node
@@ -1849,7 +1989,7 @@ export default function MagicFlow() {
         if (nodeType !== "comment") {
           setNodeToFocus(newNodeId)
         }
-        
+
         // No toast for node creation - user requested only copy, delete, and multiple selection
       } catch (error) {
         console.error(`[v0] Error creating node ${nodeType}:`, error)
@@ -1863,7 +2003,7 @@ export default function MagicFlow() {
     if (node.type === "start") {
       return
     }
-    
+
     setSelectedNode(node)
     setIsPropertiesPanelOpen(true)
   }, [])
@@ -1871,9 +2011,9 @@ export default function MagicFlow() {
   // Handle double-click for super nodes
   const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
     console.log("Node double-clicked:", node.type, node.data)
-    
+
     const superNodeTypes = ["name", "email", "address", "dob"]
-    
+
     if (superNodeTypes.includes(node.type || "")) {
       console.log("✨ Super node double-clicked!", node.type)
       toast.info(`🔧 Configure ${node.data?.label || node.type} validation rules`, {
@@ -1889,10 +2029,10 @@ export default function MagicFlow() {
   const onSelectionChange = useCallback(({ nodes: selectedNodesFromFlow }: { nodes: Node[], edges: Edge[] }) => {
     // Filter out start nodes from selection
     const filteredNodes = selectedNodesFromFlow.filter(node => node.type !== "start")
-    
+
     // Update our selected nodes state with filtered nodes
     setSelectedNodes(filteredNodes)
-    
+
     // Handle node selection
     if (filteredNodes.length === 1) {
       setSelectedNode(filteredNodes[0])
@@ -1904,7 +2044,7 @@ export default function MagicFlow() {
       setSelectedNode(null)
       setIsPropertiesPanelOpen(false)
     }
-    
+
     // Show toast notification for selection changes (but not for single node clicks)
     if (filteredNodes.length > 1) {
       toast.info(`${filteredNodes.length} nodes selected`)
@@ -1918,19 +2058,19 @@ export default function MagicFlow() {
       setIsPropertiesPanelOpen(false)
 
       const currentTime = Date.now()
-      
+
       // Type guard to check if event has React properties
       if (!('currentTarget' in event) || !('clientX' in event) || !('clientY' in event)) {
         return
       }
-      
+
       const reactFlowBounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
       const clickPosition: Coordinates = getClientCoordinates(event)
 
       // Double-click detected if within threshold
-      if (isDoubleClick(currentTime, lastClickTime, clickPosition, lastClickPosition, 
-                       INTERACTION_THRESHOLDS.doubleClick.time, 
-                       INTERACTION_THRESHOLDS.doubleClick.distance)) {
+      if (isDoubleClick(currentTime, lastClickTime, clickPosition, lastClickPosition,
+        INTERACTION_THRESHOLDS.doubleClick.time,
+        INTERACTION_THRESHOLDS.doubleClick.distance)) {
         console.log("[v0] Double-click detected at:", clickPosition)
 
         const position = screenToFlowPosition(clickPosition)
@@ -1942,12 +2082,12 @@ export default function MagicFlow() {
           newNodeId,
           (updates: any) => {
             console.log("[v0] Comment inline update:", newNodeId, updates)
-            
+
             // Track the comment update
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
             }
-            
+
             // Find the current node to get old data for change tracking
             const currentNode = nodes.find(n => n.id === newNodeId)
             if (currentNode) {
@@ -1956,7 +2096,7 @@ export default function MagicFlow() {
               changeTracker.trackNodeUpdate(newNodeId, oldData, newData, currentNode.type, currentNode.type)
               updateDraftChanges()
             }
-            
+
             setNodes((nds) =>
               nds.map((node) =>
                 node.id === newNodeId
@@ -1976,7 +2116,7 @@ export default function MagicFlow() {
 
         setNodes((nds) => [...nds, newNode])
         console.log("[v0] Added comment node at position:", position)
-        
+
         // No toast for comment creation - user requested only copy, delete, and multiple selection
       }
 
@@ -2031,7 +2171,7 @@ export default function MagicFlow() {
         // All other node types (interaction, super, fulfillment, integration)
         try {
           newNode = createNode(nodeType, platform, nodePosition, newNodeId)
-          
+
           // SCENARIO 1: If creating a condition node from connection menu, set connectedNode data
           if (nodeType === "condition") {
             newNode.data = {
@@ -2065,7 +2205,7 @@ export default function MagicFlow() {
         newNodeId,
         currentNodes: nodes.length
       })
-      
+
       if (!isEditMode) {
         console.log('[App] Auto-entering edit mode before adding connected node')
         setIsAutoEnteringEditMode(true)
@@ -2089,7 +2229,7 @@ export default function MagicFlow() {
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
       // Request focus on the newly created node
       setNodeToFocus(newNodeId)
-      
+
       // No toast for node connection - user requested only copy, delete, and multiple selection
     },
     [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges],
@@ -2102,9 +2242,9 @@ export default function MagicFlow() {
           console.error("[v0] Invalid nodeId provided to updateNodeData:", nodeId)
           return
         }
-        
+
         console.log("[v0] Updating node data:", nodeId, updates)
-        
+
         // Track node update
         const oldNode = nodes.find(n => n.id === nodeId)
         if (oldNode) {
@@ -2116,7 +2256,7 @@ export default function MagicFlow() {
           changeTracker.trackNodeUpdate(nodeId, oldData, newData, oldNode.type, oldNode.type)
           updateDraftChanges()
         }
-        
+
         setNodes((nds) => {
           const updatedNodes = nds.map((node) => {
             if (node.id === nodeId) {
@@ -2126,15 +2266,20 @@ export default function MagicFlow() {
                 _timestamp: Date.now(),
               }
               console.log("[v0] Updated node:", updatedNode)
-              
+
               // If updating start node triggers, also update flow data
               if (node.type === "start" && updates.triggerIds && flowId) {
-                updateFlow(flowId, { 
+                updateFlow(flowId, {
                   triggerIds: updates.triggerIds,
                   triggerId: updates.triggerIds[0] // backwards compatibility
                 })
               }
-              
+              // If updating start node flow description, also update flow data
+              if (node.type === "start" && updates.flowDescription !== undefined && flowId) {
+                updateFlow(flowId, { description: updates.flowDescription })
+                setCurrentFlow((prev) => (prev ? { ...prev, description: updates.flowDescription } : null))
+              }
+
               return updatedNode
             }
             return node
@@ -2142,7 +2287,7 @@ export default function MagicFlow() {
           return updatedNodes
         })
         setSelectedNode((prev) => (prev && prev.id === nodeId ? { ...prev, data: { ...prev.data, ...updates } } : prev))
-        
+
         // Request focus on the node if requested (for significant updates)
         if (shouldFocus) {
           setNodeToFocus(nodeId)
@@ -2221,7 +2366,7 @@ export default function MagicFlow() {
         }
       }
     })
-    
+
     // Apply the original edge changes
     onEdgesChangeOriginal(changes)
   }, [edges, nodes, onEdgesChangeOriginal, updateNodeData])
@@ -2320,7 +2465,7 @@ export default function MagicFlow() {
       }
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey
-      
+
       if (isCtrlOrCmd) {
         switch (event.key.toLowerCase()) {
           case 'c':
@@ -2497,14 +2642,14 @@ export default function MagicFlow() {
   const handlePlatformChange = useCallback(
     (newPlatform: Platform) => {
       console.log("[v0] Platform changed to:", newPlatform)
-      
+
       // Track platform change
       if (!isEditMode) {
         autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
       }
       changeTracker.trackPlatformChange(platform, newPlatform)
       updateDraftChanges()
-      
+
       setPlatform(newPlatform)
       convertNodesToPlatform(newPlatform)
     },
@@ -2550,7 +2695,7 @@ export default function MagicFlow() {
       hasCurrentVersion: !!currentVersion,
       currentVersionName: currentVersion?.name
     })
-    
+
     // Only run this effect once when the component mounts and version manager is ready
     if (editModeState.isEditMode !== undefined) {
       if (!isEditMode && currentVersion) {
@@ -2560,18 +2705,18 @@ export default function MagicFlow() {
           ...node,
           data: node.data || {}
         }))
-        
+
         const formattedEdges = currentVersion.edges.map(edge => ({
           ...edge,
           style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
         }))
-        
+
         console.log('[App] Setting nodes and edges in view mode:', {
           nodes: formattedNodes.length,
           edges: formattedEdges.length,
           platform: currentVersion.platform
         })
-        
+
         setNodes(formattedNodes)
         setEdges(formattedEdges)
         setPlatform(currentVersion.platform)
@@ -2585,18 +2730,18 @@ export default function MagicFlow() {
             ...node,
             data: node.data || {}
           }))
-          
+
           const formattedEdges = currentVersion.edges.map(edge => ({
             ...edge,
             style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
           }))
-          
+
           console.log('[App] Setting nodes and edges from current version in edit mode:', {
             nodes: formattedNodes.length,
             edges: formattedEdges.length,
             platform: currentVersion.platform
           })
-          
+
           setNodes(formattedNodes)
           setEdges(formattedEdges)
           setPlatform(currentVersion.platform)
@@ -2619,12 +2764,12 @@ export default function MagicFlow() {
         ...node,
         data: node.data || {}
       }))
-      
+
       const formattedEdges = currentVersion.edges.map(edge => ({
         ...edge,
         style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
       }))
-      
+
       setNodes(formattedNodes)
       setEdges(formattedEdges)
       setPlatform(currentVersion.platform)
@@ -2664,7 +2809,7 @@ export default function MagicFlow() {
         console.log('[App] Saving draft state - nodes:', nodes.length, 'edges:', edges.length, 'platform:', platform)
         saveCurrentStateAsDraft(nodes, edges, platform)
       }, 100)
-      
+
       return () => clearTimeout(timeoutId)
     }
   }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
@@ -2673,13 +2818,13 @@ export default function MagicFlow() {
   // Sync condition nodes after flow loads - detect existing connections
   useEffect(() => {
     if (nodes.length <= 1 || flowLoaded) return // Skip if only start node or already synced
-    
+
     const conditionNodes = nodes.filter(n => n.type === "condition")
     if (conditionNodes.length === 0) {
       setFlowLoaded(true)
       return
     }
-    
+
     let needsSync = false
     conditionNodes.forEach(conditionNode => {
       const incomingEdge = edges.find(e => e.target === conditionNode.id && !e.targetHandle)
@@ -2687,12 +2832,12 @@ export default function MagicFlow() {
         needsSync = true
       }
     })
-    
+
     if (needsSync) {
       setNodes((nds) =>
         nds.map((node) => {
           if (node.type !== "condition") return node
-          
+
           const incomingEdge = edges.find(e => e.target === node.id && !e.targetHandle)
           if (incomingEdge && !node.data?.connectedNode) {
             const sourceNode = nds.find(n => n.id === incomingEdge.source)
@@ -2714,7 +2859,7 @@ export default function MagicFlow() {
         })
       )
     }
-    
+
     setFlowLoaded(true)
   }, [nodes, edges, flowLoaded, setNodes])
 
@@ -2722,12 +2867,12 @@ export default function MagicFlow() {
   useEffect(() => {
     if (nodeToFocus) {
       const node = nodes.find(n => n.id === nodeToFocus)
-      
+
       if (node && node.type !== "comment") {
         // Small delay to ensure the node is fully rendered
         setTimeout(() => {
-          fitView({ 
-            nodes: [{ id: nodeToFocus }], 
+          fitView({
+            nodes: [{ id: nodeToFocus }],
             duration: 1200,
             padding: 0.2,
             minZoom: 0.5,
@@ -2737,7 +2882,7 @@ export default function MagicFlow() {
           setIsPropertiesPanelOpen(true)
         }, 100)
       }
-      
+
       setNodeToFocus(null)
     }
   }, [nodes, nodeToFocus, fitView, setSelectedNode, setIsPropertiesPanelOpen])
@@ -2756,7 +2901,7 @@ export default function MagicFlow() {
         if (selectedNodes.length > 0) {
           event.preventDefault()
           console.log('[Keyboard] Delete key pressed - deleting selected nodes')
-          
+
           // Track deletions and auto-enter edit mode
           selectedNodes.forEach(node => {
             if (!isEditMode) {
@@ -2765,22 +2910,22 @@ export default function MagicFlow() {
             changeTracker.trackNodeDelete(node.id, node.type, node.data?.label as string | undefined)
           })
           updateDraftChanges()
-          
+
           // Delete the nodes
           const nodeIds = selectedNodes.map(n => n.id)
           setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)))
           setEdges((eds) => eds.filter((e) => !nodeIds.includes(e.source) && !nodeIds.includes(e.target)))
-          
+
           // Clear selection
           setSelectedNodes([])
           setSelectedNode(null)
           setIsPropertiesPanelOpen(false)
-          
+
           // Show toast
           toast.success(`${selectedNodes.length} node(s) deleted`)
         }
       }
-      
+
       // Copy key - copy selected nodes
       if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
         if (selectedNodes.length > 0) {
@@ -2793,7 +2938,7 @@ export default function MagicFlow() {
 
     // Add event listener
     document.addEventListener('keydown', handleKeyDown)
-    
+
     // Cleanup
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
@@ -2801,8 +2946,119 @@ export default function MagicFlow() {
   }, [selectedNodes, isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, updateDraftChanges, copyNodes, setSelectedNodes, setSelectedNode, setIsPropertiesPanelOpen, nodes, edges, platform])
 
   // Handle flow setup completion
-  const handleFlowSetupComplete = (data: { name: string; platform: Platform; triggerId: string; description?: string }) => {
-    if (flowId) {
+  const handleFlowSetupComplete = async (data: { name: string; platform: Platform; triggerId: string; description?: string }) => {
+    if (isNewFlow) {
+      if (loadFromDb) {
+        // Create flow via API
+        try {
+          const response = await fetch('/api/flows', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: data.name,
+              description: data.description,
+              platform: data.platform,
+              triggerId: data.triggerId,
+              triggerIds: data.triggerId ? [data.triggerId] : [],
+              nodes: [
+                {
+                  id: "1",
+                  type: "start",
+                  position: { x: 250, y: 25 },
+                  data: {
+                    label: "Start",
+                    platform: data.platform,
+                    triggerId: data.triggerId,
+                    triggerIds: data.triggerId ? [data.triggerId] : []
+                  },
+                  draggable: false,
+                  selectable: true,
+                },
+              ],
+              edges: [],
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to create flow: ${response.statusText}`)
+          }
+
+          const newFlow = await response.json()
+
+          setCurrentFlow(newFlow)
+          setNodes(newFlow.nodes)
+          setEdges(newFlow.edges)
+          setPlatform(newFlow.platform)
+          setShowSetupModal(false)
+
+          // Create campaign for web and whatsapp platforms only
+          if (data.platform === "web" || data.platform === "whatsapp") {
+            try {
+              const campaignResponse = await fetch('/api/campaigns/create', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  flow: newFlow,
+                  campaignData: {
+                    campaignName: data.name,
+                    samplingExperience: data.platform === "web" ? "website" : "digital",
+                    flowId: newFlow.id,
+                  },
+                }),
+              })
+
+              if (campaignResponse.ok) {
+                const campaignResult = await campaignResponse.json()
+                if (campaignResult.success) {
+                  console.log('[App] Campaign created successfully:', campaignResult)
+                  toast.success(`Campaign "${data.name}" created!`)
+                } else {
+                  console.warn('[App] Campaign creation returned success:false:', campaignResult.error)
+                  // Don't show error toast, just log it - flow creation succeeded
+                }
+              } else {
+                console.warn('[App] Failed to create campaign (non-blocking):', campaignResponse.statusText)
+                // Don't show error toast, just log it - flow creation succeeded
+              }
+            } catch (campaignError) {
+              // Log error but don't block flow creation
+              console.error('[App] Error creating campaign (non-blocking):', campaignError)
+            }
+          }
+
+          // Navigate to the new flow ID with loadFrom=db
+          router.replace(`/flow/${newFlow.id}?loadFrom=db`)
+          toast.success(`Flow "${data.name}" created!`)
+        } catch (error) {
+          console.error('[App] Error creating flow via API:', error)
+          toast.error("Failed to create flow")
+          throw error // Re-throw so modal can handle it
+        }
+      } else {
+        // Create flow in localStorage (existing behavior)
+        const newFlow = createFlow(
+          data.name,
+          data.description,
+          data.platform,
+          data.triggerId
+        )
+
+        setCurrentFlow(newFlow)
+        setNodes(newFlow.nodes)
+        setEdges(newFlow.edges)
+        setPlatform(newFlow.platform)
+        setShowSetupModal(false)
+
+        // Navigate to the new flow ID
+        router.replace(`/flow/${newFlow.id}`)
+        toast.success(`Flow "${data.name}" created!`)
+      }
+    } else if (flowId) {
+      // Update existing flow
       const updatedFlow = updateFlow(flowId, {
         name: data.name,
         platform: data.platform,
@@ -2814,8 +3070,8 @@ export default function MagicFlow() {
             id: "1",
             type: "start",
             position: { x: 250, y: 25 },
-            data: { 
-              label: "Start", 
+            data: {
+              label: "Start",
               platform: data.platform,
               triggerId: data.triggerId,
               triggerIds: [data.triggerId]
@@ -2825,7 +3081,7 @@ export default function MagicFlow() {
           },
         ],
       })
-      
+
       if (updatedFlow) {
         setCurrentFlow(updatedFlow)
         setNodes(updatedFlow.nodes)
@@ -2839,6 +3095,38 @@ export default function MagicFlow() {
     }
   }
 
+  const handleBackClick = () => {
+    //just check the source url if url contains 'freestand' then go to client/campaigns or url param has scSource=true, otherwise go to flows
+    console.log('[App] Back button clicked, checking source url:', window.location.href)
+
+    console.log('[App] Search params:', searchParams)
+    if (window.location.href.includes('freestand') || searchParams?.get("scSource") === "true") {
+      console.log('[App] Redirecting to client/campaigns')
+      router.push('/client/campaigns')
+    } else {
+      console.log('[App] Redirecting to flows')
+      router.push('/flows')
+    }
+  }
+
+  const handleDeleteSharedFlow = async () => {
+    if (!flowId || !loadFromDb) return
+
+    const success = await deleteSharedFlow(flowId)
+    if (success) {
+      toast.success("Shared flow deleted")
+      // Redirect back to flows page
+      if (window.location.href.includes('freestand') || searchParams?.get("scSource") === "true") {
+        router.push('/client/campaigns')
+      } else {
+        router.push('/flows')
+      }
+    } else {
+      toast.error("Failed to delete shared flow")
+    }
+    setShowDeleteDialog(false)
+  }
+
   return (
     <div className="h-screen flex bg-background">
       {/* Flow Setup Modal */}
@@ -2850,32 +3138,140 @@ export default function MagicFlow() {
         }}
         onComplete={handleFlowSetupComplete}
       />
-      
-      <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
 
-      <div className="flex-1 relative pb-24">
+      {/* Loading Screen - AI Themed */}
+      {isLoadingFromDb && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <Loader2 className="w-12 h-12 animate-spin text-[#2872F4]" />
+              <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-[#052762] animate-pulse" />
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <h2 className="text-xl font-semibold bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent">
+                Getting your flow...
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Freestand AI is loading your conversation flow
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isLoadingFromDb && (
+        <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
+      )}
+
+      <div className="flex-1 relative">
         <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
           <div className="flex items-center justify-between px-6 py-3 gap-2">
-            {/* Left Section - Flow Name, Version, and State */}
+            {/* Left Section - Back Button, Flow Name, Version, and State */}
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div 
-                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
-                onClick={() => router.push('/flows')}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleBackClick}
+                className="shrink-0 h-8 w-8 p-0"
+                title="Back to flows"
               >
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-              </div>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
               {currentFlow && (
                 <>
-                  <h1 className="text-lg font-semibold text-foreground truncate">
-                    {currentFlow.name}
-                  </h1>
+                  {isEditingFlowName ? (
+                    <Input
+                      value={editingFlowNameValue}
+                      onChange={(e) => setEditingFlowNameValue(e.target.value)}
+                      onBlur={async () => {
+                        if (editingFlowNameValue.trim() && editingFlowNameValue !== currentFlow.name) {
+                          if (loadFromDb) {
+                            // Update shared flow via API
+                            try {
+                              const response = await fetch(`/api/flows/${flowId}`, {
+                                method: 'PUT',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  name: editingFlowNameValue.trim(),
+                                }),
+                              })
+                              
+                              if (response.ok) {
+                                const updated = await response.json()
+                                setCurrentFlow(updated)
+                                toast.success("Flow name updated")
+                              } else {
+                                toast.error("Failed to update flow name")
+                                setEditingFlowNameValue(currentFlow.name)
+                              }
+                            } catch (error) {
+                              console.error("Error updating shared flow name:", error)
+                              toast.error("Failed to update flow name")
+                              setEditingFlowNameValue(currentFlow.name)
+                            }
+                          } else {
+                            // Update local flow
+                            const updated = updateFlow(flowId, { name: editingFlowNameValue.trim() })
+                            if (updated) {
+                              setCurrentFlow(updated)
+                              toast.success("Flow name updated")
+                            } else {
+                              toast.error("Failed to update flow name")
+                              setEditingFlowNameValue(currentFlow.name)
+                            }
+                          }
+                        }
+                        setIsEditingFlowName(false)
+                        if (!editingFlowNameValue.trim() || editingFlowNameValue === currentFlow.name) {
+                          setEditingFlowNameValue(currentFlow.name)
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.currentTarget.blur()
+                        }
+                        if (e.key === "Escape") {
+                          setEditingFlowNameValue(currentFlow.name)
+                          setIsEditingFlowName(false)
+                        }
+                      }}
+                      className="text-lg font-semibold h-8 px-2 min-w-[200px] max-w-[400px]"
+                      autoFocus
+                    />
+                  ) : (
+                    <div
+                      className="flex items-center gap-2 group cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
+                      onClick={() => {
+                        setEditingFlowNameValue(currentFlow.name)
+                        setIsEditingFlowName(true)
+                      }}
+                    >
+                      <h1 className="text-lg font-semibold text-foreground truncate">
+                        {currentFlow.name}
+                      </h1>
+                      <Edit3 className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </div>
+                  )}
                   {currentVersion && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
                       <span className="font-medium">{currentVersion.name}</span>
                       {currentVersion.isPublished && !isEditMode ? (
-                        <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
+                        <>
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
+                          {currentVersion.previewUrl && (
+                            <a
+                              href={currentVersion.previewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Preview
+                            </a>
+                          )}
+                        </>
                       ) : (
                         <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
                       )}
@@ -2891,15 +3287,28 @@ export default function MagicFlow() {
             {/* Center Section - Edit/View Mode and Publish Button */}
             <div className="flex items-center gap-2 shrink-0">
               {/* Mode Toggle */}
-              <Button 
-                variant={isEditMode ? "default" : "outline"} 
-                size="sm"
-                onClick={handleModeToggle}
-                className="flex items-center gap-2 h-9 px-3"
-              >
-                <span className={`w-2 h-2 rounded-full ${isEditMode ? 'bg-white' : 'bg-muted-foreground'}`}></span>
-                {isEditMode ? "Edit" : "View"}
-              </Button>
+              <div className="flex items-center gap-2 bg-muted rounded-md p-1">
+                <button
+                  onClick={handleModeToggle}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${isEditMode
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span>Edit Mode</span>
+                </button>
+                <button
+                  onClick={handleModeToggle}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${!isEditMode
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>View Mode</span>
+                </button>
+              </div>
               <PublishModal
                 changes={draftChanges}
                 hasUnsavedChanges={editModeState.hasUnsavedChanges}
@@ -2909,6 +3318,35 @@ export default function MagicFlow() {
                   const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
                   if (publishedVersion) {
                     console.log('[App] Successfully created and published version:', publishedVersion.name)
+
+                    // Save to API if loaded from database
+                    if (loadFromDb && currentFlow) {
+                      try {
+                        const response = await fetch(`/api/flows/${flowId}`, {
+                          method: 'PUT',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            nodes,
+                            edges,
+                            platform,
+                            name: currentFlow.name,
+                            description: currentFlow.description,
+                            triggerId: currentFlow.triggerId,
+                            triggerIds: currentFlow.triggerIds,
+                          }),
+                        })
+
+                        if (response.ok) {
+                          const updatedFlow = await response.json()
+                          setCurrentFlow(updatedFlow)
+                          console.log('[App] Flow saved to database after publishing')
+                        }
+                      } catch (error) {
+                        console.error('[App] Error saving flow to database after publishing:', error)
+                      }
+                    }
                   }
                 }}
                 onPublishVersion={async (versionId, versionName, description) => {
@@ -2921,14 +3359,43 @@ export default function MagicFlow() {
                   const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
                   if (publishedVersion) {
                     console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
+
+                    // Save to API if loaded from database
+                    if (loadFromDb && currentFlow) {
+                      try {
+                        const response = await fetch(`/api/flows/${flowId}`, {
+                          method: 'PUT',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            nodes,
+                            edges,
+                            platform,
+                            name: currentFlow.name,
+                            description: currentFlow.description,
+                            triggerId: currentFlow.triggerId,
+                            triggerIds: currentFlow.triggerIds,
+                          }),
+                        })
+
+                        if (response.ok) {
+                          const updatedFlow = await response.json()
+                          setCurrentFlow(updatedFlow)
+                          console.log('[App] Flow saved to database after publishing')
+                        }
+                      } catch (error) {
+                        console.error('[App] Error saving flow to database after publishing:', error)
+                      }
+                    }
                   } else {
                     console.log('[App] Failed to publish version')
                   }
                 }}
                 currentVersion={currentVersion}
               >
-                <Button 
-                  variant="default" 
+                <Button
+                  variant="default"
                   size="sm"
                   disabled={(() => {
                     const hasChanges = hasActualChanges(nodes, edges, platform)
@@ -2949,13 +3416,12 @@ export default function MagicFlow() {
               {/* Platform Selector - Highlighted */}
               <button
                 type="button"
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 transition-all cursor-pointer hover:shadow-md ${
-                  platform === "web" 
-                    ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50" 
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 transition-all cursor-pointer hover:shadow-md ${platform === "web"
+                    ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50"
                     : platform === "whatsapp"
-                    ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50"
-                    : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-950/50"
-                }`}
+                      ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50"
+                      : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-950/50"
+                  }`}
                 onClick={() => {
                   const platforms: Platform[] = ["web", "whatsapp", "instagram"]
                   const currentIndex = platforms.indexOf(platform)
@@ -2967,13 +3433,12 @@ export default function MagicFlow() {
                 {platform === "web" && <WebIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
                 {platform === "whatsapp" && <WhatsAppIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
                 {platform === "instagram" && <InstagramIcon className="w-4 h-4 text-pink-600 dark:text-pink-400" />}
-                <span className={`text-sm font-semibold ${
-                  platform === "web"
+                <span className={`text-sm font-semibold ${platform === "web"
                     ? "text-blue-700 dark:text-blue-300"
                     : platform === "whatsapp"
-                    ? "text-green-700 dark:text-green-300"
-                    : "text-pink-700 dark:text-pink-300"
-                }`}>
+                      ? "text-green-700 dark:text-green-300"
+                      : "text-pink-700 dark:text-pink-300"
+                  }`}>
                   {getPlatformDisplayName(platform)}
                 </span>
               </button>
@@ -2983,7 +3448,7 @@ export default function MagicFlow() {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     <MoreHorizontal className="w-4 h-4" />
                     <span className="sr-only">More options</span>
@@ -2992,7 +3457,7 @@ export default function MagicFlow() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>Flow Options</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  
+
                   {/* Changes Indicator */}
                   {isEditMode && hasActualChanges(nodes, edges, platform) && (
                     <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
@@ -3006,16 +3471,16 @@ export default function MagicFlow() {
                   {/* Reset */}
                   <DropdownMenuItem
                     onSelect={() => {
-                      if (window.confirm(getAllVersions().find(v => v.isPublished) 
-                        ? "Reset to last published version? All unsaved changes will be lost." 
+                      if (window.confirm(getAllVersions().find(v => v.isPublished)
+                        ? "Reset to last published version? All unsaved changes will be lost."
                         : "No published version exists. Clear everything?"
                       )) {
                         resetToPublished(setNodes, setEdges, setPlatform)
                         setSelectedNode(null)
                         setSelectedNodes([])
                         setIsPropertiesPanelOpen(false)
-                        toast.success(getAllVersions().find(v => v.isPublished) 
-                          ? "Reset to published version" 
+                        toast.success(getAllVersions().find(v => v.isPublished)
+                          ? "Reset to published version"
                           : "Flow cleared"
                         )
                       }
@@ -3044,6 +3509,20 @@ export default function MagicFlow() {
                     <Camera className="w-4 h-4 mr-2" />
                     Take Screenshot
                   </DropdownMenuItem>
+
+                  {/* Delete Flow (only for shared flows) */}
+                  {loadFromDb && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setShowDeleteDialog(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Flow
+                      </DropdownMenuItem>
+                    </>
+                  )}
 
                   <DropdownMenuSeparator />
 
@@ -3104,17 +3583,38 @@ export default function MagicFlow() {
           onOpenChange={setIsVersionHistoryModalOpen}
         />
 
-        <ScreenshotModal 
+        <ScreenshotModal
           flowElementRef={flowElementRef}
           open={isScreenshotModalOpen}
           onOpenChange={setIsScreenshotModalOpen}
         />
 
-        <ChangesModal 
+        <ChangesModal
           changes={draftChanges}
           open={isChangesModalOpen}
           onOpenChange={setIsChangesModalOpen}
         />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete this shared flow and all its data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteSharedFlow}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <div className="h-full pt-20">
           <ReactFlow
@@ -3140,6 +3640,15 @@ export default function MagicFlow() {
                     onAddConnection: () => addConnectedNode(node.id),
                     onDelete: () => deleteNode(node.id),
                     onConvert: convertNode,
+                    ...(node.type === "start" && {
+                      flowDescription: currentFlow?.description || "",
+                      onFlowUpdate: (updates: { description?: string }) => {
+                        if (updates.description !== undefined && flowId) {
+                          updateFlow(flowId, { description: updates.description })
+                          setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
+                        }
+                      },
+                    }),
                   },
                 }
               })}
@@ -3207,6 +3716,17 @@ export default function MagicFlow() {
               }}
             />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--border))" />
+
+            {/* AI Assistant - Floating on canvas */}
+            <Panel position="bottom-center" className="mb-4">
+              <AIAssistant
+                platform={platform}
+                flowContext={currentFlow?.description}
+                existingFlow={{ nodes, edges }}
+                onApplyFlow={handleApplyFlow}
+                onUpdateFlow={handleUpdateFlow}
+              />
+            </Panel>
           </ReactFlow>
         </div>
 
@@ -3371,9 +3891,8 @@ export default function MagicFlow() {
 
       {/* AI Suggestions Panel - Right Side (left of Properties Panel) */}
       <div
-        className={`transition-all duration-300 ease-in-out ${
-          isAISuggestionsPanelOpen ? "w-80" : "w-0"
-        } overflow-hidden bg-background border-r border-border`}
+        className={`transition-all duration-300 ease-in-out ${isAISuggestionsPanelOpen ? "w-80" : "w-0"
+          } overflow-hidden bg-background border-r border-border`}
       >
         <AISuggestionsPanel
           selectedNode={selectedNode}
@@ -3391,9 +3910,8 @@ export default function MagicFlow() {
       </div>
 
       <div
-        className={`transition-all duration-300 ease-in-out ${
-          isPropertiesPanelOpen ? "w-80" : "w-0"
-        } overflow-hidden bg-background border-l border-border`}
+        className={`transition-all duration-300 ease-in-out ${isPropertiesPanelOpen ? "w-80" : "w-0"
+          } overflow-hidden bg-background border-l border-border`}
       >
         {selectedNode && (
           <div className="w-80 flex flex-col h-full">
@@ -3404,10 +3922,11 @@ export default function MagicFlow() {
               </Button>
             </div>
             <div className="flex-1 overflow-hidden">
-              <PropertiesPanel 
-                selectedNode={selectedNode} 
-                platform={platform} 
+              <PropertiesPanel
+                selectedNode={selectedNode}
+                platform={platform}
                 onNodeUpdate={updateNodeData}
+                allNodes={nodes}
               />
             </div>
           </div>
@@ -3424,11 +3943,11 @@ export default function MagicFlow() {
               <div className="text-sm text-muted-foreground">
                 {selectedNodes.length} nodes selected
               </div>
-              
+
               <div className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={copyNodes}
                   className="w-full justify-start"
                   disabled={selectedNodes.length === 0}
@@ -3438,10 +3957,10 @@ export default function MagicFlow() {
                   </svg>
                   Copy Selected
                 </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => {
                     const reactFlowElement = document.querySelector('.react-flow')
                     if (reactFlowElement) {
@@ -3462,10 +3981,10 @@ export default function MagicFlow() {
                   </svg>
                   Paste at Center
                 </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={selectAllNodes}
                   className="w-full justify-start"
                 >
@@ -3475,7 +3994,7 @@ export default function MagicFlow() {
                   Select All
                 </Button>
               </div>
-              
+
               <div className="text-xs text-muted-foreground space-y-1">
                 <div>Keyboard shortcuts:</div>
                 <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+C</kbd> Copy</div>
@@ -3487,16 +4006,7 @@ export default function MagicFlow() {
           </div>
         )}
       </div>
-      
-      {/* AI Assistant */}
-      <AIAssistant
-        platform={platform}
-        flowContext={currentFlow?.description}
-        existingFlow={{ nodes, edges }}
-        onApplyFlow={handleApplyFlow}
-        onUpdateFlow={handleUpdateFlow}
-      />
-      
+
       {/* Toast notifications */}
       <Toaster position="bottom-right" />
     </div>

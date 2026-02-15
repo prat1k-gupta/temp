@@ -17,22 +17,11 @@ interface AISuggestionsPanelProps {
   onClose: () => void
 }
 
-const platformColors = {
-  web: {
-    card: "border-blue-200 dark:border-blue-800",
-    accent: "text-blue-600 dark:text-blue-400",
-    button: "bg-blue-500 hover:bg-blue-600",
-  },
-  whatsapp: {
-    card: "border-green-200 dark:border-green-800",
-    accent: "text-green-600 dark:text-green-400",
-    button: "bg-green-500 hover:bg-green-600",
-  },
-  instagram: {
-    card: "border-pink-200 dark:border-pink-800",
-    accent: "text-pink-600 dark:text-pink-400",
-    button: "bg-pink-500 hover:bg-pink-600",
-  },
+// All AI suggestions use FS blue to indicate they're powered by Freestand AI
+const aiColors = {
+  card: "border-blue-200 dark:border-blue-800",
+  accent: "text-[#052762] dark:text-[#2872F4]",
+  button: "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] shadow-md hover:shadow-lg",
 }
 
 export function AISuggestionsPanel({
@@ -50,15 +39,15 @@ export function AISuggestionsPanel({
     return null
   }
 
-  const colors = platformColors[platform] || platformColors.web
+  const colors = aiColors
 
   return (
     <div className="w-80 h-full bg-background flex flex-col border-l border-2">
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-purple-500" />
-          <h2 className="text-lg font-semibold text-foreground">AI Suggestions</h2>
+          <Sparkles className="w-4 h-4 text-[#2872F4]" />
+          <h2 className="text-lg font-semibold text-foreground">Freestand AI Suggestions</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
           <span className="sr-only">Close suggestions panel</span>×
@@ -69,12 +58,12 @@ export function AISuggestionsPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-purple-500 mb-3" />
-            <p className="text-sm text-muted-foreground">AI is suggesting nodes...</p>
+            <Loader2 className="w-6 h-6 animate-spin text-[#2872F4] mb-3" />
+            <p className="text-sm text-muted-foreground">Freestand AI is suggesting nodes...</p>
           </div>
         ) : suggestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Sparkles className="w-8 h-8 text-muted-foreground mb-3 opacity-50" />
+            <Sparkles className="w-8 h-8 text-[#2872F4] mb-3 opacity-50" />
             <p className="text-sm text-muted-foreground text-center">
               No suggestions available for this node
             </p>

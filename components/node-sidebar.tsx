@@ -48,10 +48,39 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
     }
   }
 
+  // Freestand LogoClosed component (icon only)
+  const LogoClosed = ({ className }: { className?: string }) => (
+    <svg viewBox='0 0 127 128' fill='none' xmlns='http://www.w3.org/2000/svg' className={className}>
+      <g>
+        <path
+          d='M94.8052 62.1819V102.384C94.7538 104.184 94.7565 105.342 94.7565 105.342H68.3398V62.1819M94.8052 62.1819H68.3398M94.8052 62.1819H98.7703V51.4453L68.3398 51.4453V62.1819'
+          stroke='#052762'
+          strokeWidth='7'
+          strokeMiterlimit='16'
+          strokeLinecap='round'
+        />
+        <path
+          d='M32.6543 62.1819V102.384C32.7057 104.184 32.703 105.342 32.703 105.342H57.2754V62.1819M32.6543 62.1819H57.2754M32.6543 62.1819H28.6892V51.4453L57.2754 51.4453V62.1819'
+          stroke='#052762'
+          strokeWidth='7'
+          strokeMiterlimit='16'
+          strokeLinecap='round'
+        />
+        <path
+          d='M28.6895 41.6827C33.2272 41.6827 51.7948 41.6827 56.2307 41.6827L54.6309 39.8631C49.9526 34.0405 40.9363 28.2184 41.3726 18.3922C41.5859 13.5891 48.4992 8.05709 55.553 15.0442C61.1961 20.6339 62.1221 30.9108 61.8797 35.3505C64.1825 28.8971 70.737 17.0821 78.5326 21.449C88.2771 26.9077 76.3772 37.1701 73.9775 38.1891C72.0577 39.2371 70.1728 40.7122 69.0093 41.3187H98.7717'
+          stroke='#052762'
+          strokeWidth='7'
+          strokeLinecap='square'
+          strokeLinejoin='round'
+        />
+      </g>
+    </svg>
+  )
+
   if (isCollapsed) {
     return (
       <TooltipProvider delayDuration={200}>
-        <div className="relative w-16 bg-background border-r border-border">
+        <div className="relative w-16 bg-background border-r border-border flex flex-col">
           {/* Expand button positioned on the right edge */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -69,8 +98,13 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
             </TooltipContent>
           </Tooltip>
 
-          <div className="p-2 overflow-y-auto h-full">
-            <div className="space-y-3 pt-12">
+          {/* Freestand Logo when collapsed */}
+          <div className="p-3 border-b border-border flex items-center justify-center">
+            <LogoClosed className="w-10 h-10" />
+          </div>
+
+          <div className="p-2 overflow-y-auto h-full flex-1">
+            <div className="space-y-3">
               {categories.map((category) => {
                 const nodes = getNodesByCategory(category.key, platform)
                 
@@ -83,11 +117,14 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                     <Tooltip key={node.type}>
                       <TooltipTrigger asChild>
                         <div
-                          className={`w-12 h-12 rounded-md ${getPlatformColorClass(platform)} flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105`}
+                          className={`w-12 h-12 rounded-md ${node.isSuperNode ? 'bg-[#052762]' : getPlatformColorClass(platform)} flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105 relative`}
                           draggable
                           onDragStart={(e) => onNodeDragStart(e, node.type)}
                         >
                           <NodeIcon className="w-5 h-5 text-white" />
+                          {node.isSuperNode && (
+                            <Sparkles className="w-2.5 h-2.5 text-yellow-400 absolute -top-0.5 -right-0.5" />
+                          )}
                         </div>
                       </TooltipTrigger>
                       <TooltipContent side="right">
@@ -95,8 +132,8 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                           <div className="flex items-center gap-2">
                             <p className="font-medium">{node.label}</p>
                             {node.isSuperNode && (
-                              <Badge variant="secondary" className="text-xs">
-                                {node.badge}
+                              <Badge variant="secondary" className="text-[8px] h-3.5 px-1.5 bg-blue-100 dark:bg-blue-900/30 text-[#052762] dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                FS Optimized
                               </Badge>
                             )}
                           </div>
@@ -136,14 +173,13 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
         
         {/* Header */}
         <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-        <div>
-              <h2 className="text-sm font-semibold text-foreground">Nodes</h2>
-              <p className="text-[10px] text-muted-foreground capitalize">
-                {platform === "web" ? "Web" : platform === "whatsapp" ? "WhatsApp" : "Instagram"} Platform
+          <div className="flex items-center gap-3">
+            {/* Freestand LogoClosed (icon only) */}
+            <LogoClosed className="w-10 h-10" />
+            <div className="flex-1">
+              <h2 className="text-base font-semibold text-foreground">Magic Flow</h2>
+              <p className="text-xs text-[#052762] font-medium mt-0.5">
+                A Freestand Product
               </p>
             </div>
           </div>
@@ -195,8 +231,11 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
               >
                             <CardContent className="p-2.5">
                               <div className="flex items-center gap-2">
-                                <div className={`w-7 h-7 rounded-md ${getPlatformColorClass(platform)} flex items-center justify-center shrink-0`}>
+                                <div className={`w-7 h-7 rounded-md ${node.isSuperNode ? 'bg-[#052762]' : getPlatformColorClass(platform)} flex items-center justify-center shrink-0 relative`}>
                                   <NodeIcon className="w-3.5 h-3.5 text-white" />
+                                  {node.isSuperNode && (
+                                    <Sparkles className="w-2 h-2 text-yellow-400 absolute -top-0.5 -right-0.5" />
+                                  )}
                     </div>
                     <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
@@ -204,10 +243,11 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                                       {node.label}
                                     </h3>
                                     {node.isSuperNode && (
-                                      <Badge variant="secondary" className="text-[8px] h-3.5 px-1">
-                                        {node.badge}
-                          </Badge>
-                        )}
+                                      <Badge variant="secondary" className="text-[8px] h-3.5 px-1.5 bg-blue-100 dark:bg-blue-900/30 text-[#052762] dark:text-blue-300 border-blue-200 dark:border-blue-800 flex items-center gap-0.5">
+                                        <Sparkles className="w-2.5 h-2.5 text-[#2872F4]" />
+                                        FS Optimized
+                                      </Badge>
+                                    )}
                       </div>
                                   <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                                     {node.description}
@@ -232,7 +272,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
             <p>💡 Drag nodes to canvas</p>
             <p className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 inline" />
-              <span className="font-medium text-accent">Super nodes</span> are double-clickable
+              <span className="font-medium text-accent">FS optimized nodes</span> are double-clickable
             </p>
           </div>
         </div>

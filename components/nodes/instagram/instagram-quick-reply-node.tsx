@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3, X, Sparkles, Minimize2 } from "lucide-react"
+import { Plus, Edit3, X, Sparkles, Minimize2, Loader2 } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { getNodeLimits } from "@/constants"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
@@ -29,6 +29,8 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
   const [editingButtonValue, setEditingButtonValue] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
+  const [improvingButtonIndex, setImprovingButtonIndex] = useState<number | null>(null)
 
   const platform = (data.platform || "instagram") as Platform
   const nodeType = "instagramQuickReply"
@@ -78,7 +80,11 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
     setIsEditingQuestion(true)
   }
 
-  const finishEditingQuestion = () => {
+  const finishEditingQuestion = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
@@ -166,28 +172,38 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
 
   const handleImproveButton = async (index: number) => {
     const button = buttons[index]
-    if (!button) return
+    if (!button || !button.text?.trim()) {
+      toast.error('Please add text to the button first')
+      return
+    }
 
-    const result = await ai.improveCopy(button.text, 'button', {
-      maxLength: maxButtonLength,
-      context: {
-        purpose: 'Instagram button label',
-        flowContext: data.question || ''
-      }
-    })
-
-    if (result) {
-      const updatedButtons = [...buttons]
-      updatedButtons[index] = {
-        ...button,
-        text: result.improvedText
-      }
-      if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
-      }
-      toast.success('Button improved!', {
-        description: result.improvements[0] || 'Label enhanced'
+    setImprovingButtonIndex(index)
+    try {
+      const result = await ai.improveCopy(button.text, 'button', {
+        maxLength: maxButtonLength,
+        context: {
+          purpose: 'Instagram button label',
+          flowContext: data.question || ''
+        }
       })
+
+      if (result) {
+        const updatedButtons = [...buttons]
+        updatedButtons[index] = {
+          ...button,
+          text: result.improvedText
+        }
+        if (data.onNodeUpdate) {
+          data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+        }
+        toast.success('Button improved!', {
+          description: result.improvements[0] || 'Label enhanced'
+        })
+      }
+    } catch (error) {
+      toast.error('Failed to improve button text')
+    } finally {
+      setImprovingButtonIndex(null)
     }
   }
 
@@ -231,8 +247,8 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   return (
     <div className="relative">
       <Card
-        className={`min-w-[280px] max-w-[320px] bg-white border-purple-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-purple-200 ${
-          selected ? "ring-1 ring-purple-300/50 shadow-md" : ""
+        className={`min-w-[280px] max-w-[320px] bg-card border-pink-100 dark:border-pink-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-pink-200 dark:hover:border-pink-800 ${
+          selected ? "ring-1 ring-pink-300/50 dark:ring-pink-600/50 shadow-md" : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
@@ -250,12 +266,12 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
                 }}
-                className="h-6 text-sm font-medium border-purple-200"
+                className="h-6 text-sm font-medium border-pink-200 dark:border-pink-800"
                 autoFocus
               />
             ) : (
               <div
-                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-pink-50/50 dark:hover:bg-pink-900/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Quick Reply"}
@@ -266,10 +282,11 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
         </CardHeader>
         <CardContent className="pt-0 space-y-2 pb-12 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2 group/question">
+            <div ref={editingContainerRef} className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onBlur={(e) => finishEditingQuestion(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -277,7 +294,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   }
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className={`text-sm min-h-[60px] resize-none border-purple-200 focus:border-purple-300 ${
+                className={`text-sm min-h-[60px] resize-none border-pink-200 dark:border-pink-800 focus:border-pink-300 dark:focus:border-pink-700 ${
                   isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
                 }`}
                 placeholder="Enter your message..."
@@ -312,7 +329,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-pink-50/30 dark:hover:bg-pink-900/10 px-2 py-1.5 rounded border border-transparent hover:border-pink-100 dark:hover:border-pink-800 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Choose an action..."}
@@ -346,7 +363,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                           if (e.key === "Enter") finishEditingButton()
                           if (e.key === "Escape") cancelEditingButton()
                         }}
-                        className={`h-7 text-xs border-purple-200 ${
+                        className={`h-7 text-xs border-pink-200 dark:border-pink-800 ${
                           isOverLimit(editingButtonValue, "button") ? "border-red-300" : ""
                         }`}
                         autoFocus
@@ -396,19 +413,36 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                     variant="outline"
                     size="sm"
                     className={`${getButtonItemClasses(platform)} group/btn`}
-                    onClick={() => startEditingButton(index)}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('[data-sparkle-container]')) {
+                        return
+                      }
+                      startEditingButton(index)
+                    }}
                   >
                     {button.text || `Button ${index + 1}`}
                     <div className="ml-auto flex items-center gap-1">
-                      <Sparkles 
-                        className="w-3 h-3 text-purple-500 opacity-0 group-hover/btn:opacity-100 transition-opacity cursor-pointer" 
+                      <div 
+                        data-sparkle-container
+                        className="flex items-center"
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                           handleImproveButton(index)
                         }}
-                        onMouseDown={(e) => e.preventDefault()}
-                      />
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                      >
+                        {improvingButtonIndex === index ? (
+                          <Loader2 className="w-3 h-3 text-primary animate-spin" />
+                        ) : (
+                          <Sparkles 
+                            className="w-3 h-3 text-primary opacity-60 group-hover/btn:opacity-100 transition-opacity cursor-pointer hover:opacity-100" 
+                          />
+                        )}
+                      </div>
                       <Edit3 className="w-3 h-3 opacity-40" />
                     </div>
                   </Button>
@@ -417,7 +451,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                   type="source"
                   position={Position.Right}
                   id={`button-${index}`}
-                  className="w-2.5 h-2.5 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
+                  className="w-2.5 h-2.5 bg-pink-500 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />
               </div>
@@ -440,7 +474,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-pink-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -449,7 +483,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             type="source"
             position={Position.Right}
             id="next-step"
-            className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-pink-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

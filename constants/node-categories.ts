@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -14,6 +14,11 @@ export interface NodeTemplate {
 }
 
 export const NODE_CATEGORIES = {
+  information: {
+    label: "Information",
+    description: "Collect & validate data",
+    icon: User,
+  },
   interaction: {
     label: "Interaction",
     description: "Conversational elements",
@@ -23,11 +28,6 @@ export const NODE_CATEGORIES = {
     label: "Logic",
     description: "Flow control & branching",
     icon: GitBranch,
-  },
-  information: {
-    label: "Information",
-    description: "Collect & validate data",
-    icon: User,
   },
   fulfillment: {
     label: "Fulfillment",
@@ -151,6 +151,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     icon: Package,
     label: "At-home Delivery",
     description: "Schedule home delivery",
+    category: "fulfillment",
+    platforms: ["web", "whatsapp", "instagram"],
+  },
+  {
+    type: "trackingNotification",
+    icon: PackageSearch,
+    label: "Tracking Notification",
+    description: "Send delivery tracking updates",
     category: "fulfillment",
     platforms: ["web", "whatsapp", "instagram"],
   },

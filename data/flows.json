@@ -1,0 +1,74 @@
+{
+  "flow-1764447373300": {
+    "id": "flow-1764447373300",
+    "name": "loreal",
+    "description": "",
+    "platform": "whatsapp",
+    "nodes": [
+      {
+        "id": "1",
+        "type": "start",
+        "position": {
+          "x": 250,
+          "y": 25
+        },
+        "draggable": false,
+        "selectable": true,
+        "measured": {
+          "width": 280,
+          "height": 225
+        },
+        "data": {
+          "label": "Start",
+          "platform": "whatsapp",
+          "triggerId": "whatsapp-message",
+          "triggerIds": [
+            "whatsapp-message"
+          ]
+        }
+      },
+      {
+        "id": "name-1764447436065",
+        "type": "name",
+        "position": {
+          "x": 627.6107860218895,
+          "y": 193.77057170547133
+        },
+        "measured": {
+          "width": 260,
+          "height": 281
+        },
+        "data": {
+          "platform": "whatsapp",
+          "label": "Name",
+          "question": "What's your name?",
+          "validationRules": {
+            "minLength": 2,
+            "maxLength": 50,
+            "allowNumbers": false,
+            "required": true
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1-name-1764447436065",
+        "source": "1",
+        "sourceHandle": null,
+        "target": "name-1764447436065",
+        "type": "default",
+        "style": {
+          "stroke": "#6366f1",
+          "strokeWidth": 2
+        }
+      }
+    ],
+    "triggerId": "whatsapp-message",
+    "triggerIds": [
+      "whatsapp-message"
+    ],
+    "createdAt": "2025-11-29T20:16:13.300Z",
+    "updatedAt": "2025-11-29T20:21:52.816Z"
+  }
+}

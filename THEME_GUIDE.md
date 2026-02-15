@@ -252,3 +252,5 @@ The theme uses CSS variables defined in `globals.css`:
 
 These automatically switch when the theme changes!
 
+
+

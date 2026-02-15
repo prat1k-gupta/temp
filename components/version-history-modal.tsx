@@ -30,7 +30,8 @@ import {
   Edit,
   Link,
   Globe,
-  Layers
+  Layers,
+  ExternalLink
 } from "lucide-react"
 import { toast } from "sonner"
 import type { FlowVersion, FlowChange } from "@/types"
@@ -431,6 +432,18 @@ export function VersionHistoryModal({
                               <CheckCircle className="w-4 h-4" />
                               Published: {formatDate(version.publishedAt)}
                             </div>
+                          )}
+                          {version.isPublished && version.previewUrl && (
+                            <a
+                              href={version.previewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Preview
+                            </a>
                           )}
                           <Badge variant="outline" className="text-xs">
                             {version.platform}

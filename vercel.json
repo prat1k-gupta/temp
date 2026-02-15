@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/app/_next/static/:path*",
+      "destination": "/_next/static/:path*"
+    },
+    {
+      "source": "/app/_next/image/:path*",
+      "destination": "/_next/image/:path*"
+    },
+    {
+      "source": "/app/_next/data/:path*",
+      "destination": "/_next/data/:path*"
+    }
+  ]
+}

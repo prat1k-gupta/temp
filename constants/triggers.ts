@@ -12,25 +12,20 @@ export interface Trigger {
 export const PLATFORM_TRIGGERS: Record<Platform, Trigger[]> = {
   web: [
     {
-      id: "web-page-load",
+      id: "web-embedded",
       platform: "web",
-      category: "Page Events",
-      title: "User visits page",
-      description: "Triggered when a user lands on your website",
+      category: "Form Type",
+      title: "Embedded",
+      description: "Embedded form integration for your website",
+      icon: "Layout",
     },
     {
-      id: "web-button-click",
+      id: "web-standalone",
       platform: "web",
-      category: "User Actions",
-      title: "User clicks a button",
-      description: "Triggered when user clicks a specific button",
-    },
-    {
-      id: "web-form-submit",
-      platform: "web",
-      category: "User Actions",
-      title: "User submits a form",
-      description: "Triggered when user submits a form",
+      category: "Form Type",
+      title: "Standalone",
+      description: "Dedicated form page with unique URL",
+      icon: "Globe",
     },
   ],
   whatsapp: [

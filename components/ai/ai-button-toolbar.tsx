@@ -202,14 +202,14 @@ export function AIButtonToolbar({
                 }}
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={ai.loading || !questionContext.trim()}
-                className="w-full h-7 px-2 text-xs gap-1.5 border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                className="w-full h-7 px-2 text-xs gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               >
                 {ai.loading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600 dark:text-purple-400" />
+                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
                 ) : (
-                  <Wand2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <Wand2 className="w-3.5 h-3.5 text-[#2872F4]" />
                 )}
-                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
                   Generate Buttons
                 </span>
               </Button>
@@ -234,14 +234,14 @@ export function AIButtonToolbar({
                 }}
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={ai.loading}
-                className="w-full h-7 px-2 text-xs gap-1.5 border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                className="w-full h-7 px-2 text-xs gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               >
                 {ai.loading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600 dark:text-purple-400" />
+                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
                 )}
-                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
                   Add More ({buttons.length + nextBatchSize}/10)
                 </span>
               </Button>
@@ -287,9 +287,9 @@ export function AIButtonActions({
             }}
             onMouseDown={(e) => e.preventDefault()}
             disabled={disabled || !label.trim()}
-            className="h-5 w-5 p-0 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+            className="h-5 w-5 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20"
           >
-            <Sparkles className="w-3 h-3 text-purple-500" />
+            <Sparkles className="w-3 h-3 text-[#2872F4]" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>

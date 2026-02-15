@@ -17,24 +17,24 @@ interface AIButtonSuggestionsProps {
 
 const platformColors = {
   web: {
-    badge: "bg-blue-500 hover:bg-blue-600",
-    text: "text-blue-600 dark:text-blue-400",
-    border: "border-purple-200 dark:border-purple-800",
-    hover: "hover:bg-purple-50 dark:hover:bg-purple-900/20",
-    button: "bg-blue-500 hover:bg-blue-600"
+    badge: "bg-[#052762] hover:bg-[#0A49B7]",
+    text: "text-[#052762] dark:text-[#2872F4]",
+    border: "border-blue-200 dark:border-blue-800",
+    hover: "hover:bg-blue-50 dark:hover:bg-blue-900/20",
+    button: "bg-[#052762] hover:bg-[#0A49B7]"
   },
   whatsapp: {
     badge: "bg-green-500 hover:bg-green-600",
     text: "text-green-600 dark:text-green-400",
-    border: "border-purple-200 dark:border-purple-800",
-    hover: "hover:bg-purple-50 dark:hover:bg-purple-900/20",
+    border: "border-green-200 dark:border-green-800",
+    hover: "hover:bg-green-50 dark:hover:bg-green-900/20",
     button: "bg-green-500 hover:bg-green-600"
   },
   instagram: {
     badge: "bg-pink-500 hover:bg-pink-600",
     text: "text-pink-600 dark:text-pink-400",
-    border: "border-purple-200 dark:border-purple-800",
-    hover: "hover:bg-purple-50 dark:hover:bg-purple-900/20",
+    border: "border-pink-200 dark:border-pink-800",
+    hover: "hover:bg-pink-50 dark:hover:bg-pink-900/20",
     button: "bg-pink-500 hover:bg-pink-600"
   }
 }
@@ -56,7 +56,7 @@ export function AIButtonSuggestions({
       {/* Header */}
       <div className="flex items-center justify-between">
         <span className={`text-xs font-medium ${colors.text}`}>
-          AI Suggestions ({suggestedButtons.length}/{maxButtons})
+          Freestand AI Suggestions ({suggestedButtons.length}/{maxButtons})
         </span>
       </div>
 
@@ -90,11 +90,11 @@ export function AIButtonSuggestions({
             className={`w-full h-7 px-2 text-xs gap-1.5 ${colors.border} ${colors.hover}`}
           >
             {loading ? (
-              <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
             ) : (
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
             )}
-            <span className="text-purple-600 dark:text-purple-400 font-medium">
+            <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
               Add More ({suggestedButtons.length}/{maxButtons})
             </span>
           </Button>

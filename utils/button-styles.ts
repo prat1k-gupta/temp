@@ -69,13 +69,13 @@ const PLATFORM_COLORS = {
     hoverBorderDark: "dark:hover:border-green-700",
   },
   instagram: {
-    bg: "bg-purple-50/40",
-    border: "border-purple-100",
-    borderDark: "dark:border-purple-800",
-    hoverBg: "hover:bg-purple-50",
-    hoverBgDark: "dark:hover:bg-purple-950/20",
-    hoverBorder: "hover:border-purple-200",
-    hoverBorderDark: "dark:hover:border-purple-700",
+    bg: "bg-pink-50/40",
+    border: "border-pink-100",
+    borderDark: "dark:border-pink-800",
+    hoverBg: "hover:bg-pink-50",
+    hoverBgDark: "dark:hover:bg-pink-950/20",
+    hoverBorder: "hover:border-pink-200",
+    hoverBorderDark: "dark:hover:border-pink-700",
   },
 } as const
 

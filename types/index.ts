@@ -85,6 +85,7 @@ export interface FlowVersion {
   publishedAt?: string
   isPublished: boolean
   changes: FlowChange[]
+  previewUrl?: string
 }
 
 export interface FlowChange {

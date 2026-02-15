@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   GitBranch,
   Package,
+  PackageSearch,
   Store,
   Truck,
   Users,
@@ -62,6 +63,7 @@ interface PropertiesPanelProps {
   } | null
   platform: "web" | "whatsapp" | "instagram"
   onNodeUpdate: (nodeId: string, data: any) => void
+  allNodes?: Node[] // All nodes in the flow for variable mapping
 }
 
 const PLATFORM_LIMITS = {
@@ -97,6 +99,7 @@ const NODE_ICONS = {
   condition: GitBranch,
   // Fulfillment nodes
   homeDelivery: Package,
+  trackingNotification: PackageSearch,
   event: Calendar,
   retailStore: Store,
 }
@@ -118,18 +121,19 @@ const NODE_COLORS = {
   instagramQuickReply: "bg-pink-600 text-white",
   instagramList: "bg-pink-700 text-white",
   instagramDM: "bg-pink-400 text-white",
-  instagramStory: "bg-purple-500 text-white",
+  instagramStory: "bg-pink-500 text-white",
   // Super nodes
-  name: "bg-purple-500 text-white",
-  email: "bg-purple-500 text-white",
-  dob: "bg-purple-500 text-white",
-  address: "bg-purple-500 text-white",
+  name: "bg-[#052762] text-white",
+  email: "bg-[#052762] text-white",
+  dob: "bg-[#052762] text-white",
+  address: "bg-[#052762] text-white",
   // Logic nodes
-  condition: "bg-indigo-500 text-white",
+  condition: "bg-[#0A49B7] text-white",
   // Fulfillment nodes
-  homeDelivery: "bg-orange-500 text-white",
-  event: "bg-orange-500 text-white",
-  retailStore: "bg-orange-500 text-white",
+  homeDelivery: "bg-[#052762] text-white",
+  trackingNotification: "bg-[#052762] text-white",
+  event: "bg-[#052762] text-white",
+  retailStore: "bg-[#052762] text-white",
 }
 
 function SortableButtonItem({
@@ -278,7 +282,8 @@ function SortableOptionItem({
 export function PropertiesPanel({ 
   selectedNode, 
   platform, 
-  onNodeUpdate
+  onNodeUpdate,
+  allNodes = []
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
@@ -489,6 +494,8 @@ export function PropertiesPanel({
       // Fulfillment nodes
       case "homeDelivery":
         return "At-home Delivery Node"
+      case "trackingNotification":
+        return "Tracking Notification Node"
       case "event":
         return "Event Node"
       case "retailStore":
@@ -500,7 +507,7 @@ export function PropertiesPanel({
 
   const isSuperNode = ["name", "email", "dob", "address"].includes(selectedNode.type || "")
   const isConditionNode = selectedNode.type === "condition"
-  const isFulfillmentNode = ["homeDelivery", "event", "retailStore"].includes(selectedNode.type || "")
+  const isFulfillmentNode = ["homeDelivery", "trackingNotification", "event", "retailStore"].includes(selectedNode.type || "")
 
   // Get available fields based on connected node type
   const getAvailableFields = (nodeType: string) => {
@@ -608,9 +615,9 @@ export function PropertiesPanel({
             <div className="flex flex-col items-start gap-2 mt-1">
               <div className="flex gap-1">
               {isSuperNode && (
-                <Badge variant="secondary" className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                <Badge variant="secondary" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-[#052762] dark:text-blue-300 flex items-center gap-1">
                   <Sparkles className="w-3 h-3" />
-                  Super Node
+                  FS Optimized
                 </Badge>
               )}
               <Badge variant="secondary" className="text-xs">
@@ -1094,7 +1101,7 @@ export function PropertiesPanel({
 
               {/* Validation Rules Header */}
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-purple-600" />
+                <Shield className="w-4 h-4 text-[#2872F4]" />
                 <h3 className="text-sm font-semibold text-foreground">Validation Rules</h3>
               </div>
 
@@ -1498,12 +1505,12 @@ export function PropertiesPanel({
               )}
 
               {/* Validation Summary */}
-              <div className="p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-purple-600 mt-0.5" />
+                  <Sparkles className="w-5 h-5 text-[#2872F4] mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">Super Node</h4>
-                    <p className="text-xs text-purple-700 dark:text-purple-300">
+                    <h4 className="text-sm font-medium text-[#052762] dark:text-blue-100 mb-1">FS Optimized Node</h4>
+                    <p className="text-xs text-[#052762] dark:text-blue-300">
                       This node includes built-in validation. Changes are applied in real-time and reflected in the node on the canvas.
                     </p>
                   </div>
@@ -1579,24 +1586,29 @@ export function PropertiesPanel({
 
               <Separator />
 
-              {/* Description */}
-              <div>
-                <Label htmlFor="node-description" className="text-sm font-medium">
-                  Description
-                </Label>
-                <Textarea
-                  id="node-description"
-                  value={selectedNode.data.description || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, description: e.target.value })}
-                  placeholder="Enter description..."
-                  className="mt-2 min-h-[60px]"
-                  rows={2}
-                />
-              </div>
+              {/* Description - Hide for tracking notification */}
+              {selectedNode.type !== "trackingNotification" && (
+                <>
+                  <div>
+                    <Label htmlFor="node-description" className="text-sm font-medium">
+                      Description
+                    </Label>
+                    <Textarea
+                      id="node-description"
+                      value={selectedNode.data.description || ""}
+                      onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, description: e.target.value })}
+                      placeholder="Enter description..."
+                      className="mt-2 min-h-[60px]"
+                      rows={2}
+                    />
+                  </div>
 
-              <Separator />
+                  <Separator />
+                </>
+              )}
 
-              {/* Vendor Selection Info */}
+              {/* Vendor Selection Info - Only show for nodes with vendors */}
+              {selectedNode.type !== "trackingNotification" && (
               <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <div className="flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
@@ -1638,13 +1650,14 @@ export function PropertiesPanel({
                   </div>
                 </div>
               </div>
+              )}
 
               <Separator />
 
               {/* Configuration Settings */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Settings className="w-4 h-4 text-orange-500" />
+                  <Settings className="w-4 h-4 text-[#2872F4]" />
                   <h3 className="text-sm font-semibold text-foreground">Configuration</h3>
                 </div>
 
@@ -1708,6 +1721,207 @@ export function PropertiesPanel({
                       </div>
                     </>
                   )}
+
+                  {/* Tracking Notification Configuration */}
+                  {selectedNode.type === "trackingNotification" && (() => {
+                    // Parse variables from message template ({{variable}})
+                    const message = selectedNode.data.message || ""
+                    const variableRegex = /\{\{(\w+)\}\}/g
+                    const variables = new Set<string>()
+                    let match
+                    while ((match = variableRegex.exec(message)) !== null) {
+                      variables.add(match[1])
+                    }
+                    const variableArray = Array.from(variables)
+                    
+                    // Get available nodes for mapping (exclude current node and start node)
+                    const availableNodes = allNodes.filter(n => 
+                      n.id !== selectedNode.id && n.type !== "start" && n.type !== "comment"
+                    )
+                    
+                    // Get fields available from a node type
+                    const getNodeFields = (nodeType: string) => {
+                      switch (nodeType) {
+                        case "name":
+                          return [
+                            { value: "fullName", label: "Full Name" },
+                            { value: "firstName", label: "First Name" },
+                            { value: "lastName", label: "Last Name" }
+                          ]
+                        case "email":
+                          return [
+                            { value: "email", label: "Email Address" }
+                          ]
+                        case "address":
+                          return [
+                            { value: "street", label: "Street" },
+                            { value: "city", label: "City" },
+                            { value: "state", label: "State" },
+                            { value: "zipCode", label: "ZIP Code" },
+                            { value: "country", label: "Country" }
+                          ]
+                        case "dob":
+                          return [
+                            { value: "age", label: "Age" },
+                            { value: "dateOfBirth", label: "Date of Birth" }
+                          ]
+                        case "homeDelivery":
+                          return [
+                            { value: "trackingNumber", label: "Tracking Number" },
+                            { value: "deliveryDate", label: "Delivery Date" }
+                          ]
+                        default:
+                          return [
+                            { value: "label", label: "Label" },
+                            { value: "value", label: "Value" }
+                          ]
+                      }
+                    }
+                    
+                    const variableMappings = selectedNode.data.variableMappings || {}
+                    
+                    return (
+                      <>
+                        <div>
+                          <Label htmlFor="tracking-message" className="text-sm mb-2 block">
+                            Message Template
+                          </Label>
+                          <Textarea
+                            id="tracking-message"
+                            value={message}
+                            onChange={(e) => 
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                message: e.target.value
+                              })
+                            }
+                            placeholder="Use variables: {{name}}, {{product}}, {{delivery}}, {{tracking}}"
+                            className="min-h-[120px] resize-none font-mono text-xs"
+                            rows={6}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Use double curly braces for variables: <code className="text-[10px] bg-muted px-1 rounded">{"{{variable_name}}"}</code>
+                          </p>
+                        </div>
+
+                        {variableArray.length > 0 && (
+                          <>
+                            <Separator />
+                            <div>
+                              <Label className="text-sm mb-3 block">Variable Mappings</Label>
+                              <div className="space-y-3">
+                                {variableArray.map((variable) => {
+                                  const mapping = variableMappings[variable] || { nodeId: "", field: "" }
+                                  const selectedNodeData = availableNodes.find(n => n.id === mapping.nodeId)
+                                  
+                                  return (
+                                    <div key={variable} className="space-y-2 p-3 border border-border rounded-lg bg-muted/30">
+                                      <div className="flex items-center gap-2">
+                                        <code className="text-xs bg-background px-2 py-1 rounded border border-border">
+                                          {"{{" + variable + "}}"}
+                                        </code>
+                                        <span className="text-xs text-muted-foreground">→</span>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <Label className="text-xs mb-1 block">From Node</Label>
+                                          <Select
+                                            value={mapping?.nodeId || ""}
+                                            onValueChange={(nodeId) => {
+                                              const node = availableNodes.find(n => n.id === nodeId)
+                                              const fields = node && node.type ? getNodeFields(node.type) : []
+                                              const defaultField = fields[0]?.value || ""
+                                              
+                                              onNodeUpdate(selectedNode.id, {
+                                                ...selectedNode.data,
+                                                variableMappings: {
+                                                  ...variableMappings,
+                                                  [variable]: {
+                                                    nodeId,
+                                                    field: defaultField
+                                                  }
+                                                }
+                                              })
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs">
+                                              <SelectValue placeholder="Select node..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {availableNodes.map((node) => {
+                                                const nodeType = node.type || "unknown"
+                                                const nodeLabel = (node.data?.label as string) || nodeType
+                                                return (
+                                                  <SelectItem key={node.id} value={node.id}>
+                                                    {String(nodeLabel)} ({String(nodeType)})
+                                                  </SelectItem>
+                                                )
+                                              })}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        
+                                        {selectedNodeData && selectedNodeData.type && (
+                                          <div>
+                                            <Label className="text-xs mb-1 block">Field</Label>
+                                            <Select
+                                              value={mapping?.field || ""}
+                                              onValueChange={(field) => {
+                                                onNodeUpdate(selectedNode.id, {
+                                                  ...selectedNode.data,
+                                                  variableMappings: {
+                                                    ...variableMappings,
+                                                    [variable]: {
+                                                      ...mapping,
+                                                      field
+                                                    }
+                                                  }
+                                                })
+                                              }}
+                                            >
+                                              <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue placeholder="Select field..." />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                {getNodeFields(selectedNodeData.type).map((field) => (
+                                                  <SelectItem key={field.value} value={field.value}>
+                                                    {field.label}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="space-y-0.5">
+                            <Label className="text-sm">Free Sample Note</Label>
+                            <p className="text-xs text-muted-foreground">Include note about free sample</p>
+                          </div>
+                          <Switch
+                            checked={selectedNode.data.showFreeSampleNote !== false}
+                            onCheckedChange={(checked) => 
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                showFreeSampleNote: checked
+                              })
+                            }
+                          />
+                        </div>
+                      </>
+                    )
+                  })()}
 
                   {/* Event Configuration */}
                   {selectedNode.type === "event" && (
@@ -1860,12 +2074,12 @@ export function PropertiesPanel({
               </div>
 
               {/* Info Box */}
-              <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <Package className="w-5 h-5 text-orange-600 mt-0.5" />
+                  <Package className="w-5 h-5 text-[#2872F4] mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-1">Fulfillment Node</h4>
-                    <p className="text-xs text-orange-700 dark:text-orange-300">
+                    <h4 className="text-sm font-medium text-[#052762] dark:text-blue-100 mb-1">Fulfillment Node</h4>
+                    <p className="text-xs text-[#052762] dark:text-blue-300">
                       Configure your fulfillment service settings below. The system will automatically select the most optimized vendor based on your configuration. Changes are applied in real-time and reflected in the node on the canvas.
                     </p>
                   </div>

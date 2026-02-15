@@ -54,6 +54,7 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
             <Textarea
               value={editingValue}
               onChange={(e) => setEditingValue(e.target.value)}
+              onBlur={handleSave}
               className={`text-sm resize-none ${isOverLimit ? "border-red-500" : ""}`}
               rows={3}
               onKeyDown={(e) => {

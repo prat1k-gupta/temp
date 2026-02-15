@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from "react"
 import { Handle, Position } from "@xyflow/react"
-import { Play, Plus, Edit3 } from "lucide-react"
+import { Play, Plus, Edit3, Layout, Globe } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { getTriggersByPlatform } from "@/constants/triggers"
 import type { Platform } from "@/types"
 
@@ -17,6 +20,7 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   // Backward compatibility: support both triggerIds (array) and triggerId (single)
   const initialTriggers = data.triggerIds || (data.triggerId ? [data.triggerId] : [])
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>(initialTriggers)
+  const [flowDescription, setFlowDescription] = useState(data.flowDescription || "")
   
   const platform = (data.platform || "web") as Platform
   const allTriggers = getTriggersByPlatform(platform)
@@ -26,6 +30,10 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
     const newTriggers = data.triggerIds || (data.triggerId ? [data.triggerId] : [])
     setSelectedTriggers(newTriggers)
   }, [data.triggerIds, data.triggerId])
+
+  useEffect(() => {
+    setFlowDescription(data.flowDescription || "")
+  }, [data.flowDescription])
   
   const activeTriggers = selectedTriggers
     .map(id => allTriggers.find(t => t.id === id))
@@ -119,6 +127,21 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
     }
   }
 
+  const getTriggerIcon = (trigger: (typeof allTriggers)[0]) => {
+    if (trigger.icon) {
+      const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+        Layout,
+        Globe,
+      }
+      const IconComponent = iconMap[trigger.icon]
+      if (IconComponent) {
+        return <IconComponent className="w-4 h-4" />
+      }
+    }
+    // Fallback to platform icon if no specific icon
+    return getPlatformIcon(platform)
+  }
+
   const handleToggleTrigger = (triggerId: string) => {
     setSelectedTriggers(prev => {
       if (prev.includes(triggerId)) {
@@ -135,6 +158,10 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
         triggerIds: selectedTriggers,
         triggerId: selectedTriggers[0] // Keep backwards compatibility
       })
+    }
+    // Update flow description if callback is available
+    if (data.onFlowUpdate && flowDescription !== (data.flowDescription || "")) {
+      data.onFlowUpdate({ description: flowDescription })
     }
     setIsEditingTriggers(false)
   }
@@ -168,8 +195,8 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                     key={trigger.id}
                     className={`flex items-start gap-2 p-2 rounded-md ${getPlatformTriggerBg(platform)} backdrop-blur-sm border ${getPlatformBorder(platform)}`}
                   >
-                    <div className={`w-6 h-6 rounded-full ${getPlatformColor(platform)} flex items-center justify-center shrink-0 mt-0.5`}>
-                      {getPlatformIcon(platform)}
+                    <div className={`w-6 h-6 rounded-full ${getPlatformColor(platform)} flex items-center justify-center shrink-0 mt-0.5 text-white`}>
+                      {getTriggerIcon(trigger)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-xs font-medium ${getPlatformTextColor(platform)}`}>{trigger.title}</p>
@@ -216,11 +243,37 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
             <DialogTitle>Configure Start Triggers</DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-3 py-4">
-            <div className="px-1">
-              <p className="text-sm text-muted-foreground mb-3">
-                Select one or more triggers that will start this flow on {platform === "web" ? "Web" : platform === "whatsapp" ? "WhatsApp" : "Instagram"}.
+          <div className="flex-1 overflow-y-auto space-y-5 py-4">
+            {/* Flow Description Section */}
+            <div className="space-y-2 px-1">
+              <Label htmlFor="flow-description" className="text-sm text-muted-foreground">
+                Flow Description <span className="text-xs text-muted-foreground/70">(Optional)</span>
+              </Label>
+              <Textarea
+                id="flow-description"
+                placeholder="Describe the purpose and context of this flow to get better AI suggestions..."
+                value={flowDescription}
+                onChange={(e) => setFlowDescription(e.target.value)}
+                className="min-h-[80px] resize-none"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                This helps the AI assistant suggest better interactions for your flow
               </p>
+            </div>
+
+            {/* Triggers Section */}
+            <div className="px-1">
+              <div className="flex items-start justify-between mb-3 gap-2">
+                <Label className="text-sm text-muted-foreground">
+                  {platform === "web" ? "Form Type" : "Triggers"}
+                </Label>
+                <p className="text-[11px] text-muted-foreground text-right leading-tight">
+                  {platform === "web" 
+                    ? "Choose how your form will be displayed"
+                    : `Select one or more triggers that will start this flow on ${platform === "whatsapp" ? "WhatsApp" : "Instagram"}.`}
+                </p>
+              </div>
               
               <div className="space-y-2">
                 {allTriggers.map((trigger) => {
@@ -237,12 +290,15 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-full ${getPlatformColor(platform)} flex items-center justify-center shrink-0`}>
-                          {getPlatformIcon(platform)}
+                        <div className={`w-7 h-7 rounded-full ${getPlatformColor(platform)} flex items-center justify-center shrink-0 text-white`}>
+                          {getTriggerIcon(trigger)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-muted-foreground mb-0.5">{trigger.category}</div>
                           <div className="font-medium text-sm text-card-foreground">{trigger.title}</div>
+                          {trigger.description && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">{trigger.description}</div>
+                          )}
                         </div>
                         {isSelected && (
                           <Badge variant="secondary" className="shrink-0">
@@ -257,19 +313,21 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t">
-            <p className="text-xs text-muted-foreground">
-              {selectedTriggers.length} trigger{selectedTriggers.length !== 1 ? 's' : ''} selected
-            </p>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setIsEditingTriggers(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveTriggers}>
-                Save Triggers
-              </Button>
-      </div>
-    </div>
+          <DialogFooter className="pt-4 border-t">
+            <div className="flex items-center justify-between w-full">
+              <p className="text-xs text-muted-foreground">
+                {selectedTriggers.length} trigger{selectedTriggers.length !== 1 ? 's' : ''} selected
+              </p>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setIsEditingTriggers(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveTriggers}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

@@ -180,7 +180,7 @@ export const createSuperNode = (
  * Create a fulfillment node with configuration
  */
 export const createFulfillmentNode = (
-  nodeType: "homeDelivery" | "event" | "retailStore",
+  nodeType: "homeDelivery" | "trackingNotification" | "event" | "retailStore",
   platform: Platform,
   position: NodePosition,
   customId?: string
@@ -202,6 +202,12 @@ export const createFulfillmentNode = (
         trackingEnabled: true,
         notificationsEnabled: true
       }
+    },
+    trackingNotification: {
+      label: "Tracking Notification",
+      message: "Notification of shipment status! 🚚\n\nHi {{name}}, your free {product} is on its way 🎉\n\nExpected delivery: 7-10 days\n\nTracking ID: {tracking}",
+      variableMappings: {},
+      showFreeSampleNote: true
     },
     event: {
       label: "Event",
@@ -402,7 +408,7 @@ export const createNode = (
     node = createSuperNode(nodeType as any, platform, position, customId)
   }
   // Fulfillment nodes
-  else if (["homeDelivery", "event", "retailStore"].includes(nodeType)) {
+  else if (["homeDelivery", "trackingNotification", "event", "retailStore"].includes(nodeType)) {
     node = createFulfillmentNode(nodeType as any, platform, position, customId)
   }
   // Integration nodes

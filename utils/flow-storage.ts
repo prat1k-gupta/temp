@@ -257,6 +257,51 @@ export function clearCurrentFlowId(): void {
 }
 
 /**
+ * Get all shared flows from the database (Redis via API)
+ */
+export async function getSharedFlows(): Promise<FlowMetadata[]> {
+  try {
+    const response = await fetch('/api/flows')
+    if (!response.ok) {
+      console.error('Failed to fetch shared flows:', response.statusText)
+      return []
+    }
+    
+    const flows: FlowMetadata[] = await response.json()
+    // Sort flows by updatedAt (newest first)
+    return flows.sort((a, b) => {
+      const dateA = new Date(a.updatedAt).getTime()
+      const dateB = new Date(b.updatedAt).getTime()
+      return dateB - dateA // Descending order (newest first)
+    })
+  } catch (error) {
+    console.error('Error fetching shared flows:', error)
+    return []
+  }
+}
+
+/**
+ * Delete a shared flow from the database (Redis via API)
+ */
+export async function deleteSharedFlow(flowId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/flows/${flowId}`, {
+      method: 'DELETE',
+    })
+    
+    if (!response.ok) {
+      console.error('Failed to delete shared flow:', response.statusText)
+      return false
+    }
+    
+    return true
+  } catch (error) {
+    console.error('Error deleting shared flow:', error)
+    return false
+  }
+}
+
+/**
  * Generate a thumbnail for a flow (placeholder for now)
  */
 export function generateThumbnail(nodes: Node[], edges: Edge[]): string {

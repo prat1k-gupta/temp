@@ -100,8 +100,8 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            {/* Super Node Icon with sparkle indicator */}
-            <div className="relative w-5 h-5 bg-purple-500 rounded-md flex items-center justify-center flex-shrink-0">
+            {/* FS Optimized Node Icon with sparkle indicator */}
+            <div className="relative w-5 h-5 bg-[#052762] rounded-md flex items-center justify-center flex-shrink-0">
               <Mail className="w-3 h-3 text-white" />
               <Sparkles className="w-2 h-2 text-yellow-400 absolute -top-0.5 -right-0.5" />
             </div>
@@ -128,9 +128,9 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
               </h3>
             )}
 
-            {/* Super Node Badge */}
-            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-              Super
+            {/* FS Optimized Node Badge */}
+            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 bg-blue-100 dark:bg-blue-900/30 text-[#052762] dark:text-blue-300">
+              FS Optimized
             </Badge>
           </div>
         </CardHeader>
@@ -169,7 +169,7 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-purple-50/30 dark:hover:bg-purple-950/20 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 dark:hover:border-purple-800 transition-colors whitespace-pre-wrap"
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-950/20 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors whitespace-pre-wrap"
               onClick={startEditingQuestion}
             >
               {data.question || "What's your email address?"}
@@ -218,7 +218,7 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-purple-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -226,7 +226,7 @@ export function EmailNode({ data, selected }: { data: any; selected?: boolean })
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-purple-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

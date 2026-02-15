@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
+import { Loader2, Layout, Globe } from "lucide-react"
 import type { Platform } from "@/types"
 import { getTriggersByPlatform } from "@/constants/triggers"
 
@@ -18,7 +19,7 @@ interface FlowSetupModalProps {
     platform: Platform
     triggerId: string
     description?: string
-  }) => void
+  }) => Promise<void>
 }
 
 export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProps) {
@@ -27,6 +28,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("whatsapp")
   const [selectedTrigger, setSelectedTrigger] = useState<string>("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
 
   const triggers = getTriggersByPlatform(selectedPlatform)
   const filteredTriggers = triggers.filter(
@@ -53,6 +55,21 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }
 
+  const getTriggerIcon = (trigger: (typeof triggers)[0]) => {
+    if (trigger.icon) {
+      const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+        Layout,
+        Globe,
+      }
+      const IconComponent = iconMap[trigger.icon]
+      if (IconComponent) {
+        return <IconComponent className="w-4 h-4" />
+      }
+    }
+    // Fallback to platform icon if no specific icon
+    return getPlatformIcon(selectedPlatform, "sm")
+  }
+
   const getPlatformColor = (platform: Platform) => {
     switch (platform) {
       case "web":
@@ -64,27 +81,42 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }
 
-  const handleComplete = () => {
-    if (flowName.trim() && selectedTrigger) {
-      onComplete({
-        name: flowName,
-        platform: selectedPlatform,
-        triggerId: selectedTrigger,
-        description: flowDescription.trim() || undefined,
-      })
-      // Reset state
-      setFlowName("")
-      setFlowDescription("")
-      setSelectedPlatform("whatsapp")
-      setSelectedTrigger("")
-      setSearchQuery("")
+  const handleComplete = async () => {
+    if (flowName.trim() && selectedTrigger && !isCreating) {
+      setIsCreating(true)
+      try {
+        await onComplete({
+          name: flowName,
+          platform: selectedPlatform,
+          triggerId: selectedTrigger,
+          description: flowDescription.trim() || undefined,
+        })
+        // Reset state only on success
+        setFlowName("")
+        setFlowDescription("")
+        setSelectedPlatform("whatsapp")
+        setSelectedTrigger("")
+        setSearchQuery("")
+      } catch (error) {
+        // Error handling is done in parent component
+        // Don't reset state on error so user can retry
+      } finally {
+        setIsCreating(false)
+      }
     }
   }
 
-  const canComplete = flowName.trim().length > 0 && selectedTrigger.length > 0
+  const canComplete = flowName.trim().length > 0 && selectedTrigger.length > 0 && !isCreating
+
+  // Prevent closing dialog while creating
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isCreating) {
+      onClose()
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl">Start automation when...</DialogTitle>
@@ -100,6 +132,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               value={flowName}
               onChange={(e) => setFlowName(e.target.value)}
               className="h-10"
+              disabled={isCreating}
             />
           </div>
 
@@ -115,6 +148,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               onChange={(e) => setFlowDescription(e.target.value)}
               className="min-h-[80px] resize-none"
               rows={3}
+              disabled={isCreating}
             />
             <p className="text-xs text-muted-foreground">
               Describe the purpose and context of this flow to get better AI suggestions
@@ -129,10 +163,13 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
                 <button
                   key={platform}
                   onClick={() => {
-                    setSelectedPlatform(platform)
-                    setSelectedTrigger("") // Reset trigger when changing platform
+                    if (!isCreating) {
+                      setSelectedPlatform(platform)
+                      setSelectedTrigger("") // Reset trigger when changing platform
+                    }
                   }}
-                  className={`flex-1 p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer ${
+                  disabled={isCreating}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     selectedPlatform === platform
                       ? "border-accent bg-accent/10"
                       : "border-border hover:border-accent/50 hover:bg-muted"
@@ -152,9 +189,13 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
           {/* Triggers Section */}
           <div className="space-y-2.5">
             <div className="flex items-start justify-between px-1 gap-2">
-              <Label className="text-sm text-muted-foreground">Triggers</Label>
+              <Label className="text-sm text-muted-foreground">
+                {selectedPlatform === "web" ? "Form Type" : "Triggers"}
+              </Label>
               <p className="text-[11px] text-muted-foreground text-right leading-tight">
-                Specific {selectedPlatform === "web" ? "Web" : selectedPlatform === "whatsapp" ? "WhatsApp" : "Instagram"} event that starts your automation.
+                {selectedPlatform === "web" 
+                  ? "Choose how your form will be displayed"
+                  : `Specific ${selectedPlatform === "whatsapp" ? "WhatsApp" : "Instagram"} event that starts your automation.`}
               </p>
             </div>
 
@@ -165,6 +206,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-10 pl-10"
+                disabled={isCreating}
               />
               <svg 
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" 
@@ -181,8 +223,13 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               {filteredTriggers.map((trigger) => (
                 <button
                   key={trigger.id}
-                  onClick={() => setSelectedTrigger(trigger.id)}
-                  className={`w-full p-2.5 rounded-lg border transition-all duration-200 text-left cursor-pointer ${
+                  onClick={() => {
+                    if (!isCreating) {
+                      setSelectedTrigger(trigger.id)
+                    }
+                  }}
+                  disabled={isCreating}
+                  className={`w-full p-2.5 rounded-lg border transition-all duration-200 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     selectedTrigger === trigger.id
                       ? "border-accent bg-accent/10"
                       : "border-border hover:border-accent/50 hover:bg-muted"
@@ -190,11 +237,14 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
                 >
                   <div className="flex items-start gap-2.5">
                     <div className={`w-7 h-7 rounded-full ${getPlatformColor(selectedPlatform)} flex items-center justify-center shrink-0 text-white`}>
-                      {getPlatformIcon(selectedPlatform, "sm")}
+                      {getTriggerIcon(trigger)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-muted-foreground mb-0.5">{trigger.category}</div>
                       <div className="font-medium text-card-foreground text-xs">{trigger.title}</div>
+                      {trigger.description && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{trigger.description}</div>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -209,7 +259,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={isCreating}>
             Cancel
           </Button>
           <Button 
@@ -217,7 +267,14 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
             disabled={!canComplete}
             className="min-w-[100px]"
           >
-            Create
+            {isCreating ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

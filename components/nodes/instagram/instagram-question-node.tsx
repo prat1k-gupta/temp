@@ -10,7 +10,7 @@ import { Plus, Edit3, Wand2, ArrowRight, X, Check } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { getNodeLimits } from "@/constants"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
 import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
@@ -28,6 +28,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const [manualButtons, setManualButtons] = useState<ButtonData[]>(data.buttons || [])
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null)
   const [editingButtonText, setEditingButtonText] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "instagram") as Platform
   const nodeType = "instagramQuestion"
@@ -73,7 +74,11 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
     setIsEditingQuestion(true)
   }
 
-  const finishEditingQuestion = () => {
+  const finishEditingQuestion = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
@@ -209,8 +214,8 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-white border-purple-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-purple-200 ${
-          selected ? "ring-1 ring-purple-300/50 shadow-md" : ""
+        className={`min-w-[260px] max-w-[300px] bg-card border-pink-100 dark:border-pink-900 shadow-sm transition-all duration-200 hover:shadow-md hover:border-pink-200 dark:hover:border-pink-800 ${
+          selected ? "ring-1 ring-pink-300/50 dark:ring-pink-600/50 shadow-md" : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
@@ -228,12 +233,12 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
                 }}
-                className="h-6 text-sm font-medium border-purple-200"
+                className="h-6 text-sm font-medium border-pink-200 dark:border-pink-800"
                 autoFocus
               />
             ) : (
               <div
-                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-purple-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-pink-50/50 dark:hover:bg-pink-900/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Instagram Message"}
@@ -244,10 +249,11 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2 group/question">
+            <div ref={editingContainerRef} className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onBlur={(e) => finishEditingQuestion(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -255,7 +261,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                   }
                   if (e.key === "Escape") cancelEditingQuestion()
                 }}
-                className={`text-sm min-h-[60px] resize-none border-purple-200 focus:border-purple-300 ${
+                className={`text-sm min-h-[60px] resize-none border-pink-200 dark:border-pink-800 focus:border-pink-300 dark:focus:border-pink-700 ${
                   isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
                 }`}
                 placeholder="Enter your message..."
@@ -291,7 +297,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-purple-50/30 px-2 py-1.5 rounded border border-transparent hover:border-purple-100 transition-colors"
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-pink-50/30 dark:hover:bg-pink-900/10 px-2 py-1.5 rounded border border-transparent hover:border-pink-100 dark:hover:border-pink-800 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Enter your message..."}
@@ -415,25 +421,13 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                       e.stopPropagation()
                       handleConvertWithManualButtons()
                     }}
-                    className={getGhostButtonClasses("flex-1 h-7 px-2 text-xs gap-1 bg-pink-500 hover:bg-pink-600")}
+                    className="flex-1 h-7 px-2 text-xs gap-1 bg-pink-500 hover:bg-pink-600 text-white cursor-pointer"
                   >
                     <ArrowRight className="w-3 h-3" />
                     <span>Convert</span>
                   </Button>
                 )}
               </div>
-
-              {/* Divider between Manual and AI (only show if there are no manual buttons yet) */}
-              {manualButtons.length === 0 && (
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">or</span>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -450,7 +444,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-purple-400 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-pink-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

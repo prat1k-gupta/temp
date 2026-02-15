@@ -133,6 +133,18 @@ export function getNodeLimits(nodeType: string, platform: Platform): NodeLimits 
         allowMultipleInputs: true,
       }
       
+    case "trackingNotification":
+      return {
+        text: {
+          min: 1,
+          max: CHARACTER_LIMITS[platform].question || 500,
+          placeholder: "Enter tracking notification message...",
+        },
+        maxConnections: 1,
+        allowMultipleOutputs: false,
+        allowMultipleInputs: true,
+      }
+      
     default:
       // Default fallback limits
       return {
@@ -188,9 +200,13 @@ function getBaseNodeType(nodeType: string): string {
     return "instagramStory"
   }
   
-  if (nodeType === "webForm") {
-    return "webForm"
-  }
+    if (nodeType === "webForm") {
+      return "webForm"
+    }
+  
+    if (nodeType === "trackingNotification") {
+      return "trackingNotification"
+    }
   
   return nodeType
 }

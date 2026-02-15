@@ -36,7 +36,7 @@ export function AIAssistant({
     {
       id: "1",
       role: "assistant",
-      content: `Hi! I'm your AI Flow Assistant. I can help you create or edit flows. What would you like to do?`,
+      content: `Hi! I'm your Freestand AI Assistant. I can help you create or edit flows. What would you like to do?`,
       timestamp: new Date(),
     },
   ])
@@ -47,6 +47,8 @@ export function AIAssistant({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputBarRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
 
   const scrollToBottom = () => {
     if (scrollContainerRef.current) {
@@ -74,6 +76,44 @@ export function AIAssistant({
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isFocused])
+
+  // Measure and lock width of container, apply to both chat and input
+  useEffect(() => {
+    if (chatContainerRef.current && !containerWidth) {
+      const width = chatContainerRef.current.offsetWidth
+      if (width > 0) {
+        setContainerWidth(width)
+      }
+    }
+  }, [containerWidth])
+
+  // Update width on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (chatContainerRef.current) {
+        const width = chatContainerRef.current.offsetWidth
+        if (width > 0) {
+          setContainerWidth(width)
+        }
+      }
+    }
+
+    // Initial measurement after a short delay to ensure layout is complete
+    const timeoutId = setTimeout(() => {
+      if (chatContainerRef.current) {
+        const width = chatContainerRef.current.offsetWidth
+        if (width > 0) {
+          setContainerWidth(width)
+        }
+      }
+    }, 100)
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      clearTimeout(timeoutId)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
 
   // Auto-expand for new messages with updates
   useEffect(() => {
@@ -228,16 +268,19 @@ export function AIAssistant({
   return (
     <div
       ref={chatContainerRef}
-      className="fixed bottom-0 left-1/2 z-40 flex w-full max-w-2xl -translate-x-1/2 flex-col py-5"
+      className="flex flex-col w-full max-w-2xl"
     >
       {/* Chat window - appears above input when focused */}
       {isFocused && (
-        <Card className="mb-2 flex flex-col rounded-t-2xl border-t border-x border-border bg-card shadow-xl">
+        <Card 
+          className="mb-2 flex flex-col rounded-2xl border border-border/50 bg-card/95 backdrop-blur-xl shadow-2xl min-w-0 shrink-0"
+          style={containerWidth ? { width: `${containerWidth}px` } : undefined}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-3 flex-shrink-0">
+          <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-600" />
-              <h3 className="font-semibold text-sm text-card-foreground">AI Flow Assistant</h3>
+              <Sparkles className="w-4 h-4 text-[#2872F4]" />
+              <h3 className="font-semibold text-sm text-card-foreground">Freestand AI Assistant</h3>
             </div>
             <Button
               variant="ghost"
@@ -267,7 +310,7 @@ export function AIAssistant({
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.role === "user"
-                      ? "bg-purple-600 text-white"
+                      ? "bg-gradient-to-br from-[#052762] via-[#0A49B7] to-[#2872F4] text-white shadow-lg shadow-blue-500/30"
                       : "bg-muted text-foreground"
                   }`}
                 >
@@ -340,7 +383,7 @@ export function AIAssistant({
                       {message.flowData && onApplyFlow && (
                         <Button
                           onClick={() => onApplyFlow(message.flowData!)}
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs"
+                          className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
                           size="sm"
                         >
                           Apply Flow
@@ -349,7 +392,7 @@ export function AIAssistant({
                       {message.updates && onUpdateFlow && (
                         <Button
                           onClick={() => onUpdateFlow(message.updates!)}
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs"
+                          className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
                           size="sm"
                         >
                           Apply Updates
@@ -380,15 +423,19 @@ export function AIAssistant({
       )}
 
       {/* Input Bar - Always visible at bottom */}
-      <div className="flex items-center gap-2 rounded-full border-t border-x border-border bg-card px-4 py-2 shadow-lg">
-        <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
+      <div 
+        ref={inputBarRef}
+        className="flex items-center gap-2 rounded-full border border-border/50 bg-card/95 backdrop-blur-xl px-4 py-2 shadow-xl min-w-0"
+        style={containerWidth ? { width: `${containerWidth}px` } : { width: '100%' }}
+      >
+        <Sparkles className="w-4 h-4 text-[#2872F4] flex-shrink-0" />
         <Textarea
           ref={inputRef}
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleInputFocus}
-          placeholder="Ask me to create or edit your flow... (Shift+Enter to send)"
+          placeholder="Ask Freestand AI to create or edit your flow... (Shift+Enter to send)"
           className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
           disabled={isLoading}
           rows={1}
@@ -398,7 +445,7 @@ export function AIAssistant({
           onClick={handleSend}
           size="sm"
           disabled={!input.trim() || isLoading}
-          className="h-8 w-8 p-0 bg-purple-600 hover:bg-purple-700 flex-shrink-0 rounded-md"
+          className="h-8 w-8 p-0 bg-gradient-to-br from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] flex-shrink-0 rounded-md shadow-md hover:shadow-lg transition-all"
           aria-label="Send message"
         >
           {isLoading ? (

@@ -47,7 +47,7 @@ export function GenericFulfillmentNode({ data, selected, type }: { data: any; se
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-orange-500 rounded-md flex items-center justify-center flex-shrink-0">
+            <div className="w-5 h-5 bg-[#052762] rounded-md flex items-center justify-center flex-shrink-0">
               <IconComponent className="w-3 h-3 text-white" />
             </div>
             <h3 className="text-xs font-medium text-card-foreground flex-1">
@@ -68,7 +68,7 @@ export function GenericFulfillmentNode({ data, selected, type }: { data: any; se
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-orange-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -76,7 +76,7 @@ export function GenericFulfillmentNode({ data, selected, type }: { data: any; se
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-orange-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

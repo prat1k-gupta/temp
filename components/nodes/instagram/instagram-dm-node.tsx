@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Edit3 } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
 import { AIToolbar } from "@/components/ai"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
 import { getPlatformConfig } from "@/lib/platform-config"
@@ -19,6 +19,7 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
   const [isEditingMessage, setIsEditingMessage] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingMessageValue, setEditingMessageValue] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "instagram") as Platform
   const platformConfig = getPlatformConfig(platform)
@@ -62,7 +63,11 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
     setIsEditingMessage(true)
   }
 
-  const finishEditingMessage = () => {
+  const finishEditingMessage = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, text: editingMessageValue })
     }
@@ -112,10 +117,11 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingMessage ? (
-            <div className="space-y-2 group/message">
+            <div ref={editingContainerRef} className="space-y-2 group/message">
               <Textarea
                 value={editingMessageValue}
                 onChange={(e) => setEditingMessageValue(e.target.value)}
+                onBlur={(e) => finishEditingMessage(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()

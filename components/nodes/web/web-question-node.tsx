@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Edit3, Wand2, ArrowRight, X, Check } from "lucide-react"
 import { WebIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
@@ -23,6 +23,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
   const [manualButtons, setManualButtons] = useState<ButtonData[]>(data.buttons || [])
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null)
   const [editingButtonText, setEditingButtonText] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "web") as Platform
   const nodeType = "webQuestion"
@@ -68,7 +69,11 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
     setIsEditingQuestion(true)
   }
 
-  const finishEditingQuestion = () => {
+  const finishEditingQuestion = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
@@ -228,7 +233,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               />
             ) : (
               <div
-                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-accent/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
+                className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/20 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
                 {data.label || "Web Message"}
@@ -239,10 +244,11 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2 group/question">
+            <div ref={editingContainerRef} className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onBlur={(e) => finishEditingQuestion(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -286,7 +292,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
             </div>
           ) : (
             <div
-              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-accent/30 px-2 py-1.5 rounded border border-transparent hover:border-accent transition-colors"
+              className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/10 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors"
               onClick={startEditingQuestion}
             >
               {data.question || "Enter your message..."}
@@ -417,18 +423,6 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                   </Button>
                 )}
               </div>
-
-              {/* Divider between Manual and AI (only show if there are no manual buttons yet) */}
-              {manualButtons.length === 0 && (
-                <div className="relative my-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-border"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">or</span>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

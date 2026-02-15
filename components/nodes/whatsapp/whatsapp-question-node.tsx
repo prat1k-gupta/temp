@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Edit3, Wand2, ArrowRight, X, Check } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getNodeLimits, getTextFieldLimit } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
@@ -23,6 +23,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
   const [manualButtons, setManualButtons] = useState<ButtonData[]>(data.buttons || [])
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null)
   const [editingButtonText, setEditingButtonText] = useState("")
+  const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappQuestion"
@@ -68,7 +69,11 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
     setIsEditingQuestion(true)
   }
 
-  const finishEditingQuestion = () => {
+  const finishEditingQuestion = (e?: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Don't finish editing if focus is moving to an element within the editing container (like AI toolbar)
+    if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return
+    }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
     }
@@ -238,10 +243,11 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
-            <div className="space-y-2 group/question">
+            <div ref={editingContainerRef} className="space-y-2 group/question">
               <Textarea
                 value={editingQuestionValue}
                 onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onBlur={(e) => finishEditingQuestion(e)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()

@@ -60,12 +60,12 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     platforms: ["web", "whatsapp", "instagram"],
   },
   {
-    type: "whatsappList",
+    type: "interactiveList",
     icon: List,
     label: "List",
     description: "Interactive list menu",
     category: "interaction",
-    platforms: ["whatsapp", "instagram"],
+    platforms: ["whatsapp"],
   },
   {
     type: "whatsappMessage",
@@ -128,7 +128,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: "dob",
     icon: Calendar,
     label: "DOB",
-    description: "Collect date of birth",
+    description: "Collect and validate date of birth",
     category: "information",
     isSuperNode: true,
     platforms: ["web", "whatsapp", "instagram"],

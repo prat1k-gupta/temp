@@ -198,7 +198,7 @@ ${nodeDocs}
    - **Super nodes have built-in validation** - use them for any data collection needs
    - **Question nodes are ONLY for general questions**, not for collecting specific data fields
 8. **IMPORTANT**: 
-   - **Use platform-specific node types** for interaction nodes (e.g., "whatsappQuestion", "whatsappQuickReply", "whatsappList" for WhatsApp; "webQuestion", "webQuickReply" for web)
+   - **Use platform-specific node types** for interaction nodes (e.g., "whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList" for WhatsApp; "webQuestion", "webQuickReply" for web)
    - **Super nodes (name, email, dob, address) are platform-agnostic** - use them as-is (e.g., "email", not "whatsappEmail")
    - For each suggested node, generate the actual content that should be in that node:
      - For "question" nodes: Generate the question text (for general questions only)

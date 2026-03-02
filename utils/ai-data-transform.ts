@@ -59,9 +59,7 @@ export function normalizeAiNodeType(type: string, platform: Platform): string {
   const baseType = getBaseNodeType(type)
 
   if (baseType === "list") {
-    return platform === "whatsapp" ? "whatsappList"
-      : platform === "instagram" ? "instagramList"
-        : "whatsappList"
+    return "interactiveList"
   } else if (baseType === "question" && !type.includes(platform)) {
     return platform === "whatsapp" ? "whatsappQuestion"
       : platform === "instagram" ? "instagramQuestion"

@@ -12,10 +12,10 @@ export const NODE_TYPE_MAPPINGS: Record<string, Record<Platform, string>> = {
     whatsapp: "whatsappQuickReply",
     instagram: "instagramQuickReply"
   },
-  whatsappList: {
-    web: "whatsappList",
-    whatsapp: "whatsappListSpecific", 
-    instagram: "instagramList"
+  interactiveList: {
+    web: "interactiveList",
+    whatsapp: "whatsappInteractiveList",
+    instagram: "interactiveList"
   }
 } as const
 
@@ -31,10 +31,10 @@ export const NODE_LABELS: Record<string, Record<Platform, string>> = {
     whatsapp: "WhatsApp Actions",
     instagram: "Instagram Actions"
   },
-  whatsappList: {
-    web: "WhatsApp List",
+  interactiveList: {
+    web: "Interactive List",
     whatsapp: "WhatsApp List",
-    instagram: "Instagram List"
+    instagram: "Interactive List"
   }
 } as const
 
@@ -50,7 +50,7 @@ export const NODE_CONTENT: Record<string, Record<Platform, string>> = {
     whatsapp: "Choose an action:",
     instagram: "Choose an action:"
   },
-  whatsappList: {
+  interactiveList: {
     web: "Select from the list:",
     whatsapp: "Select from the list:",
     instagram: "Select from the list:"

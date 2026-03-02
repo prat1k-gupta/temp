@@ -179,8 +179,8 @@ export function useNodeOperations({
           const canAddButton = areButtonsWithinNodeLimits(currentButtons.length + 1, node.type, nodePlatform)
 
           if (!canAddButton.valid) {
-            const newType = getPlatformSpecificNodeType("whatsappList", nodePlatform)
-            const newLabel = getPlatformSpecificLabel("whatsappList", nodePlatform)
+            const newType = getPlatformSpecificNodeType("interactiveList", nodePlatform)
+            const newLabel = getPlatformSpecificLabel("interactiveList", nodePlatform)
 
             const convertedOptions = currentButtons.map((btn: ButtonData) => ({
               id: btn.id || `opt-${Date.now()}-${Math.random()}`,
@@ -235,9 +235,8 @@ export function useNodeOperations({
         }
         // Handle list nodes (add option)
         else if (
-          node.type === "whatsappList" ||
-          node.type === "whatsappListSpecific" ||
-          node.type === "instagramList"
+          node.type === "interactiveList" ||
+          node.type === "whatsappInteractiveList"
         ) {
           const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
           const nodePlatform = (node.data.platform as Platform) || "web"
@@ -285,9 +284,8 @@ export function useNodeOperations({
         const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
 
         if (
-          node.type === "whatsappList" ||
-          node.type === "whatsappListSpecific" ||
-          node.type === "instagramList"
+          node.type === "interactiveList" ||
+          node.type === "whatsappInteractiveList"
         ) {
           const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
 
@@ -607,22 +605,17 @@ export function useNodeOperations({
 
           // Convert list nodes
           if (
-            node.type === "whatsappList" ||
-            node.type === "whatsappListSpecific" ||
-            node.type === "instagramList"
+            node.type === "interactiveList" ||
+            node.type === "whatsappInteractiveList"
           ) {
             switch (newPlatform) {
               case "whatsapp":
-                newType = "whatsappListSpecific"
+                newType = "whatsappInteractiveList"
                 newData.label = "WhatsApp List"
-                break
-              case "instagram":
-                newType = "instagramList"
-                newData.label = "Instagram List"
                 break
               default:
-                newType = "whatsappList"
-                newData.label = "WhatsApp List"
+                newType = "interactiveList"
+                newData.label = "Interactive List"
             }
           }
 

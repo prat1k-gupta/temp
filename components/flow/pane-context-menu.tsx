@@ -110,10 +110,10 @@ export function PaneContextMenu({
         <MessageSquare className="w-4 h-4" />
         {getAddNodeLabel("quickReply", platform)}
       </button>
-      {platformSupportsNodeType(platform, "whatsappList") && (
+      {platformSupportsNodeType(platform, "interactiveList") && (
         <button
           className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-          onClick={() => addNodeAtPosition("whatsappList")}
+          onClick={() => addNodeAtPosition("interactiveList")}
         >
           <List className="w-4 h-4" />
           {getAddNodeLabel("list", platform)}

@@ -49,7 +49,44 @@ export interface CommentNodeData extends BaseNodeData {
   onUpdate?: (updates: any) => void
 }
 
-export type NodeData = QuestionNodeData | QuickReplyNodeData | ListNodeData | MessageNodeData | CommentNodeData
+export interface SuperNodeData extends BaseNodeData {
+  question?: string
+  validationRules?: Record<string, unknown>
+  addressComponents?: string[]
+}
+
+export interface FulfillmentNodeData extends BaseNodeData {
+  description?: string
+  vendor?: Record<string, unknown>
+  configuration?: Record<string, unknown>
+  message?: string
+  variableMappings?: Record<string, unknown>
+}
+
+export interface IntegrationNodeData extends BaseNodeData {
+  description?: string
+}
+
+export interface ConditionNodeData extends BaseNodeData {
+  conditionLogic?: string
+  conditionGroups?: Array<{
+    id: string
+    label: string
+    logic: string
+    rules: unknown[]
+  }>
+}
+
+export type NodeData =
+  | QuestionNodeData
+  | QuickReplyNodeData
+  | ListNodeData
+  | MessageNodeData
+  | CommentNodeData
+  | SuperNodeData
+  | FulfillmentNodeData
+  | IntegrationNodeData
+  | ConditionNodeData
 
 // Context menu types
 export interface ContextMenuState {

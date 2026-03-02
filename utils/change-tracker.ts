@@ -230,7 +230,7 @@ export class ChangeTracker {
    * Check if a node type is a list type
    */
   private isListType(type: string): boolean {
-    return type === 'whatsappList' || type === 'whatsappListSpecific' || type === 'instagramList'
+    return type === 'interactiveList' || type === 'whatsappInteractiveList'
   }
 
   /**

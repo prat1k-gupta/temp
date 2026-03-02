@@ -1,5 +1,5 @@
 import type { Node } from "@xyflow/react"
-import type { Platform, NodeData, ButtonData, OptionData } from "@/types"
+import type { Platform, NodeData } from "@/types"
 import { 
   getPlatformSpecificNodeType, 
   getPlatformSpecificLabel, 
@@ -66,12 +66,12 @@ export const createListNode = (
   const nodeId = customId || generateNodeId("list")
   return {
     id: nodeId,
-    type: getPlatformSpecificNodeType("whatsappList", platform),
+    type: getPlatformSpecificNodeType("interactiveList", platform),
     position,
     data: {
       platform,
-      label: getPlatformSpecificLabel("whatsappList", platform),
-      question: getPlatformSpecificContent("whatsappList", platform),
+      label: getPlatformSpecificLabel("interactiveList", platform),
+      question: getPlatformSpecificContent("interactiveList", platform),
       options: [createOptionData("Option 1")],
     } as NodeData,
   }
@@ -405,19 +405,19 @@ export const createNode = (
   }
   // Super nodes
   else if (["name", "email", "dob", "address"].includes(nodeType)) {
-    node = createSuperNode(nodeType as any, platform, position, customId)
+    node = createSuperNode(nodeType as "name" | "email" | "dob" | "address", platform, position, customId)
   }
   // Fulfillment nodes
   else if (["homeDelivery", "trackingNotification", "event", "retailStore"].includes(nodeType)) {
-    node = createFulfillmentNode(nodeType as any, platform, position, customId)
+    node = createFulfillmentNode(nodeType as "homeDelivery" | "trackingNotification" | "event" | "retailStore", platform, position, customId)
   }
   // Integration nodes
   else if (["shopify", "metaAudience", "stripe", "zapier", "google", "salesforce", "mailchimp", "twilio", "slack", "airtable"].includes(nodeType)) {
-    node = createIntegrationNode(nodeType as any, platform, position, customId)
+    node = createIntegrationNode(nodeType as "shopify" | "metaAudience" | "stripe" | "zapier" | "google" | "salesforce" | "mailchimp" | "twilio" | "slack" | "airtable", platform, position, customId)
   }
   // Platform-specific message nodes
   else if (["whatsappMessage", "instagramDM", "instagramStory"].includes(nodeType)) {
-    node = createMessageNode(nodeType as any, platform, position, customId)
+    node = createMessageNode(nodeType as "whatsappMessage" | "instagramDM" | "instagramStory", platform, position, customId)
   }
   // Regular interaction nodes
   else {
@@ -428,7 +428,7 @@ export const createNode = (
     case "quickReply":
       node = createQuickReplyNode(platform, position, customId)
       break
-    case "whatsappList":
+    case "interactiveList":
       node = createListNode(platform, position, customId)
       break
     case "comment":

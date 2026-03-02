@@ -2,6 +2,7 @@ import type { Platform } from "@/types"
 import type { NodeLimits, ValidationResult } from "./types"
 import { getNodeLimits } from "./config"
 import { CHARACTER_LIMITS } from "../platform-limits"
+import { getBaseNodeType } from "@/utils/platform-helpers"
 
 /**
  * Helper functions for node limits
@@ -279,21 +280,4 @@ export function isOptionDescriptionValid(
   }
 }
 
-/**
- * Helper to map node type names to base types
- * Extracted for reuse across helpers
- */
-function getBaseNodeType(nodeType: string): string {
-  if (nodeType.includes("Question") || nodeType === "question") return "question"
-  if (nodeType.includes("QuickReply") || nodeType === "quickReply") return "quickReply"
-  if (nodeType.includes("List") || nodeType === "whatsappList") return "list"
-  if (nodeType === "comment") return "comment"
-  if (nodeType === "start") return "start"
-  if (nodeType === "whatsappMessage") return "whatsappMessage"
-  if (nodeType === "instagramDM") return "instagramDM"
-  if (nodeType === "instagramStory") return "instagramStory"
-  if (nodeType === "webForm") return "webForm"
-  
-  return nodeType
-}
 

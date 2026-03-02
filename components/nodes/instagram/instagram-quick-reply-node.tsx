@@ -125,50 +125,17 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   }
 
   const handleUpdateButtons = (newButtons: ButtonData[]) => {
-    const formattedButtons = newButtons.map(btn => ({
+    const formattedButtons = newButtons.slice(0, maxButtons).map(btn => ({
       text: btn.label,
       id: btn.id,
       value: btn.value
     }))
-    
-    // If we have more buttons than the Quick Reply limit, trigger conversion to List
-    if (formattedButtons.length > maxButtons) {
-      handleConvertToListWithButtons(formattedButtons)
-    } else {
-      if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
-      }
+
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
     }
   }
 
-  const handleConvertToListWithButtons = (buttons: any[]) => {
-    const questionText = editingQuestionValue || data.question
-
-    if (!questionText?.trim()) {
-      toast.error('Please add a question first')
-      return
-    }
-
-    // Convert buttons to options
-    const options = buttons.map((b: any) => ({
-      id: b.id || `opt-${Date.now()}-${Math.random()}`,
-      text: b.text || b.label,
-      value: b.value || b.text?.toLowerCase().replace(/\s+/g, '_')
-    }))
-
-    // Convert to List node
-    if (data.onConvert) {
-      data.onConvert(data.id, 'instagramList', { 
-        ...data,
-        question: questionText,
-        options,
-        buttons: undefined // Remove buttons field
-      })
-      toast.success('Upgraded to Instagram List!', {
-        description: `Now you have ${options.length} options (was limited to 3 buttons)`
-      })
-    }
-  }
 
   const handleImproveButton = async (index: number) => {
     const button = buttons[index]

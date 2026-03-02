@@ -11,7 +11,6 @@ import { WhatsAppListNode } from "@/components/nodes/whatsapp/whatsapp-list-node
 import { WhatsAppMessageNode } from "@/components/nodes/whatsapp/whatsapp-message-node"
 import { InstagramQuestionNode } from "@/components/nodes/instagram/instagram-question-node"
 import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-quick-reply-node"
-import { InstagramListNode } from "@/components/nodes/instagram/instagram-list-node"
 import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
 import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
 import { ConditionNode } from "@/components/nodes/logic/condition-node"
@@ -34,8 +33,9 @@ export const nodeTypes = {
   // WhatsApp specific nodes
   whatsappQuestion: WhatsAppQuestionNode,
   whatsappQuickReply: WhatsAppQuickReplyNode,
-  whatsappList: WhatsAppListNode,
-  whatsappListSpecific: WhatsAppListNode,
+  whatsappInteractiveList: WhatsAppListNode,
+  // Backward compatibility alias
+  interactiveList: WhatsAppListNode,
   whatsappMessage: WhatsAppMessageNode,
   // Backwards compatibility aliases
   question: WebQuestionNode,
@@ -45,7 +45,6 @@ export const nodeTypes = {
   // Instagram specific nodes
   instagramQuestion: InstagramQuestionNode,
   instagramQuickReply: InstagramQuickReplyNode,
-  instagramList: InstagramListNode,
   instagramDM: InstagramDMNode,
   instagramStory: InstagramStoryNode,
   // Super nodes (platform-agnostic)

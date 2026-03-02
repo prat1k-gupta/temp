@@ -100,11 +100,10 @@ export function useFlowAI({
 
       if (
         normalizedType === "list" ||
-        normalizedType === "whatsappList" ||
-        normalizedType === "instagramList" ||
-        normalizedType === "whatsappListSpecific"
+        normalizedType === "interactiveList" ||
+        normalizedType === "whatsappInteractiveList"
       ) {
-        normalizedType = "whatsappList"
+        normalizedType = "interactiveList"
       } else if (
         normalizedType === "whatsappQuestion" ||
         normalizedType === "instagramQuestion" ||

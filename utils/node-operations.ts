@@ -58,7 +58,7 @@ export const getNextNodeType = (currentType: string, platform: Platform): string
     case "question":
       return getPlatformSpecificNodeType("quickReply", platform)
     case "quickreply":
-      return getPlatformSpecificNodeType("whatsappList", platform)
+      return getPlatformSpecificNodeType("interactiveList", platform)
     default:
       return currentType
   }

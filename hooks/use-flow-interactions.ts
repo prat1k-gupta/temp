@@ -292,8 +292,8 @@ export function useFlowInteractions({
           case "quickReply":
             newNode = createNode("quickReply", platform, position, newNodeId)
             break
-          case "whatsappList":
-            newNode = createNode("whatsappList", platform, position, newNodeId)
+          case "interactiveList":
+            newNode = createNode("interactiveList", platform, position, newNodeId)
             break
           default:
             console.warn(`[v0] Unknown node type: ${nodeType}`)

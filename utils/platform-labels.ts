@@ -31,9 +31,9 @@ export const NODE_TYPE_LABELS = {
     instagram: "Instagram Quick Reply",
   },
   list: {
-    web: "Web List",
+    web: "Interactive List",
     whatsapp: "WhatsApp List",
-    instagram: "Instagram List",
+    instagram: "Interactive List",
   },
 } as const
 
@@ -111,8 +111,8 @@ export function getPlatformTextColor(platform: Platform, shade: "primary" | "sec
  * Check if platform supports a specific node type
  */
 export function platformSupportsNodeType(platform: Platform, nodeType: string): boolean {
-  // Web doesn't support list nodes
-  if (platform === "web" && nodeType === "whatsappList") {
+  // Only WhatsApp supports interactive list nodes
+  if (nodeType === "interactiveList" && platform !== "whatsapp") {
     return false
   }
   

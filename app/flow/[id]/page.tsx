@@ -569,7 +569,8 @@ function MagicFlowInner() {
                     return "hsl(var(--accent))"
                   case "quickReply":
                     return "hsl(var(--chart-1))"
-                  case "whatsappList":
+                  case "interactiveList":
+                  case "whatsappInteractiveList":
                     return "hsl(var(--chart-4))"
                   case "comment":
                     return "#fbbf24"

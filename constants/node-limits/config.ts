@@ -1,6 +1,7 @@
 import type { Platform } from "@/types"
 import type { NodeLimits } from "./types"
 import { BUTTON_LIMITS, CHARACTER_LIMITS } from "../platform-limits"
+import { getBaseNodeType } from "@/utils/platform-helpers"
 
 /**
  * Node limits configuration
@@ -121,18 +122,6 @@ export function getNodeLimits(nodeType: string, platform: Platform): NodeLimits 
         allowMultipleInputs: true,
       }
       
-    case "webForm":
-      return {
-        title: {
-          min: 1,
-          max: 200,
-          placeholder: "Form title...",
-        },
-        maxConnections: 1,
-        allowMultipleOutputs: false,
-        allowMultipleInputs: true,
-      }
-      
     case "trackingNotification":
       return {
         text: {
@@ -146,7 +135,8 @@ export function getNodeLimits(nodeType: string, platform: Platform): NodeLimits 
       }
       
     default:
-      // Default fallback limits
+      // Intentional fallback: super nodes, fulfillment nodes, and integration nodes
+      // all use these generic limits since they don't have special constraints.
       return {
         text: {
           max: CHARACTER_LIMITS[platform].question,
@@ -158,56 +148,4 @@ export function getNodeLimits(nodeType: string, platform: Platform): NodeLimits 
   }
 }
 
-/**
- * Map various node type names to their base type
- */
-function getBaseNodeType(nodeType: string): string {
-  // Question nodes
-  if (nodeType.includes("Question") || nodeType === "question") {
-    return "question"
-  }
-  
-  // Quick reply nodes
-  if (nodeType.includes("QuickReply") || nodeType === "quickReply") {
-    return "quickReply"
-  }
-  
-  // List nodes
-  if (nodeType.includes("List") || nodeType === "whatsappList") {
-    return "list"
-  }
-  
-  // Comment nodes
-  if (nodeType === "comment") {
-    return "comment"
-  }
-  
-  // Start nodes
-  if (nodeType === "start") {
-    return "start"
-  }
-  
-  // Platform-specific nodes
-  if (nodeType === "whatsappMessage") {
-    return "whatsappMessage"
-  }
-  
-  if (nodeType === "instagramDM") {
-    return "instagramDM"
-  }
-   
-  if (nodeType === "instagramStory") {
-    return "instagramStory"
-  }
-  
-    if (nodeType === "webForm") {
-      return "webForm"
-    }
-  
-    if (nodeType === "trackingNotification") {
-      return "trackingNotification"
-    }
-  
-  return nodeType
-}
 

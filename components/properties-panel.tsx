@@ -76,18 +76,17 @@ const NODE_ICONS = {
   start: Play,
   question: MessageCircle,
   quickReply: MessageSquare,
-  whatsappList: List,
+  interactiveList: List,
   comment: MessageSquareText,
   // Platform-specific nodes
   webQuestion: MessageCircle,
   webQuickReply: MessageSquare,
   whatsappQuestion: MessageCircle,
   whatsappQuickReply: MessageSquare,
-  whatsappListSpecific: List,
+  whatsappInteractiveList: List,
   whatsappMessage: MessageCircle,
   instagramQuestion: MessageCircle,
   instagramQuickReply: MessageSquare,
-  instagramList: List,
   instagramDM: MessageCircle,
   instagramStory: MessageCircle,
   // Super nodes
@@ -108,18 +107,17 @@ const NODE_COLORS = {
   start: "bg-chart-2 text-white",
   question: "bg-accent text-accent-foreground",
   quickReply: "bg-chart-1 text-white",
-  whatsappList: "bg-chart-4 text-white",
+  interactiveList: "bg-chart-4 text-white",
   comment: "bg-yellow-400 text-yellow-900",
   // Platform-specific nodes
   webQuestion: "bg-blue-500 text-white",
   webQuickReply: "bg-blue-600 text-white",
   whatsappQuestion: "bg-green-500 text-white",
   whatsappQuickReply: "bg-green-600 text-white",
-  whatsappListSpecific: "bg-green-700 text-white",
+  whatsappInteractiveList: "bg-green-700 text-white",
   whatsappMessage: "bg-green-400 text-white",
   instagramQuestion: "bg-pink-500 text-white",
   instagramQuickReply: "bg-pink-600 text-white",
-  instagramList: "bg-pink-700 text-white",
   instagramDM: "bg-pink-400 text-white",
   instagramStory: "bg-pink-500 text-white",
   // Super nodes
@@ -453,8 +451,8 @@ export function PropertiesPanel({
         return "Question Node"
       case "quickReply":
         return "Quick Reply Node"
-      case "whatsappList":
-        return "WhatsApp List Node"
+      case "interactiveList":
+        return "Interactive List Node"
       case "comment":
         return "Comment Node"
       // Platform-specific nodes
@@ -466,7 +464,7 @@ export function PropertiesPanel({
         return "WhatsApp Question Node"
       case "whatsappQuickReply":
         return "WhatsApp Quick Reply Node"
-      case "whatsappListSpecific":
+      case "whatsappInteractiveList":
         return "WhatsApp List Node"
       case "whatsappMessage":
         return "WhatsApp Message Node"
@@ -474,8 +472,6 @@ export function PropertiesPanel({
         return "Instagram Question Node"
       case "instagramQuickReply":
         return "Instagram Quick Reply Node"
-      case "instagramList":
-        return "Instagram List Node"
       case "instagramDM":
         return "Instagram DM Node"
       case "instagramStory":
@@ -655,16 +651,15 @@ export function PropertiesPanel({
           {/* Interactive Nodes */}
           {(selectedNode.type === "question" ||
             selectedNode.type === "quickReply" ||
-            selectedNode.type === "whatsappList" ||
+            selectedNode.type === "interactiveList" ||
             selectedNode.type === "webQuestion" ||
             selectedNode.type === "webQuickReply" ||
             selectedNode.type === "whatsappQuestion" ||
             selectedNode.type === "whatsappQuickReply" ||
-            selectedNode.type === "whatsappListSpecific" ||
+            selectedNode.type === "whatsappInteractiveList" ||
             selectedNode.type === "whatsappMessage" ||
             selectedNode.type === "instagramQuestion" ||
             selectedNode.type === "instagramQuickReply" ||
-            selectedNode.type === "instagramList" ||
             selectedNode.type === "instagramDM" ||
             selectedNode.type === "instagramStory") && (
             <>
@@ -796,9 +791,8 @@ export function PropertiesPanel({
               )}
 
               {/* List Options */}
-              {(selectedNode.type === "whatsappList" || 
-                selectedNode.type === "whatsappListSpecific" || 
-                selectedNode.type === "instagramList") && (
+              {(selectedNode.type === "interactiveList" ||
+                selectedNode.type === "whatsappInteractiveList") && (
                 <>
                   <Separator />
                   <div>

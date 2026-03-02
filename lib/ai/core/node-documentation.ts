@@ -236,11 +236,11 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
     })
   })
 
-  // List Nodes (WhatsApp/Instagram only)
-  ;(["whatsapp", "instagram"] as Platform[]).forEach(p => {
+  // List Nodes (WhatsApp only)
+  ;(["whatsapp"] as Platform[]).forEach(p => {
     if (platform && platform !== p) return
-    
-    const nodeType = p === "whatsapp" ? "whatsappList" : "instagramList"
+
+    const nodeType = "whatsappInteractiveList"
     const limits = getNodeLimits("list", p)
     
     docs.push({

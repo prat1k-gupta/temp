@@ -162,7 +162,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
 
     // Convert to List node
     if (data.onConvert) {
-      data.onConvert(data.id, 'whatsappList', { 
+      data.onConvert(data.id, 'whatsappInteractiveList', {
         ...data,
         question: questionText,
         options,

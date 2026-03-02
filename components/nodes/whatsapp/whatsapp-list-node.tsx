@@ -35,7 +35,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
   }, [data.question, isEditingQuestion])
 
   const platform = (data.platform || "whatsapp") as Platform
-  const nodeType = "whatsappList"
+  const nodeType = "whatsappInteractiveList"
   const nodeLimits = getNodeLimits(nodeType, platform)
   const maxQuestionLength = nodeLimits.question?.max || 160
   const maxOptionLength = nodeLimits.options?.textMaxLength || 20

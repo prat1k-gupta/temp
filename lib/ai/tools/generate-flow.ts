@@ -103,9 +103,9 @@ function processFlowResponse(
       
       // Platform-specific interaction node types that are available
       const platformInteractionNodes = platform === "whatsapp"
-        ? ["whatsappQuestion", "whatsappQuickReply", "whatsappList", "whatsappMessage"]
+        ? ["whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList", "whatsappMessage"]
         : platform === "instagram"
-        ? ["instagramQuestion", "instagramQuickReply", "instagramList", "instagramDM", "instagramStory"]
+        ? ["instagramQuestion", "instagramQuickReply", "instagramDM", "instagramStory"]
         : ["webQuestion", "webQuickReply"]
       
       // Calculate max X position from existing nodes (for better positioning)
@@ -773,7 +773,7 @@ function getCreateResponseFormat(): string {
 - **Connect to existing start node (id: "1")** - do not create a new one
 - **For delivery: Use Quick Reply (not Question) + Address + homeDelivery**
 - **Write comprehensive questions** - full sentences, not "Choose:" or "Select:"
-- **Use platform-specific node types** (whatsappQuestion, whatsappQuickReply, whatsappList for WhatsApp)
+- **Use platform-specific node types** (whatsappQuestion, whatsappQuickReply, whatsappInteractiveList for WhatsApp)
 - **Space nodes 350px apart** - x: 600, 950, 1300, 1650, etc.
 - **Always include "label" and "platform"** in node data
 - **Make flows rich and connected** - Include information collection, branching, integrations, and fulfillment`

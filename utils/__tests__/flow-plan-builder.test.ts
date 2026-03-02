@@ -1049,3 +1049,412 @@ describe("buildEditFlowFromPlan — addEdges validation", () => {
     expect(newEdges).toHaveLength(0)
   })
 })
+
+// ─── connectTo (insert-between-nodes) ────────────────
+
+describe("buildEditFlowFromPlan — connectTo", () => {
+  it("inserts a node between two existing nodes (A → C becomes A → B → C)", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "C", type: "email", position: { x: 450, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Inserted address between name and email",
+      removeEdges: [{ source: "A", target: "C" }],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "address" }],
+        connectTo: "C",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // Should create one new node (address)
+    expect(result.newNodes).toHaveLength(1)
+    expect(result.newNodes[0].id).toContain("address")
+
+    // Should have two edges: A → address, address → C
+    expect(result.newEdges).toHaveLength(2)
+    const edgeFromA = result.newEdges.find(e => e.source === "A")
+    const edgeToC = result.newEdges.find(e => e.target === "C")
+    expect(edgeFromA).toBeDefined()
+    expect(edgeFromA!.target).toBe(result.newNodes[0].id)
+    expect(edgeToC).toBeDefined()
+    expect(edgeToC!.source).toBe(result.newNodes[0].id)
+
+    // Should remove the old A → C edge
+    expect(result.removeEdges).toEqual([{ source: "A", target: "C" }])
+  })
+
+  it("replaces a node with a new node (A → X → B becomes A → Y → B)", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "X", type: "question", position: { x: 450, y: 100 }, data: { platform: "web", question: "old?" } },
+      { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Replaced question with quickReply",
+      removeNodeIds: ["X"],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Pick one", buttons: ["Yes", "No"] } }],
+        connectTo: "B",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // Should create one new quickReply node
+    expect(result.newNodes).toHaveLength(1)
+    expect(result.newNodes[0].id).toContain("quickReply")
+
+    // Should have edge from A → quickReply
+    const edgeFromA = result.newEdges.find(e => e.source === "A")
+    expect(edgeFromA).toBeDefined()
+    expect(edgeFromA!.target).toBe(result.newNodes[0].id)
+
+    // connectTo edge: quickReply → B (using "next-step" because quickReply is multi-output)
+    const edgeToB = result.newEdges.find(e => e.target === "B")
+    expect(edgeToB).toBeDefined()
+    expect(edgeToB!.source).toBe(result.newNodes[0].id)
+    expect(edgeToB!.sourceHandle).toBe("next-step")
+
+    // Should remove X
+    expect(result.removeNodeIds).toContain("X")
+  })
+
+  it("connectTo from multi-output last node uses next-step handle", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Insert quickReply between A and B",
+      removeEdges: [{ source: "A", target: "B" }],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Choose", buttons: ["X", "Y"] } }],
+        connectTo: "B",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // The connectTo edge should use "next-step" handle since quickReply is multi-output
+    const connectToEdge = result.newEdges.find(e => e.target === "B")
+    expect(connectToEdge).toBeDefined()
+    expect(connectToEdge!.sourceHandle).toBe("next-step")
+  })
+
+  it("connectTo to non-existent node does not crash (edge still created)", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Chain with bad connectTo",
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "email" }],
+        connectTo: "nonexistent-node",
+      }],
+    }
+
+    // Should not throw
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // The new node should be created
+    expect(result.newNodes).toHaveLength(1)
+
+    // The connectTo edge to nonexistent node is still created (edge target validity is not checked here)
+    const connectToEdge = result.newEdges.find(e => e.target === "nonexistent-node")
+    expect(connectToEdge).toBeDefined()
+  })
+})
+
+// ─── merge/redirect pattern (addEdges + removeEdges) ─
+
+describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
+  it("redirects buttons to an existing node (merge pattern)", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "quickReply",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "web",
+          question: "Pick",
+          buttons: [
+            { text: "A", id: "btn-aaa" },
+            { text: "B", id: "btn-bbb" },
+            { text: "C", id: "btn-ccc" },
+          ],
+        },
+      },
+      { id: "q1", type: "question", position: { x: 450, y: 0 }, data: { platform: "web", question: "Q1" } },
+      { id: "q2", type: "question", position: { x: 450, y: 200 }, data: { platform: "web", question: "Q2" } },
+      { id: "q3", type: "question", position: { x: 450, y: 400 }, data: { platform: "web", question: "Q3" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "All 3 buttons now point to Q1",
+      removeEdges: [
+        { source: "qr-1", target: "q2" },
+        { source: "qr-1", target: "q3" },
+      ],
+      removeNodeIds: ["q2", "q3"],
+      addEdges: [
+        { source: "qr-1", target: "q1", sourceButtonIndex: 1 },
+        { source: "qr-1", target: "q1", sourceButtonIndex: 2 },
+      ],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // Two new edges created
+    expect(result.newEdges).toHaveLength(2)
+
+    // First addEdge: button-1 → q1, should resolve to btn-bbb
+    const edge1 = result.newEdges.find(e => e.sourceHandle === "btn-bbb")
+    expect(edge1).toBeDefined()
+    expect(edge1!.target).toBe("q1")
+
+    // Second addEdge: button-2 → q1, should resolve to btn-ccc
+    const edge2 = result.newEdges.find(e => e.sourceHandle === "btn-ccc")
+    expect(edge2).toBeDefined()
+    expect(edge2!.target).toBe("q1")
+
+    // Removed nodes and edges
+    expect(result.removeNodeIds).toEqual(["q2", "q3"])
+    expect(result.removeEdges).toHaveLength(2)
+  })
+
+  it("adds a new button via nodeUpdates + connects via addEdges", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "quickReply",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "web",
+          question: "Pick",
+          buttons: [
+            { text: "A", id: "btn-aaa" },
+            { text: "B", id: "btn-bbb" },
+          ],
+        },
+      },
+      { id: "target-a", type: "name", position: { x: 450, y: 0 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Added new button C pointing to target-a",
+      nodeUpdates: [{ nodeId: "qr-1", content: { buttons: ["A", "B", "New C"] } }],
+      addEdges: [{ source: "qr-1", target: "target-a", sourceButtonIndex: 2 }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // nodeUpdate should have 3 buttons
+    expect(result.nodeUpdates).toHaveLength(1)
+    const updatedButtons = result.nodeUpdates[0].data.buttons as ButtonData[]
+    expect(updatedButtons).toHaveLength(3)
+
+    // New edge should resolve button index 2 to the new button's ID (from nodeUpdate data)
+    expect(result.newEdges).toHaveLength(1)
+    const newEdge = result.newEdges[0]
+    expect(newEdge.source).toBe("qr-1")
+    expect(newEdge.target).toBe("target-a")
+    // The third button (index 2) gets a new ID from contentToNodeData since it's beyond existing buttons
+    expect(newEdge.sourceHandle).toBeDefined()
+    // It should NOT be "button-2" — it should be resolved to an actual ID
+    expect(newEdge.sourceHandle).not.toBe("button-2")
+  })
+
+  it("nodeUpdates preserves existing button IDs by position", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "quickReply",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "web",
+          question: "Pick",
+          buttons: [
+            { text: "Old A", id: "btn-original-0" },
+            { text: "Old B", id: "btn-original-1" },
+          ],
+        },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Updated button labels",
+      nodeUpdates: [{ nodeId: "qr-1", content: { buttons: ["New A", "New B", "New C"] } }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    expect(result.nodeUpdates).toHaveLength(1)
+    const updatedButtons = result.nodeUpdates[0].data.buttons as ButtonData[]
+    expect(updatedButtons).toHaveLength(3)
+
+    // First two buttons should retain their original IDs
+    expect(updatedButtons[0].id).toBe("btn-original-0")
+    expect(updatedButtons[1].id).toBe("btn-original-1")
+    // Third button gets a new ID (not from existing)
+    expect(updatedButtons[2].id).toBeDefined()
+    expect(updatedButtons[2].id).not.toBe("btn-original-0")
+    expect(updatedButtons[2].id).not.toBe("btn-original-1")
+
+    // Text should be updated
+    expect(updatedButtons[0].text).toBe("New A")
+    expect(updatedButtons[1].text).toBe("New B")
+    expect(updatedButtons[2].text).toBe("New C")
+  })
+
+  it("addEdges resolves 'button-N' sourceHandle to actual button ID", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "quickReply",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "web",
+          buttons: [
+            { text: "A", id: "btn-real-0" },
+            { text: "B", id: "btn-real-1" },
+          ],
+        },
+      },
+      { id: "target", type: "name", position: { x: 450, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      addEdges: [{ source: "qr-1", target: "target", sourceHandle: "button-1" }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    expect(result.newEdges).toHaveLength(1)
+    // "button-1" should resolve to "btn-real-1"
+    expect(result.newEdges[0].sourceHandle).toBe("btn-real-1")
+  })
+})
+
+// ─── backward edge + orphan detection warnings ──────
+
+describe("buildEditFlowFromPlan — backward edge + orphan warnings", () => {
+  it("warns about backward edges but still creates them", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 500, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      addEdges: [{ source: "B", target: "A" }], // backward: B(x=500) → A(x=100)
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // Edge should still be created
+    expect(result.newEdges).toHaveLength(1)
+    expect(result.newEdges[0].source).toBe("B")
+    expect(result.newEdges[0].target).toBe("A")
+
+    // Should warn about backward edge
+    expect(result.warnings.some(w => w.includes("backward edge"))).toBe(true)
+    expect(result.warnings.some(w => w.includes("B") && w.includes("A"))).toBe(true)
+  })
+
+  it("does NOT warn about forward edges", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 500, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      addEdges: [{ source: "A", target: "B" }], // forward: A(x=100) → B(x=500)
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+    expect(result.newEdges).toHaveLength(1)
+    expect(result.warnings.some(w => w.includes("backward edge"))).toBe(false)
+  })
+
+  it("detects orphaned nodes when their only source is removed", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "X", type: "question", position: { x: 450, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const existingEdges = [
+      { id: "e-A-X", source: "A", target: "X", type: "default" },
+      { id: "e-X-B", source: "X", target: "B", type: "default" },
+    ] as any[]
+
+    // Remove X — this orphans B (its only source was X)
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      removeNodeIds: ["X"],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes, existingEdges)
+
+    // Should warn about orphaned B
+    expect(result.warnings.some(w => w.includes("orphaned") && w.includes("B"))).toBe(true)
+  })
+
+  it("does NOT warn about orphans when new edges reconnect the node", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "X", type: "question", position: { x: 450, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const existingEdges = [
+      { id: "e-A-X", source: "A", target: "X", type: "default" },
+      { id: "e-X-B", source: "X", target: "B", type: "default" },
+    ] as any[]
+
+    // Remove X but reconnect A → B via chain's connectTo
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      removeNodeIds: ["X"],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "address" }],
+        connectTo: "B",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes, existingEdges)
+
+    // Should NOT warn about orphaned B because new chain connects to it
+    expect(result.warnings.some(w => w.includes("orphaned") && w.includes("B"))).toBe(false)
+  })
+
+  it("does NOT run orphan detection when existingEdges is not provided", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 500, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      removeNodeIds: ["A"],
+    }
+
+    // No existingEdges provided — should not crash or warn
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+    expect(result.warnings.some(w => w.includes("orphaned"))).toBe(false)
+  })
+})

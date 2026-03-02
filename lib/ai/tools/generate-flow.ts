@@ -814,10 +814,11 @@ function getEditInstructions(): string {
     '   - sourceButtonIndex: which button on the source node (0-based) — used when connecting from a quickReply/interactiveList button',
     '   - sourceHandle: direct handle ID (use "next-step" for default sequential connection from quickReply/list bottom handle)',
     '',
-    '**Inserting a node between two existing nodes:**',
+    '**Inserting a node between two existing nodes (connectTo + removeEdges):**',
     'To insert node B between existing A → C:',
-    '1. removeEdges: [\\{ "source": "A-id", "target": "C-id" \\}]',
+    '1. removeEdges: [\\{ "source": "A-id", "target": "C-id" \\}]  ← REQUIRED: cut the old A→C edge first',
     '2. chains: [\\{ "attachTo": "A-id", "steps": [\\{ "step": "node", ... \\}], "connectTo": "C-id" \\}]',
+    '**connectTo almost always requires a matching removeEdges entry** — otherwise the old direct edge and the new chain both exist, creating a fork.',
     '',
     '**Replacing a node:**',
     'To replace node X with a new node:',
@@ -964,6 +965,19 @@ function getEditResponseFormat(): string {
     ],
   }, null, 2)
 
+  // Example 7: Multi-chain edit (two simultaneous insertions)
+  const ex7 = JSON.stringify({
+    message: "Added email after name and rating after address",
+    chains: [
+      { attachTo: "plan-name-1", steps: [{ step: "node", nodeType: "email" }], connectTo: "plan-quickReply-2" },
+      { attachTo: "plan-address-3", steps: [{ step: "node", nodeType: "quickReply", content: { question: "Rate delivery", buttons: ["Great", "OK", "Bad"] } }], connectTo: "plan-homeDelivery-4" },
+    ],
+    removeEdges: [
+      { source: "plan-name-1", target: "plan-quickReply-2" },
+      { source: "plan-address-3", target: "plan-homeDelivery-4" },
+    ],
+  }, null, 2)
+
   return [
     "Example 1 — Insert email before an existing node:",
     ex1,
@@ -983,10 +997,13 @@ function getEditResponseFormat(): string {
     "Example 6 — Redirect buttons to an existing node (merge duplicate paths):",
     ex6,
     "",
+    "Example 7 — Multi-chain edit (two simultaneous insertions):",
+    ex7,
+    "",
     "**IMPORTANT:**",
     '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',
     '- "attachTo" MUST be an existing node ID from the flow',
-    '- "connectTo" links the last new node back to an existing node (for insertion/replacement)',
+    '- "connectTo" links the last new node back to an existing node (for insertion/replacement). **When using connectTo, you almost always need removeEdges** to cut the old direct edge first — otherwise both old and new paths exist.',
     '- "removeNodeIds" deletes nodes AND all their connected edges',
     '- "removeEdges" disconnects specific edges by source+target',
     '- "addEdges" creates new edges — use sourceButtonIndex to connect from a specific button (0-based)',
@@ -996,6 +1013,12 @@ function getEditResponseFormat(): string {
     "- Use quickReply for choices/buttons (not question)",
     "- Only add information nodes (name, email, etc.) when the flow needs that data",
     "- Write full, natural questions",
+    "",
+    "**Splitting a path into branches:**",
+    'When the user says "split X into two paths" or "make X branch":',
+    "1. Remove the edge from the current node to its downstream node",
+    "2. Either use nodeUpdates to add buttons to an existing quickReply, or replace the node with a quickReply using removeNodeIds + chain",
+    "3. Add branches after the quickReply using additional chains with attachHandle",
   ].join("\n")
 }
 

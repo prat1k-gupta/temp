@@ -79,7 +79,8 @@ export interface BuildEditFlowResult {
 export function buildEditFlowFromPlan(
   plan: EditFlowPlan,
   platform: Platform,
-  existingNodes: Node[]
+  existingNodes: Node[],
+  existingEdges: Edge[] = []
 ): BuildEditFlowResult {
   const newNodes: Node[] = []
   const newEdges: Edge[] = []
@@ -373,6 +374,46 @@ export function buildEditFlowFromPlan(
         type: "default",
         style: { stroke: "#6366f1", strokeWidth: 2 },
       } as Edge)
+    }
+  }
+
+  // ── Backward edge detection (heuristic: position-based) ──
+  const allNodesForWarnings = [...existingNodes, ...newNodes]
+  for (const edge of newEdges) {
+    const sourceNode = allNodesForWarnings.find(n => n.id === edge.source)
+    const targetNode = allNodesForWarnings.find(n => n.id === edge.target)
+    if (sourceNode && targetNode && targetNode.position.x < sourceNode.position.x - 50) {
+      warnings.push(`Possible backward edge: ${edge.source} → ${edge.target}`)
+    }
+  }
+
+  // ── Orphan detection after removeNodeIds ──
+  if (plan.removeNodeIds && plan.removeNodeIds.length > 0 && existingEdges.length > 0) {
+    const removedSet = new Set(plan.removeNodeIds)
+    const removedEdgeSet = new Set(
+      (plan.removeEdges || []).map(e => `${e.source}-${e.target}`)
+    )
+    // Find nodes that were ONLY fed by removed nodes or removed edges
+    const allNodeIds = new Set(allNodesForWarnings.map(n => n.id))
+    for (const node of existingNodes) {
+      if (removedSet.has(node.id)) continue // skip removed nodes themselves
+      if (node.type === "start") continue
+
+      // Gather all incoming edges for this node
+      const incomingEdges = existingEdges.filter(e => e.target === node.id)
+      if (incomingEdges.length === 0) continue // already had no incoming edges
+
+      // Check if ALL incoming edges are now gone (source removed or edge explicitly removed)
+      const allIncomingGone = incomingEdges.every(e =>
+        removedSet.has(e.source) || removedEdgeSet.has(`${e.source}-${e.target}`)
+      )
+
+      // Check if any new edges target this node (from chains or addEdges)
+      const hasNewIncoming = newEdges.some(e => e.target === node.id)
+
+      if (allIncomingGone && !hasNewIncoming) {
+        warnings.push(`Possibly orphaned node: "${node.id}" lost all incoming connections`)
+      }
     }
   }
 

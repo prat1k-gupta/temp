@@ -34,6 +34,7 @@ export interface GenerateFlowResponse {
     description?: string
     removeNodeIds?: string[]
     removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
+    positionShifts?: Array<{ nodeId: string; dx: number }>
   }
   action: "create" | "edit" | "suggest"
   warnings?: string[]
@@ -509,7 +510,7 @@ export async function generateFlow(
         }))
 
         const existingNodes = request.existingFlow?.nodes || []
-        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, warnings } = buildEditFlowFromPlan(
+        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, positionShifts, warnings } = buildEditFlowFromPlan(
           editPlan,
           request.platform,
           existingNodes
@@ -521,6 +522,7 @@ export async function generateFlow(
           nodeUpdates: nodeUpdates.length,
           removeNodeIds,
           removeEdges,
+          positionShifts: positionShifts.length,
           warnings,
         })
 
@@ -543,6 +545,7 @@ export async function generateFlow(
             description: editPlan.description,
             removeNodeIds: removeNodeIds.length > 0 ? removeNodeIds : undefined,
             removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
+            positionShifts: positionShifts.length > 0 ? positionShifts : undefined,
           },
           action: "edit",
           warnings: warnings.length > 0 ? warnings : undefined,
@@ -596,7 +599,7 @@ export async function generateFlow(
           if (isEditRequest) {
             const editPlan = editFlowPlanSchema.parse(rawPlan)
             const existingNodes = request.existingFlow?.nodes || []
-            const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, warnings } = buildEditFlowFromPlan(
+            const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, positionShifts, warnings } = buildEditFlowFromPlan(
               editPlan,
               request.platform,
               existingNodes
@@ -619,6 +622,7 @@ export async function generateFlow(
                 description: editPlan.description,
                 removeNodeIds: removeNodeIds.length > 0 ? removeNodeIds : undefined,
                 removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
+                positionShifts: positionShifts.length > 0 ? positionShifts : undefined,
               },
               action: "edit",
               warnings: warnings.length > 0 ? warnings : undefined,

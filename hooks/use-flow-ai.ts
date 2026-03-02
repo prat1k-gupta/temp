@@ -432,6 +432,7 @@ export function useFlowAI({
       description?: string
       removeNodeIds?: string[]
       removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
+      positionShifts?: Array<{ nodeId: string; dx: number }>
     }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => {
       try {
         // Snapshot current state for undo
@@ -473,6 +474,18 @@ export function useFlowAI({
             }
             return filtered
           })
+        }
+
+        // Step 1.5: Apply position shifts to existing nodes (shift downstream nodes right)
+        if (updates.positionShifts && updates.positionShifts.length > 0) {
+          console.log("[handleUpdateFlow] Applying position shifts:", updates.positionShifts.length)
+          setNodes(nds => nds.map(n => {
+            const shift = updates.positionShifts!.find(s => s.nodeId === n.id)
+            if (shift) {
+              return { ...n, position: { ...n.position, x: n.position.x + shift.dx } }
+            }
+            return n
+          }))
         }
 
         // Step 2: Process node additions and updates

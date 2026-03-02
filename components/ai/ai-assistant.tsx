@@ -13,7 +13,7 @@ interface Message {
   content: string
   timestamp: Date
   flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
-  updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }
+  updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }
   isAutoApplied?: boolean
   warnings?: string[]
   debugData?: Record<string, unknown>
@@ -25,7 +25,7 @@ interface AIAssistantProps {
   existingFlow?: { nodes: any[]; edges: any[] }
   selectedNode?: any
   onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
-  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
+  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
 }
 
 export function AIAssistant({

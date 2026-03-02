@@ -66,6 +66,7 @@ export interface BuildEditFlowResult {
   nodeUpdates: Array<{ nodeId: string; data: Record<string, unknown>; newType?: string }>
   removeNodeIds: string[]
   removeEdges: EdgeReference[]
+  positionShifts: Array<{ nodeId: string; dx: number }>
   warnings: string[]
 }
 
@@ -87,6 +88,7 @@ export function buildEditFlowFromPlan(
   const nodeOrder: string[] = []
   const nodeUpdates: BuildEditFlowResult["nodeUpdates"] = []
   const warnings: string[] = []
+  const positionShiftMap = new Map<string, number>() // nodeId → total dx
 
   // Process nodeUpdates — convert content to node data, preserving existing button/option IDs
   if (plan.nodeUpdates) {
@@ -308,6 +310,27 @@ export function buildEditFlowFromPlan(
           type: "default",
           style: { stroke: "#6366f1", strokeWidth: 2 },
         } as Edge)
+
+        // Compute position shifts: count new nodes in this chain and shift
+        // all existing nodes at or to the right of connectTo's position
+        const connectToNode = existingNodes.find(n => n.id === chain.connectTo)
+        if (connectToNode) {
+          const shiftDx = countChainNodes(chain) * HORIZONTAL_GAP
+
+          if (shiftDx > 0) {
+            const removedSet = new Set(plan.removeNodeIds || [])
+            const newNodeIds = new Set(newNodes.map(n => n.id))
+            const threshold = connectToNode.position.x
+            for (const node of existingNodes) {
+              if (removedSet.has(node.id)) continue
+              if (newNodeIds.has(node.id)) continue
+              if (node.position.x >= threshold) {
+                const existing = positionShiftMap.get(node.id) || 0
+                positionShiftMap.set(node.id, existing + shiftDx)
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -417,6 +440,11 @@ export function buildEditFlowFromPlan(
     }
   }
 
+  // Convert positionShiftMap to array
+  const positionShifts = Array.from(positionShiftMap.entries()).map(
+    ([nodeId, dx]) => ({ nodeId, dx })
+  )
+
   return {
     newNodes,
     newEdges: deduplicateEdges(newEdges),
@@ -424,6 +452,7 @@ export function buildEditFlowFromPlan(
     nodeUpdates,
     removeNodeIds: plan.removeNodeIds || [],
     removeEdges: plan.removeEdges || [],
+    positionShifts,
     warnings,
   }
 }
@@ -762,6 +791,20 @@ function maybeAutoConvertToList(
 
   warnings.push(`quickReply auto-converted to interactiveList: ${buttons.length} buttons exceeds ${platform} limit of ${limit}`)
   return "interactiveList"
+}
+
+/** Count the number of node steps in a chain (including nested branches) */
+function countChainNodes(chain: EditChain): number {
+  let count = 0
+  for (const step of chain.steps) {
+    if (step.step === "node") count++
+    if (step.step === "branch") {
+      for (const s of step.steps) {
+        if (s.step === "node") count++
+      }
+    }
+  }
+  return count
 }
 
 /** Generate a short random suffix for node IDs to prevent collisions on duplicate runs */

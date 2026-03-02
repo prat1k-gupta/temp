@@ -1176,6 +1176,149 @@ describe("buildEditFlowFromPlan — connectTo", () => {
   })
 })
 
+// ─── positionShifts (downstream node shifting) ─────────
+
+describe("buildEditFlowFromPlan — positionShifts", () => {
+  it("shifts downstream nodes right when inserting between A and C", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "C", type: "email", position: { x: 450, y: 100 }, data: { platform: "web" } },
+      { id: "D", type: "address", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Insert question between A and C",
+      removeEdges: [{ source: "A", target: "C" }],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "question", content: { question: "How old?" } }],
+        connectTo: "C",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // Both C and D are at or to the right of C.position.x (450)
+    // so both should be shifted right by 1 * HORIZONTAL_GAP
+    expect(result.positionShifts).toHaveLength(2)
+    const shiftC = result.positionShifts.find(s => s.nodeId === "C")
+    const shiftD = result.positionShifts.find(s => s.nodeId === "D")
+    expect(shiftC).toBeDefined()
+    expect(shiftC!.dx).toBe(HORIZONTAL_GAP)
+    expect(shiftD).toBeDefined()
+    expect(shiftD!.dx).toBe(HORIZONTAL_GAP)
+
+    // A should NOT be shifted (it's to the left of the threshold)
+    expect(result.positionShifts.find(s => s.nodeId === "A")).toBeUndefined()
+  })
+
+  it("does not shift removed nodes", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "X", type: "question", position: { x: 450, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Replace X with address",
+      removeNodeIds: ["X"],
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "address" }],
+        connectTo: "B",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // X should NOT be shifted because it's being removed
+    expect(result.positionShifts.find(s => s.nodeId === "X")).toBeUndefined()
+
+    // B is at x=800 >= B.x=800, so should be shifted
+    const shiftB = result.positionShifts.find(s => s.nodeId === "B")
+    expect(shiftB).toBeDefined()
+    expect(shiftB!.dx).toBe(HORIZONTAL_GAP)
+  })
+
+  it("returns empty positionShifts when no connectTo is used", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Append a node",
+      chains: [{
+        attachTo: "A",
+        steps: [{ step: "node", nodeType: "email" }],
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+    expect(result.positionShifts).toHaveLength(0)
+  })
+
+  it("accumulates shifts from multiple chains affecting the same nodes", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "B", type: "email", position: { x: 450, y: 100 }, data: { platform: "web" } },
+      { id: "C", type: "address", position: { x: 450, y: 300 }, data: { platform: "web" } },
+      { id: "D", type: "question", position: { x: 800, y: 100 }, data: { platform: "web", question: "?" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Insert between A→B and A→C",
+      removeEdges: [{ source: "A", target: "B" }, { source: "A", target: "C" }],
+      chains: [
+        {
+          attachTo: "A",
+          steps: [{ step: "node", nodeType: "question", content: { question: "Q1" } }],
+          connectTo: "B",
+        },
+        {
+          attachTo: "A",
+          steps: [{ step: "node", nodeType: "question", content: { question: "Q2" } }],
+          connectTo: "C",
+        },
+      ],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // D (at x=800) is to the right of both B (450) and C (450)
+    // so it should be shifted by 2 * HORIZONTAL_GAP (once for each chain)
+    const shiftD = result.positionShifts.find(s => s.nodeId === "D")
+    expect(shiftD).toBeDefined()
+    expect(shiftD!.dx).toBe(2 * HORIZONTAL_GAP)
+  })
+
+  it("shifts by multiple HORIZONTAL_GAPs when chain has multiple nodes", () => {
+    const existingNodes = [
+      { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
+      { id: "C", type: "email", position: { x: 450, y: 100 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Insert two nodes between A and C",
+      removeEdges: [{ source: "A", target: "C" }],
+      chains: [{
+        attachTo: "A",
+        steps: [
+          { step: "node", nodeType: "question", content: { question: "Q1" } },
+          { step: "node", nodeType: "address" },
+        ],
+        connectTo: "C",
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+
+    // 2 new nodes → shift by 2 * HORIZONTAL_GAP
+    const shiftC = result.positionShifts.find(s => s.nodeId === "C")
+    expect(shiftC).toBeDefined()
+    expect(shiftC!.dx).toBe(2 * HORIZONTAL_GAP)
+  })
+})
+
 // ─── merge/redirect pattern (addEdges + removeEdges) ─
 
 describe("buildEditFlowFromPlan — merge/redirect patterns", () => {

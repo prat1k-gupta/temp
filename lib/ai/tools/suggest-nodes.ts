@@ -1,6 +1,9 @@
 import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines } from "../core/ai-context"
 import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
 import { getAIClient } from "../core/ai-client"
+import { buildFlowGraphString } from "./generate-flow"
+import { getBaseNodeType } from "@/utils/platform-helpers"
+import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { z } from "zod"
 
@@ -8,7 +11,8 @@ export interface SuggestNodesRequest {
   currentNodeType: string
   platform: Platform
   flowContext?: string
-  existingNodes?: Array<{ type: string; label?: string }>
+  existingNodes?: Array<{ id: string; type: string; label?: string }>
+  edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
 }
 
@@ -92,22 +96,28 @@ export async function suggestNodes(
       }))
 
       // Filter out duplicate node types that already exist
-      const existingNodeTypes = new Set((request.existingNodes || []).map(n => n.type.toLowerCase()))
-      const hasHomeDelivery = existingNodeTypes.has("homedelivery") || 
-        (request.existingNodes || []).some(n => n.type.toLowerCase().includes("homedelivery"))
-      
+      // Normalize to base types so "whatsappQuestion" matches suggested "question" etc.
+      const existingBaseTypes = new Set(
+        (request.existingNodes || []).map(n => getBaseNodeType(n.type).toLowerCase())
+      )
+      const hasHomeDelivery = existingBaseTypes.has("homedelivery")
+
       suggestions = suggestions.filter(s => {
-        const suggestionType = s.type.toLowerCase()
-        
+        const suggestionBase = getBaseNodeType(s.type).toLowerCase()
+
         // CRITICAL: trackingNotification should ONLY be suggested when homeDelivery exists
-        if (suggestionType === "trackingnotification" && !hasHomeDelivery) {
+        if (suggestionBase === "trackingnotification" && !hasHomeDelivery) {
           console.log("[suggest-nodes] Filtering out trackingNotification - homeDelivery not found in flow")
           return false
         }
-        
-        // Allow if it's a different type, or if it's a super node that might be used multiple times in different contexts
-        const isSuperNode = ['name', 'email', 'dob', 'address'].includes(suggestionType)
-        return !existingNodeTypes.has(suggestionType) || isSuperNode
+
+        // Allow if it's a different base type, or if it's a super node that can appear multiple times
+        const isSuperNode = ['name', 'email', 'dob', 'address'].includes(suggestionBase)
+        if (existingBaseTypes.has(suggestionBase) && !isSuperNode) {
+          console.log(`[suggest-nodes] Filtering out "${s.type}" — base type "${suggestionBase}" already exists in flow`)
+          return false
+        }
+        return true
       })
 
       // If we filtered out suggestions, try to get more (but don't exceed max)
@@ -159,6 +169,24 @@ function buildSystemPrompt(
   const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
   const flowPattern = detectFlowPattern(request.flowContext, existingNodeTypes, currentNodeType)
 
+  // Build flow graph string from edges + existingNodes when available
+  let flowGraphSection = ""
+  if (request.existingNodes && request.existingNodes.length > 0 && request.edges) {
+    const minimalNodes: Node[] = request.existingNodes.map(n => ({
+      id: n.id,
+      type: n.type,
+      position: { x: 0, y: 0 },
+      data: { label: n.label || "" },
+    }))
+    const minimalEdges: Edge[] = request.edges.map((e, i) => ({
+      id: `e-${i}`,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle || undefined,
+    }))
+    flowGraphSection = `\n\n**Current Flow Graph:**\n${buildFlowGraphString(minimalNodes, minimalEdges)}`
+  }
+
   let prompt = `You are an expert conversational flow designer for ${platform} platforms.
 
 Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node. Understand the user need and context of current conversation and suggest nodes that enhance user experience.
@@ -170,7 +198,7 @@ ${platformGuidelines}
 ${nodeTypeGuidelines}
 
 **Flow Purpose:**
-${request.flowContext || "General conversational flow"}
+${request.flowContext || "General conversational flow"}${flowGraphSection}
 
 **Detected Flow Pattern:**
 ${flowPattern.description}
@@ -262,13 +290,15 @@ Platform: ${request.platform}`
   if (request.existingNodes && request.existingNodes.length > 0) {
     prompt += `\n\n**EXISTING NODES IN FLOW (${request.existingNodes.length}) - DO NOT SUGGEST THESE AGAIN:**`
     request.existingNodes.forEach((node, index) => {
-      prompt += `\n${index + 1}. Type: "${node.type}"${node.label ? `, Label: "${node.label}"` : ""}`
+      const base = getBaseNodeType(node.type)
+      const baseNote = base !== node.type ? ` (base: "${base}")` : ""
+      prompt += `\n${index + 1}. Type: "${node.type}"${baseNote}${node.label ? `, Label: "${node.label}"` : ""}`
     })
-    prompt += `\n\n**CRITICAL**: You MUST NOT suggest any of the above node types unless they serve a completely different purpose. Check the type field carefully - if a node type already exists, suggest a DIFFERENT node type.`
-    
-    // List node types that already exist for clarity
-    const existingTypes = [...new Set(request.existingNodes.map(n => n.type))]
-    prompt += `\n\n**Already used node types (DO NOT repeat):** ${existingTypes.join(", ")}`
+
+    // Deduplicated base types — this is the canonical "already used" list
+    const existingBaseTypes = [...new Set(request.existingNodes.map(n => getBaseNodeType(n.type)))]
+    prompt += `\n\n**Already used base node types (DO NOT repeat any of these or their platform variants):** ${existingBaseTypes.join(", ")}`
+    prompt += `\n\n**CRITICAL**: You MUST NOT suggest any node whose base type matches one in the list above. For example, if "question" is listed, do NOT suggest "question", "whatsappQuestion", "webQuestion", or "instagramQuestion".`
   }
 
   prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes that would logically follow after the current "${request.currentNodeType}" node. Make sure each suggestion is a DIFFERENT node type that doesn't already exist in the flow.`

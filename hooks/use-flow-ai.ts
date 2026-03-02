@@ -2,10 +2,12 @@ import { useState, useCallback, useEffect } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
 import type { Platform, ButtonData } from "@/types"
-import { getBaseNodeType, getPlatformSpecificNodeType } from "@/utils/platform-helpers"
+import type { EditFlowPlan, NodeContent } from "@/types/flow-plan"
+import { getBaseNodeType, isMultiOutputType } from "@/utils/platform-helpers"
 import { createNode, createCommentNode } from "@/utils/node-factory"
 import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
 import { processAiNodes, processAiEdges, transformAiNodeData, normalizeAiNodeType } from "@/utils/ai-data-transform"
+import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import { changeTracker } from "@/utils/change-tracker"
 import { updateFlow } from "@/utils/flow-storage"
 import type { FlowData } from "@/utils/flow-storage"
@@ -115,7 +117,12 @@ export function useFlowAI({
         flowContext: currentFlow?.description,
         existingNodes: nodes
           .filter((n) => n.type)
-          .map((n) => ({ type: n.type!, label: n.data.label as string | undefined })),
+          .map((n) => ({ id: n.id, type: n.type!, label: n.data.label as string | undefined })),
+        edges: edges.map((e) => ({
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle || undefined,
+        })),
         maxSuggestions: 2,
       })
     } else {
@@ -128,149 +135,6 @@ export function useFlowAI({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id, selectedNode?.type, platform, currentFlow?.description])
-
-  const onAcceptAISuggestion = useCallback(
-    (suggestion: { type: string; generatedContent?: any }) => {
-      if (!selectedNode) {
-        toast.error("No node selected")
-        return
-      }
-
-      // Normalize node type
-      let normalizedType = suggestion.type
-
-      if (
-        normalizedType === "list" ||
-        normalizedType === "interactiveList" ||
-        normalizedType === "whatsappInteractiveList"
-      ) {
-        normalizedType = "interactiveList"
-      } else if (
-        normalizedType === "whatsappQuestion" ||
-        normalizedType === "instagramQuestion" ||
-        normalizedType === "webQuestion"
-      ) {
-        normalizedType = "question"
-      } else if (
-        normalizedType === "whatsappQuickReply" ||
-        normalizedType === "instagramQuickReply" ||
-        normalizedType === "webQuickReply"
-      ) {
-        normalizedType = "quickReply"
-      } else if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
-        // Keep as-is
-      } else {
-        const baseType = getBaseNodeType(suggestion.type)
-        if (baseType !== suggestion.type) {
-          normalizedType = baseType
-        }
-      }
-
-      const newNodeId = `${suggestion.type}-${Date.now()}`
-      let newNode: Node
-
-      try {
-        const nodePosition = {
-          x: (selectedNode.position.x || 0) + 350,
-          y: selectedNode.position.y || 0,
-        }
-
-        if (normalizedType === "comment") {
-          newNode = createCommentNode(
-            platform,
-            nodePosition,
-            newNodeId,
-            (updates: any) => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node
-                )
-              )
-            },
-            () => deleteNode(newNodeId)
-          )
-        } else {
-          newNode = createNode(normalizedType, platform, nodePosition, newNodeId)
-        }
-
-        // Populate with generated content
-        if (suggestion.generatedContent) {
-          const content = suggestion.generatedContent
-          const updatedData: any = { ...newNode.data }
-
-          if (content.label) {
-            updatedData.label = content.label
-          }
-
-          if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
-            if (content.text) {
-              updatedData.text = content.text
-            } else if (content.question) {
-              updatedData.text = content.question
-            }
-          } else {
-            if (content.question) {
-              updatedData.question = content.question
-            }
-            if (content.text) {
-              updatedData.text = content.text
-            }
-          }
-
-          if (content.buttons && Array.isArray(content.buttons)) {
-            updatedData.buttons = content.buttons.map((btn: any, index: number) => ({
-              id: `btn-${Date.now()}-${index}`,
-              text: btn.text || btn.label || "",
-              label: btn.label || btn.text || "",
-            }))
-          }
-          if (content.options && Array.isArray(content.options)) {
-            updatedData.options = content.options.map((opt: any) => ({
-              text: opt.text || "",
-            }))
-          }
-
-          newNode.data = updatedData
-        }
-
-        withEditTracking()
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        setNodes((nds) => [...nds, newNode])
-
-        const newEdge: Edge = {
-          id: `e-${selectedNode.id}-${newNodeId}`,
-          source: selectedNode.id,
-          target: newNodeId,
-          type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
-        }
-
-        const existingConnection = edges.find(
-          (edge) => edge.source === selectedNode.id && edge.target === newNodeId
-        )
-
-        if (!existingConnection) {
-          setEdges((eds) => addEdge(newEdge, eds))
-          changeTracker.trackEdgeAdd(newEdge)
-          updateDraftChanges()
-        }
-
-        clearSuggestions()
-        setIsAISuggestionsPanelOpen(false)
-
-        setNodeToFocus(newNodeId)
-        toast.success(`Added ${newNode.data.label || suggestion.type} node with AI-generated content`)
-      } catch (error) {
-        console.error(`[v0] Error creating suggested node ${suggestion.type}:`, error)
-        toast.error(`Failed to add ${suggestion.type} node`)
-      }
-    },
-    [selectedNode, platform, edges, setNodes, setEdges, deleteNode, withEditTracking, updateDraftChanges, clearSuggestions, setNodeToFocus]
-  )
 
   const onAddNode = useCallback(
     (nodeType: string, position?: { x: number; y: number }) => {
@@ -791,6 +655,96 @@ export function useFlowAI({
       }
     },
     [nodes, edges, platform, flowId, setNodes, setEdges, withEditTracking, updateDraftChanges, setCurrentFlow]
+  )
+
+  const onAcceptAISuggestion = useCallback(
+    async (suggestion: { type: string; label?: string; generatedContent?: any }) => {
+      if (!selectedNode) {
+        toast.error("No node selected")
+        return
+      }
+
+      try {
+        // Normalize to base node type
+        const normalizedType = getBaseNodeType(suggestion.type)
+
+        // Convert generatedContent → NodeContent (plan format)
+        const gc = suggestion.generatedContent
+        const content: NodeContent = {
+          label: gc?.label,
+          question: gc?.question,
+          text: gc?.text,
+          buttons: gc?.buttons?.map((b: any) => b.text || b.label || ""),
+          options: gc?.options?.map((o: any) => o.text || ""),
+        }
+
+        // Determine insertion target: find if selectedNode has a "default path" outgoing edge
+        const isMultiOutput = selectedNode.type ? isMultiOutputType(selectedNode.type) : false
+        const outgoingEdge = edges.find((e) => {
+          if (e.source !== selectedNode.id) return false
+          if (isMultiOutput) return e.sourceHandle === "next-step"
+          return !e.sourceHandle || e.sourceHandle === "next-step"
+        })
+        const nextNodeId = outgoingEdge?.target // undefined = end of flow (append)
+
+        // Build an EditFlowPlan and run through the existing pipeline
+        const editPlan: EditFlowPlan = {
+          message: `Added ${suggestion.label || suggestion.type}`,
+          chains: [{
+            attachTo: selectedNode.id,
+            steps: [{ step: "node", nodeType: normalizedType, content }],
+            connectTo: nextNodeId,
+          }],
+          removeEdges: nextNodeId && outgoingEdge
+            ? [{ source: selectedNode.id, target: nextNodeId, sourceHandle: outgoingEdge.sourceHandle || undefined }]
+            : undefined,
+        }
+
+        const {
+          newNodes,
+          newEdges,
+          nodeUpdates,
+          removeEdges: planRemoveEdges,
+          positionShifts,
+          warnings,
+        } = buildEditFlowFromPlan(editPlan, platform, nodes, edges)
+
+        // Convert nodeUpdates to full node objects for handleUpdateFlow
+        const updatedNodes = nodeUpdates
+          .map((u) => {
+            const existing = nodes.find((n) => n.id === u.nodeId)
+            if (!existing) return null
+            return {
+              ...existing,
+              type: u.newType || existing.type,
+              data: { ...existing.data, ...u.data },
+            }
+          })
+          .filter(Boolean) as Node[]
+
+        await handleUpdateFlow(
+          {
+            nodes: [...updatedNodes, ...newNodes],
+            edges: newEdges,
+            removeEdges: planRemoveEdges.length > 0 ? planRemoveEdges : undefined,
+            positionShifts: positionShifts.length > 0 ? positionShifts : undefined,
+          },
+          { warnings }
+        )
+
+        // Focus the new node
+        if (newNodes.length > 0) {
+          setNodeToFocus(newNodes[0].id)
+        }
+
+        clearSuggestions()
+        setIsAISuggestionsPanelOpen(false)
+      } catch (error) {
+        console.error(`[onAcceptAISuggestion] Error creating suggested node ${suggestion.type}:`, error)
+        toast.error(`Failed to add ${suggestion.type} node`)
+      }
+    },
+    [selectedNode, platform, nodes, edges, handleUpdateFlow, clearSuggestions, setNodeToFocus]
   )
 
   return {

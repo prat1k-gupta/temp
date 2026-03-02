@@ -102,14 +102,12 @@ export interface ShortenTextResponse {
  * Request to suggest next nodes
  */
 export interface SuggestNodesRequest {
-  currentNodeId: string
   currentNodeType: string
-  flowContext: {
-    nodes: Node[]
-    edges: Edge[]
-    platform: Platform
-  }
-  limit?: number
+  platform: Platform
+  flowContext?: string
+  existingNodes?: Array<{ id: string; type: string; label?: string }>
+  edges?: Array<{ source: string; target: string; sourceHandle?: string }>
+  maxSuggestions?: number
 }
 
 /**
@@ -118,9 +116,16 @@ export interface SuggestNodesRequest {
 export interface SuggestedNode {
   type: string
   label: string
+  reason: string
   description: string
-  confidence: number
-  reasoning: string
+  previewContent?: string
+  generatedContent?: {
+    question?: string
+    buttons?: Array<{ text: string; label?: string }>
+    options?: Array<{ text: string }>
+    text?: string
+    [key: string]: any
+  }
 }
 
 /**

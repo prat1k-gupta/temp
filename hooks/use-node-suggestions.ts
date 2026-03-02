@@ -5,7 +5,8 @@ interface UseNodeSuggestionsOptions {
   currentNodeType: string
   platform: Platform
   flowContext?: string
-  existingNodes?: Array<{ type: string; label?: string }>
+  existingNodes?: Array<{ id: string; type: string; label?: string }>
+  edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
 }
 
@@ -29,6 +30,7 @@ export function useNodeSuggestions() {
           platform: options.platform,
           flowContext: options.flowContext,
           existingNodes: options.existingNodes,
+          edges: options.edges,
           maxSuggestions: options.maxSuggestions || 2,
         }),
       })

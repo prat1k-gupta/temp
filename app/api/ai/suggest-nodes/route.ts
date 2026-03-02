@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       platform,
       flowContext,
       existingNodes,
+      edges,
       maxSuggestions = 2,
     } = body
 
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
       platform: platform as Platform,
       flowContext,
       existingNodes,
+      edges,
       maxSuggestions,
     })
 

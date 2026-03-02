@@ -81,3 +81,42 @@ export const supportsOptions = (nodeType: string): boolean => {
   const baseType = nodeType.replace(/^(whatsapp|instagram)/, "").toLowerCase()
   return baseType.includes("list")
 }
+
+/**
+ * Platforms that support auto-converting quickReply → interactiveList.
+ * Web has no interactiveList — buttons get trimmed to 10 instead.
+ */
+const LIST_CONVERSION_PLATFORMS: Platform[] = ["whatsapp", "instagram"]
+
+/**
+ * Check if a quickReply should auto-convert to interactiveList.
+ * Returns conversion metadata when buttonCount exceeds the platform's button limit
+ * and the platform supports interactiveList.
+ */
+export function shouldConvertToList(
+  buttonCount: number,
+  platform: Platform
+): { shouldConvert: boolean; newNodeType: string; newLabel: string } {
+  const limit = BUTTON_LIMITS[platform]
+
+  if (buttonCount <= limit || !LIST_CONVERSION_PLATFORMS.includes(platform)) {
+    return { shouldConvert: false, newNodeType: "", newLabel: "" }
+  }
+
+  return {
+    shouldConvert: true,
+    newNodeType: getPlatformSpecificNodeType("interactiveList", platform),
+    newLabel: getPlatformSpecificLabel("interactiveList", platform),
+  }
+}
+
+/**
+ * Convert ButtonData[] → OptionData[].
+ * Preserves button IDs so existing edges (sourceHandle) stay connected.
+ */
+export function convertButtonsToOptions(buttons: ButtonData[]): OptionData[] {
+  return buttons.map((btn, i) => ({
+    text: btn.text || btn.label || `Option ${i + 1}`,
+    id: btn.id || `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  }))
+}

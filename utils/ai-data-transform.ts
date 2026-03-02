@@ -2,6 +2,7 @@ import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { getBaseNodeType } from "./platform-helpers"
 import { createNode } from "./node-factory"
+import { createButtonData } from "./node-operations"
 
 /**
  * Transform AI node data - handles quickReply options→buttons conversion,
@@ -15,11 +16,7 @@ export function transformAiNodeData(aiData: Record<string, any>, baseType: strin
     if (Array.isArray(transformed.options) && !transformed.buttons) {
       transformed.buttons = transformed.options.map((opt: string | any, index: number) => {
         const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-        return {
-          id: `btn-${Date.now()}-${index}`,
-          text,
-          label: text,
-        }
+        return createButtonData(text, index)
       })
       delete transformed.options
     }
@@ -27,25 +24,22 @@ export function transformAiNodeData(aiData: Record<string, any>, baseType: strin
     if (Array.isArray(transformed.buttons) && transformed.buttons.length > 0) {
       transformed.buttons = transformed.buttons.map((btn: string | any, index: number) => {
         if (typeof btn === "string") {
-          return {
-            id: `btn-${Date.now()}-${index}`,
-            text: btn,
-            label: btn,
-          }
+          return createButtonData(btn, index)
         }
         return {
-          id: btn.id || `btn-${Date.now()}-${index}`,
+          ...createButtonData(btn.text || btn.label || "", index),
+          id: btn.id || createButtonData("", index).id,
           text: btn.text || btn.label || "",
-          label: btn.label || btn.text || "",
         }
       })
     }
   } else if (baseType === "list") {
-    // Transform options to proper format for list nodes
+    // Transform options to proper format for list nodes, preserving stable IDs
     if (Array.isArray(transformed.options)) {
-      transformed.options = transformed.options.map((opt: string | any) => ({
-        text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
-      }))
+      transformed.options = transformed.options.map((opt: string | any) => {
+        if (typeof opt === "string") return { text: opt }
+        return { ...opt, text: opt.text || opt.label || "" }
+      })
     }
   }
 
@@ -53,24 +47,13 @@ export function transformAiNodeData(aiData: Record<string, any>, baseType: strin
 }
 
 /**
- * Normalize a generic AI node type to a platform-specific type
+ * Normalize a generic AI node type to a base type.
+ * Always returns base types — the factory (createNode) handles platform mapping internally.
  */
-export function normalizeAiNodeType(type: string, platform: Platform): string {
+export function normalizeAiNodeType(type: string, _platform: Platform): string {
   const baseType = getBaseNodeType(type)
-
-  if (baseType === "list") {
-    return "interactiveList"
-  } else if (baseType === "question" && !type.includes(platform)) {
-    return platform === "whatsapp" ? "whatsappQuestion"
-      : platform === "instagram" ? "instagramQuestion"
-        : "webQuestion"
-  } else if (baseType === "quickReply" && !type.includes(platform)) {
-    return platform === "whatsapp" ? "whatsappQuickReply"
-      : platform === "instagram" ? "instagramQuickReply"
-        : "webQuickReply"
-  }
-
-  return type
+  if (baseType === "list") return "interactiveList"
+  return baseType
 }
 
 /**
@@ -115,16 +98,8 @@ export function processAiNodes(
         position: nodePosition,
       })
     } catch (error) {
-      console.error(`[processAiNodes] Error creating node ${aiNode.type}:`, error)
-      processedNodes.push({
-        id: aiNode.id,
-        type: aiNode.type,
-        position: aiNode.position || { x: 250, y: 200 },
-        data: {
-          platform: (aiNode.data?.platform as Platform) || platform,
-          ...(aiNode.data || {}),
-        },
-      } as Node)
+      console.warn(`[processAiNodes] Skipping unrecognized node type "${aiNode.type}":`, error)
+      continue
     }
   }
 
@@ -140,6 +115,11 @@ export function processAiEdges(aiEdges: any[], validNodeIds: Set<string>): Edge[
   for (const aiEdge of aiEdges || []) {
     if (!aiEdge.source || !aiEdge.target) {
       console.warn(`[processAiEdges] Skipping edge ${aiEdge.id}: missing source or target`)
+      continue
+    }
+
+    if (aiEdge.source === aiEdge.target) {
+      console.warn(`[processAiEdges] Skipping self-loop edge: ${aiEdge.source} → ${aiEdge.target}`)
       continue
     }
 

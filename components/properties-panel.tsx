@@ -48,6 +48,7 @@ import { useSortable } from "@dnd-kit/sortable"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
 import { createButtonData, createOptionData } from "@/utils"
+import { BUTTON_LIMITS } from "@/constants/platform-limits"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -64,6 +65,8 @@ interface PropertiesPanelProps {
   } | null
   platform: "web" | "whatsapp" | "instagram"
   onNodeUpdate: (nodeId: string, data: any) => void
+  onAddButton?: (nodeId: string) => void
+  onRemoveButton?: (nodeId: string, buttonIndex: number) => void
   allNodes?: Node[] // All nodes in the flow for variable mapping
 }
 
@@ -278,10 +281,12 @@ function SortableOptionItem({
   )
 }
 
-export function PropertiesPanel({ 
-  selectedNode, 
-  platform, 
+export function PropertiesPanel({
+  selectedNode,
+  platform,
   onNodeUpdate,
+  onAddButton,
+  onRemoveButton,
   allNodes = []
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
@@ -356,17 +361,25 @@ export function PropertiesPanel({
 
   const removeButton = (index: number) => {
     console.log("[v0] Removing button", index)
-    setLocalButtons((prev) => prev.filter((_, i) => i !== index))
-    const buttons = [...stripIds(localButtons)].filter((_, i) => i !== index)
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+    if (onRemoveButton && selectedNode) {
+      onRemoveButton(selectedNode.id, index)
+    } else {
+      setLocalButtons((prev) => prev.filter((_, i) => i !== index))
+      const buttons = [...stripIds(localButtons)].filter((_, i) => i !== index)
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+    }
   }
 
   const addButton = () => {
     console.log("[v0] Adding new button")
-    const next = createButtonData(`Button ${stripIds(localButtons).length + 1}`, stripIds(localButtons).length)
-    setLocalButtons((prev) => [...prev, next])
-    const buttons = [...stripIds(localButtons), next]
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+    if (onAddButton && selectedNode) {
+      onAddButton(selectedNode.id)
+    } else {
+      const next = createButtonData(`Button ${stripIds(localButtons).length + 1}`, stripIds(localButtons).length)
+      setLocalButtons((prev) => [...prev, next])
+      const buttons = [...stripIds(localButtons), next]
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
+    }
   }
 
   const onButtonsDragOver = (event: any) => {
@@ -407,17 +420,25 @@ export function PropertiesPanel({
 
   const removeOption = (index: number) => {
     console.log("[v0] Removing option", index)
-    setLocalOptions((prev) => prev.filter((_, i) => i !== index))
-    const options = [...stripIds(localOptions)].filter((_, i) => i !== index)
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+    if (onRemoveButton && selectedNode) {
+      onRemoveButton(selectedNode.id, index)
+    } else {
+      setLocalOptions((prev) => prev.filter((_, i) => i !== index))
+      const options = [...stripIds(localOptions)].filter((_, i) => i !== index)
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+    }
   }
 
   const addOption = () => {
     console.log("[v0] Adding new option")
-    const next = createOptionData(`Option ${stripIds(localOptions).length + 1}`, stripIds(localOptions).length)
-    setLocalOptions((prev) => [...prev, next])
-    const options = [...stripIds(localOptions), next]
-    onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+    if (onAddButton && selectedNode) {
+      onAddButton(selectedNode.id)
+    } else {
+      const next = createOptionData(`Option ${stripIds(localOptions).length + 1}`, stripIds(localOptions).length)
+      setLocalOptions((prev) => [...prev, next])
+      const options = [...stripIds(localOptions), next]
+      onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })
+    }
   }
 
   const onOptionsDragOver = (event: any) => {
@@ -759,7 +780,7 @@ export function PropertiesPanel({
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <Label className="text-sm font-medium">
-                        Buttons (Max {(selectedNode.type === "quickReply" || selectedNode.type === "webQuickReply") ? "3" : "3"})
+                        Buttons (Max {BUTTON_LIMITS[platform]})
                       </Label>
                       <Button size="sm" variant="outline" onClick={addButton} className="h-7 px-2 bg-transparent">
                         <Plus className="w-3 h-3 mr-1" />

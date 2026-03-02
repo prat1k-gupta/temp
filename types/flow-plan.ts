@@ -138,7 +138,7 @@ export interface NewEdge {
 
 export interface EditFlowPlan {
   message: string
-  chains: EditChain[]
+  chains?: EditChain[]
   nodeUpdates?: NodeUpdate[]
   addEdges?: NewEdge[]
   removeNodeIds?: string[]
@@ -175,7 +175,7 @@ export const newEdgeSchema = z.object({
 
 export const editFlowPlanSchema = z.object({
   message: z.string(),
-  chains: z.array(editChainSchema),
+  chains: z.array(editChainSchema).default([]),
   nodeUpdates: z.array(nodeUpdateSchema).optional(),
   addEdges: z.array(newEdgeSchema).optional(),
   removeNodeIds: z.array(z.string()).optional(),

@@ -25,6 +25,15 @@ export const getPlatformSpecificContent = (nodeType: string, platform: Platform)
 }
 
 /**
+ * Check whether a node type is a multi-output type (has buttons/options with per-handle edges).
+ * Works with both base types ("quickReply") and platform-specific types ("whatsappQuickReply").
+ */
+export function isMultiOutputType(nodeType: string): boolean {
+  const base = getBaseNodeType(nodeType)
+  return base === "quickReply" || base === "list"
+}
+
+/**
  * Get the reverse mapping from platform-specific type to base type.
  * Uses string matching to cover all node types including platform-specific ones.
  */

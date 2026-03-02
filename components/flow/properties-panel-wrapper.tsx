@@ -15,6 +15,8 @@ interface PropertiesPanelWrapperProps {
   clipboard: { nodes: Node[]; edges: Edge[] } | null
   onClose: () => void
   onNodeUpdate: (nodeId: string, updates: any, shouldFocus?: boolean) => void
+  onAddButton?: (nodeId: string) => void
+  onRemoveButton?: (nodeId: string, buttonIndex: number) => void
   copyNodes: () => void
   pasteNodes: (cursorPosition?: { x: number; y: number }) => void
   selectAllNodes: () => void
@@ -29,6 +31,8 @@ export function PropertiesPanelWrapper({
   clipboard,
   onClose,
   onNodeUpdate,
+  onAddButton,
+  onRemoveButton,
   copyNodes,
   pasteNodes,
   selectAllNodes,
@@ -52,6 +56,8 @@ export function PropertiesPanelWrapper({
               selectedNode={selectedNode}
               platform={platform}
               onNodeUpdate={onNodeUpdate}
+              onAddButton={onAddButton}
+              onRemoveButton={onRemoveButton}
               allNodes={nodes}
             />
           </div>

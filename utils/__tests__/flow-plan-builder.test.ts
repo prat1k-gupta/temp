@@ -393,7 +393,9 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
     }
 
     const { nodes, edges } = buildFlowFromPlan(plan, "whatsapp")
-    const quickReplyId = "plan-quickReply-1"
+    const quickReplyNode = nodes.find((n) => n.id.includes("quickReply"))
+    expect(quickReplyNode).toBeDefined()
+    const quickReplyId = quickReplyNode!.id
     const questionNode = nodes.find((n) => n.id.includes("question"))
     expect(questionNode).toBeDefined()
 
@@ -467,8 +469,9 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
     }
 
     const { nodes, edges } = buildFlowFromPlan(plan, "web")
-    const quickReplyId = "plan-quickReply-1"
-    const qrNode = nodes.find((n) => n.id === quickReplyId)
+    const qrNode = nodes.find((n) => n.id.includes("quickReply"))
+    expect(qrNode).toBeDefined()
+    const quickReplyId = qrNode!.id
     const buttons = qrNode?.data?.buttons as ButtonData[]
 
     // Only one edge from quickReply's first button (stable ID)
@@ -759,5 +762,290 @@ describe("buildEditFlowFromPlan", () => {
     const attachEdge = result.newEdges.find((e) => e.source === "qr-1")
     expect(attachEdge).toBeDefined()
     expect(attachEdge!.sourceHandle).toBe("btn-bbb")
+  })
+})
+
+// ─── warnings collection ────────────────────────────
+
+describe("buildFlowFromPlan — warnings", () => {
+  it("returns warnings for invalid platform node types", () => {
+    const plan = linearPlan(["interactiveList"])
+    const { nodes, warnings } = buildFlowFromPlan(plan, "web")
+    expect(nodes).toHaveLength(0)
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toContain("interactiveList")
+    expect(warnings[0]).toContain("web")
+  })
+
+  it("returns empty warnings for valid plans", () => {
+    const plan = linearPlan(["name", "email"])
+    const { warnings } = buildFlowFromPlan(plan, "web")
+    expect(warnings).toHaveLength(0)
+  })
+})
+
+describe("buildEditFlowFromPlan — warnings", () => {
+  it("warns when attachTo node is not found", () => {
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      chains: [{
+        attachTo: "nonexistent-node",
+        steps: [{ step: "node", nodeType: "name" }],
+      }],
+    }
+    const { warnings } = buildEditFlowFromPlan(editPlan, "web", [])
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toContain("nonexistent-node")
+  })
+
+  it("warns when nodeUpdate target is not found", () => {
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      chains: [],
+      nodeUpdates: [{ nodeId: "missing-node", content: { question: "test?" } }],
+    }
+    const { warnings } = buildEditFlowFromPlan(editPlan, "web", [])
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toContain("missing-node")
+  })
+})
+
+// ─── randomized node IDs ────────────────────────────
+
+describe("buildFlowFromPlan — randomized IDs", () => {
+  it("generates node IDs with plan- prefix and random suffix", () => {
+    const plan = linearPlan(["name"])
+    const { nodes } = buildFlowFromPlan(plan, "web")
+    expect(nodes[0].id).toMatch(/^plan-name-\d+-[a-z0-9]{4}$/)
+  })
+
+  it("generates unique IDs across duplicate runs", () => {
+    const plan = linearPlan(["name"])
+    const run1 = buildFlowFromPlan(plan, "web")
+    const run2 = buildFlowFromPlan(plan, "web")
+    expect(run1.nodes[0].id).not.toBe(run2.nodes[0].id)
+  })
+})
+
+// ─── quickReply → interactiveList auto-conversion ───
+
+describe("buildFlowFromPlan — quickReply auto-conversion", () => {
+  it("auto-converts quickReply to interactiveList when buttons exceed whatsapp limit (3)", () => {
+    const plan: FlowPlan = {
+      message: "test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "quickReply",
+          content: {
+            question: "How often do you eat fruit?",
+            buttons: ["Daily", "Weekly", "Monthly", "Rarely", "Never"],
+          },
+        },
+      ],
+    }
+
+    const { nodes, warnings } = buildFlowFromPlan(plan, "whatsapp")
+
+    expect(nodes).toHaveLength(1)
+    // Should be converted to whatsappInteractiveList
+    expect(nodes[0].type).toBe("whatsappInteractiveList")
+    // Should have options instead of buttons
+    const options = nodes[0].data.options as OptionData[]
+    expect(options).toHaveLength(5)
+    expect(options[0].text).toBe("Daily")
+    expect(options[4].text).toBe("Never")
+    // Buttons should be removed
+    expect(nodes[0].data.buttons).toBeUndefined()
+    // Should have a listTitle
+    expect(nodes[0].data.listTitle).toBeDefined()
+    // Should preserve the question
+    expect(nodes[0].data.question).toBe("How often do you eat fruit?")
+    // Should warn about conversion
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toContain("auto-converted")
+  })
+
+  it("does NOT convert quickReply on web (limit is 10)", () => {
+    const plan: FlowPlan = {
+      message: "test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "quickReply",
+          content: {
+            question: "Pick one",
+            buttons: ["A", "B", "C", "D", "E"],
+          },
+        },
+      ],
+    }
+
+    const { nodes, warnings } = buildFlowFromPlan(plan, "web")
+
+    expect(nodes).toHaveLength(1)
+    // Should stay as quickReply (web limit is 10, 5 buttons is fine)
+    expect(nodes[0].type).toBe("quickReply")
+    const buttons = nodes[0].data.buttons as ButtonData[]
+    expect(buttons).toHaveLength(5)
+    expect(warnings).toHaveLength(0)
+  })
+
+  it("trims buttons on web when exceeding limit (10)", () => {
+    const plan: FlowPlan = {
+      message: "test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "quickReply",
+          content: {
+            question: "Pick one",
+            buttons: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+          },
+        },
+      ],
+    }
+
+    const { nodes, warnings } = buildFlowFromPlan(plan, "web")
+
+    expect(nodes).toHaveLength(1)
+    // Web doesn't have interactiveList — should trim to 10
+    expect(nodes[0].type).toBe("quickReply")
+    const buttons = nodes[0].data.buttons as ButtonData[]
+    expect(buttons).toHaveLength(10)
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings[0]).toContain("trimmed")
+  })
+
+  it("preserves 3 buttons on whatsapp without conversion", () => {
+    const plan: FlowPlan = {
+      message: "test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "quickReply",
+          content: {
+            question: "Yes or no?",
+            buttons: ["Yes", "No", "Maybe"],
+          },
+        },
+      ],
+    }
+
+    const { nodes, warnings } = buildFlowFromPlan(plan, "whatsapp")
+
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].type).toBe("whatsappQuickReply")
+    const buttons = nodes[0].data.buttons as ButtonData[]
+    expect(buttons).toHaveLength(3)
+    expect(warnings).toHaveLength(0)
+  })
+
+  it("converted interactiveList still works as multi-output with options for branching", () => {
+    const plan: FlowPlan = {
+      message: "test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "quickReply",
+          content: {
+            question: "Pick a fruit",
+            buttons: ["Apple", "Banana", "Cherry", "Date"],
+          },
+        },
+        // Direct convergence — all options → same node
+        { step: "node", nodeType: "question", content: { question: "Why do you like it?" } },
+      ],
+    }
+
+    const { nodes, edges } = buildFlowFromPlan(plan, "whatsapp")
+
+    // Should auto-convert to interactiveList
+    const listNode = nodes.find((n) => n.type === "whatsappInteractiveList")
+    expect(listNode).toBeDefined()
+    const options = listNode!.data.options as OptionData[]
+    expect(options).toHaveLength(4)
+
+    // All 4 options should have edges → question node (direct convergence)
+    const questionNode = nodes.find((n) => n.id.includes("question"))
+    expect(questionNode).toBeDefined()
+    const convergenceEdges = edges.filter(
+      (e) => e.source === listNode!.id && e.target === questionNode!.id
+    )
+    expect(convergenceEdges).toHaveLength(4)
+    // Each edge should use a stable handle ID as sourceHandle (btn- preserved from conversion, or opt-)
+    convergenceEdges.forEach((e) => {
+      expect(e.sourceHandle).toMatch(/^(btn|opt)-/)
+    })
+  })
+
+  it("auto-converts in edit mode chains too", () => {
+    const existingNodes = [
+      {
+        id: "q-1",
+        type: "whatsappQuestion",
+        position: { x: 100, y: 100 },
+        data: { platform: "whatsapp", question: "test" },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      chains: [
+        {
+          attachTo: "q-1",
+          steps: [
+            {
+              step: "node",
+              nodeType: "quickReply",
+              content: {
+                question: "Choose frequency",
+                buttons: ["Daily", "Weekly", "Monthly", "Rarely"],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const { newNodes, warnings } = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
+
+    expect(newNodes).toHaveLength(1)
+    expect(newNodes[0].type).toBe("whatsappInteractiveList")
+    const options = newNodes[0].data.options as OptionData[]
+    expect(options).toHaveLength(4)
+    expect(warnings.some((w) => w.includes("auto-converted"))).toBe(true)
+  })
+})
+
+// ─── addEdges validation ────────────────────────────
+
+describe("buildEditFlowFromPlan — addEdges validation", () => {
+  it("skips self-loop edges in addEdges", () => {
+    const existingNodes = [
+      { id: "n1", type: "name", position: { x: 0, y: 0 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      chains: [],
+      addEdges: [{ source: "n1", target: "n1" }],
+    }
+    const { newEdges } = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+    expect(newEdges).toHaveLength(0)
+  })
+
+  it("skips edges with non-existent source or target", () => {
+    const existingNodes = [
+      { id: "n1", type: "name", position: { x: 0, y: 0 }, data: { platform: "web" } },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "test",
+      chains: [],
+      addEdges: [{ source: "n1", target: "nonexistent" }],
+    }
+    const { newEdges } = buildEditFlowFromPlan(editPlan, "web", existingNodes)
+    expect(newEdges).toHaveLength(0)
   })
 })

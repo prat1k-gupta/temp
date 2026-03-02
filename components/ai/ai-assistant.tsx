@@ -15,6 +15,8 @@ interface Message {
   flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
   updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }
   isAutoApplied?: boolean
+  warnings?: string[]
+  debugData?: Record<string, unknown>
 }
 
 interface AIAssistantProps {
@@ -22,8 +24,8 @@ interface AIAssistantProps {
   flowContext?: string
   existingFlow?: { nodes: any[]; edges: any[] }
   selectedNode?: any
-  onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }) => void
-  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }) => void
+  onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
+  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
 }
 
 export function AIAssistant({
@@ -223,6 +225,8 @@ export function AIAssistant({
 
       const isAutoApply = data.action === "create" && data.flowData && onApplyFlow
 
+      const meta = { warnings: data.warnings, debugData: data.debugData, userPrompt: userMessage.content }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -231,6 +235,8 @@ export function AIAssistant({
         flowData: data.flowData,
         updates: data.updates,
         isAutoApplied: !!isAutoApply,
+        warnings: data.warnings,
+        debugData: data.debugData,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
@@ -238,7 +244,7 @@ export function AIAssistant({
       if (isAutoApply) {
         // Auto-apply: collapse chat and apply flow immediately
         setIsFocused(false)
-        onApplyFlow(data.flowData)
+        onApplyFlow(data.flowData, meta)
       } else if (data.flowData || data.updates) {
         // Edit/suggest mode: keep chat open, show buttons
         setIsFocused(true)
@@ -391,11 +397,16 @@ export function AIAssistant({
                   )}
 
                   {/* Apply buttons */}
-                  {message.role === "assistant" && (
+                  {message.role === "assistant" && (() => {
+                    // Find the user message that triggered this assistant response (look backwards)
+                    const msgIdx = messages.indexOf(message)
+                    const precedingUserMsg = messages.slice(0, msgIdx).reverse().find(m => m.role === "user")
+                    const buttonMeta = { warnings: message.warnings, debugData: message.debugData, userPrompt: precedingUserMsg?.content }
+                    return (
                     <div className="mt-3 space-y-2">
                       {message.flowData && onApplyFlow && !message.isAutoApplied && (
                         <Button
-                          onClick={() => onApplyFlow(message.flowData!)}
+                          onClick={() => onApplyFlow(message.flowData!, buttonMeta)}
                           className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
                           size="sm"
                         >
@@ -404,7 +415,7 @@ export function AIAssistant({
                       )}
                       {message.updates && onUpdateFlow && (
                         <Button
-                          onClick={() => onUpdateFlow(message.updates!)}
+                          onClick={() => onUpdateFlow(message.updates!, buttonMeta)}
                           className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
                           size="sm"
                         >
@@ -412,7 +423,8 @@ export function AIAssistant({
                         </Button>
                       )}
                     </div>
-                  )}
+                    )
+                  })()}
 
                   <p className="text-xs opacity-70 mt-1">
                     {message.timestamp.toLocaleTimeString([], {

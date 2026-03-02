@@ -13,10 +13,11 @@ import type { Platform, ButtonData, OptionData } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
 import { createNode } from "./node-factory"
-import { createButtonData, createOptionData } from "./node-operations"
+import { createButtonData, createOptionData, shouldConvertToList, convertButtonsToOptions } from "./node-operations"
 import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
+import { isMultiOutputType, getBaseNodeType } from "./platform-helpers"
 
 // ──────────────────────────────────────────
 // Public API
@@ -26,6 +27,7 @@ export interface BuildFlowResult {
   nodes: Node[]
   edges: Edge[]
   nodeOrder: string[]
+  warnings: string[]
 }
 
 export function buildFlowFromPlan(
@@ -35,6 +37,7 @@ export function buildFlowFromPlan(
   const nodes: Node[] = []
   const edges: Edge[] = []
   const nodeOrder: string[] = []
+  const warnings: string[] = []
   const layout = new FlowLayoutManager()
 
   let previousNodeId: string = "1" // start node
@@ -50,18 +53,20 @@ export function buildFlowFromPlan(
     lastMultiOutputNodeId,
     branchEndpoints: [],
     maxBranchX: 0,
+    warnings,
   })
 
-  return { nodes, edges: deduplicateEdges(edges), nodeOrder }
+  return { nodes, edges: deduplicateEdges(edges), nodeOrder, warnings }
 }
 
 export interface BuildEditFlowResult {
   newNodes: Node[]
   newEdges: Edge[]
   nodeOrder: string[]
-  nodeUpdates: Array<{ nodeId: string; data: Record<string, unknown> }>
+  nodeUpdates: Array<{ nodeId: string; data: Record<string, unknown>; newType?: string }>
   removeNodeIds: string[]
   removeEdges: EdgeReference[]
+  warnings: string[]
 }
 
 /**
@@ -80,12 +85,16 @@ export function buildEditFlowFromPlan(
   const newEdges: Edge[] = []
   const nodeOrder: string[] = []
   const nodeUpdates: BuildEditFlowResult["nodeUpdates"] = []
+  const warnings: string[] = []
 
   // Process nodeUpdates — convert content to node data, preserving existing button/option IDs
   if (plan.nodeUpdates) {
     for (const update of plan.nodeUpdates) {
       const existingNode = existingNodes.find((n) => n.id === update.nodeId)
-      if (!existingNode) continue
+      if (!existingNode) {
+        warnings.push(`nodeUpdate target "${update.nodeId}" not found — skipped`)
+        continue
+      }
 
       const baseType = existingNode.type || ""
       const data = contentToNodeData(update.content, baseType)
@@ -111,15 +120,37 @@ export function buildEditFlowFromPlan(
         }))
       }
 
+      // Auto-convert quickReply → interactiveList if nodeUpdate pushes buttons over the limit
+      const baseNodeType = getBaseNodeType(baseType)
+      if (baseNodeType === "quickReply" && data.buttons) {
+        const buttons = data.buttons as ButtonData[]
+        const conversion = shouldConvertToList(buttons.length, platform)
+        if (conversion.shouldConvert) {
+          const options = convertButtonsToOptions(buttons)
+          const { buttons: _removed, ...restData } = data
+          const convertedData: Record<string, unknown> = {
+            ...restData,
+            options,
+            listTitle: (restData as any).listTitle || "Select an option",
+            label: conversion.newLabel,
+          }
+          nodeUpdates.push({ nodeId: update.nodeId, data: convertedData, newType: conversion.newNodeType })
+          warnings.push(`nodeUpdate "${update.nodeId}": quickReply auto-converted to interactiveList (${buttons.length} buttons exceeds ${platform} limit)`)
+          continue
+        }
+      }
+
       nodeUpdates.push({ nodeId: update.nodeId, data })
     }
   }
 
   // Process chains — each chain attaches to an existing node
-  for (const chain of plan.chains) {
+  for (const chain of plan.chains || []) {
     const anchorNode = existingNodes.find((n) => n.id === chain.attachTo)
     if (!anchorNode) {
-      console.warn(`[buildEditFlowFromPlan] attachTo node "${chain.attachTo}" not found, skipping chain`)
+      const msg = `Chain attachTo node "${chain.attachTo}" not found — skipped`
+      console.warn(`[buildEditFlowFromPlan] ${msg}`)
+      warnings.push(msg)
       continue
     }
 
@@ -138,6 +169,7 @@ export function buildEditFlowFromPlan(
       lastMultiOutputNodeId: null,
       branchEndpoints: [],
       maxBranchX: 0,
+      warnings,
     }
 
     // If attaching via a button handle, the first step gets that sourceHandle
@@ -147,7 +179,7 @@ export function buildEditFlowFromPlan(
         if (!isNodeTypeValidForPlatform(firstStep.nodeType, platform)) continue
 
         const position = layout.getNextSequentialPosition()
-        const nodeId = `edit-${firstStep.nodeType}-${newNodes.length + 1}`
+        const nodeId = `edit-${firstStep.nodeType}-${newNodes.length + 1}-${rand4()}`
 
         let node: Node
         try {
@@ -159,6 +191,9 @@ export function buildEditFlowFromPlan(
         if (firstStep.content) {
           node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
         }
+
+        // Auto-convert quickReply → interactiveList if buttons exceed platform limit
+        const effectiveFirstType = maybeAutoConvertToList(node, firstStep.nodeType, platform, warnings)
 
         newNodes.push(node)
         nodeOrder.push(nodeId)
@@ -189,7 +224,7 @@ export function buildEditFlowFromPlan(
         } as Edge)
 
         ctx.previousNodeId = nodeId
-        if (isMultiOutputNode(firstStep.nodeType)) {
+        if (isMultiOutputType(effectiveFirstType)) {
           ctx.lastMultiOutputNodeId = nodeId
         }
 
@@ -202,16 +237,14 @@ export function buildEditFlowFromPlan(
       // No attachHandle — check if anchor is a multi-output node (quickReply/list)
       // If so, use "next-step" handle to avoid creating ambiguous handleless edges
       const anchorType = anchorNode.type || ""
-      const anchorIsMultiOutput =
-        anchorType.includes("QuickReply") || anchorType.includes("quickReply") ||
-        anchorType.includes("List") || anchorType.includes("interactiveList")
+      const anchorIsMultiOutput = isMultiOutputType(anchorType)
 
       if (anchorIsMultiOutput && chain.steps.length > 0 && chain.steps[0].step === "node") {
         const firstStep = chain.steps[0]
         if (!isNodeTypeValidForPlatform(firstStep.nodeType, platform)) continue
 
         const position = layout.getNextSequentialPosition()
-        const nodeId = `edit-${firstStep.nodeType}-${newNodes.length + 1}`
+        const nodeId = `edit-${firstStep.nodeType}-${newNodes.length + 1}-${rand4()}`
 
         let node: Node
         try {
@@ -223,6 +256,9 @@ export function buildEditFlowFromPlan(
         if (firstStep.content) {
           node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
         }
+
+        // Auto-convert quickReply → interactiveList if buttons exceed platform limit
+        const effectiveAnchorType = maybeAutoConvertToList(node, firstStep.nodeType, platform, warnings)
 
         newNodes.push(node)
         nodeOrder.push(nodeId)
@@ -239,7 +275,7 @@ export function buildEditFlowFromPlan(
         } as Edge)
 
         ctx.previousNodeId = nodeId
-        if (isMultiOutputNode(firstStep.nodeType)) {
+        if (isMultiOutputType(effectiveAnchorType)) {
           ctx.lastMultiOutputNodeId = nodeId
         }
 
@@ -256,10 +292,17 @@ export function buildEditFlowFromPlan(
     if (chain.connectTo) {
       const lastNodeId = ctx.previousNodeId
       // Don't connect back to the anchor itself
-      if (lastNodeId !== chain.attachTo) {
+      if (lastNodeId !== chain.attachTo && lastNodeId !== chain.connectTo) {
+        // If the last node in the chain is a multi-output node, use "next-step" handle
+        // to avoid ambiguous handleless edges (which cause "two edges from one button" bugs)
+        const lastNode = newNodes.find(n => n.id === lastNodeId)
+        const lastNodeIsMultiOutput = lastNode?.type ? isMultiOutputType(lastNode.type) : false
+        const connectHandle = lastNodeIsMultiOutput ? "next-step" : undefined
+
         newEdges.push({
-          id: `e-${lastNodeId}-${chain.connectTo}`,
+          id: `e-${lastNodeId}-${chain.connectTo}${connectHandle ? `-${connectHandle}` : ""}`,
           source: lastNodeId,
+          sourceHandle: connectHandle,
           target: chain.connectTo,
           type: "default",
           style: { stroke: "#6366f1", strokeWidth: 2 },
@@ -275,6 +318,18 @@ export function buildEditFlowFromPlan(
     const updatedNodeData = new Map(nodeUpdates.map(u => [u.nodeId, u.data]))
 
     for (const newEdge of plan.addEdges) {
+      // Validate source/target existence and reject self-loops
+      const sourceExists = allNodes.some(n => n.id === newEdge.source)
+      const targetExists = allNodes.some(n => n.id === newEdge.target)
+      if (!sourceExists || !targetExists) {
+        console.warn(`[buildEditFlow] Skipping addEdge: source "${newEdge.source}" or target "${newEdge.target}" not found`)
+        continue
+      }
+      if (newEdge.source === newEdge.target) {
+        console.warn(`[buildEditFlow] Skipping self-loop addEdge: ${newEdge.source} → ${newEdge.target}`)
+        continue
+      }
+
       let sourceHandle = newEdge.sourceHandle
 
       // Resolve buttonIndex → actual button ID
@@ -328,6 +383,7 @@ export function buildEditFlowFromPlan(
     nodeUpdates,
     removeNodeIds: plan.removeNodeIds || [],
     removeEdges: plan.removeEdges || [],
+    warnings,
   }
 }
 
@@ -345,6 +401,7 @@ interface WalkContext {
   lastMultiOutputNodeId: string | null
   branchEndpoints: string[]  // last node ID from each completed branch
   maxBranchX: number          // rightmost X across all branches (for positioning)
+  warnings: string[]
 }
 
 function walkSteps(steps: FlowStep[], ctx: WalkContext): void {
@@ -366,23 +423,28 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
 
   // Validate type for platform
   if (!isNodeTypeValidForPlatform(step.nodeType, platform)) {
-    return // skip invalid nodes silently
+    ctx.warnings.push(`Node type "${step.nodeType}" not valid for ${platform} — skipped`)
+    return
   }
 
   let position = ctx.layout.getNextSequentialPosition()
-  const nodeId = `plan-${step.nodeType}-${ctx.nodes.length + 1}`
+  const nodeId = `plan-${step.nodeType}-${ctx.nodes.length + 1}-${rand4()}`
 
   let node: Node
   try {
     node = createNode(step.nodeType, platform, position, nodeId)
   } catch {
-    return // unknown type → skip
+    ctx.warnings.push(`Unknown node type "${step.nodeType}" — skipped`)
+    return
   }
 
   // Merge content from the plan
   if (step.content) {
     node.data = { ...node.data, ...contentToNodeData(step.content, step.nodeType) }
   }
+
+  // Auto-convert quickReply → interactiveList if buttons exceed platform limit
+  const effectiveType = maybeAutoConvertToList(node, step.nodeType, ctx.platform, ctx.warnings)
 
   ctx.nodes.push(node)
   ctx.nodeOrder.push(nodeId)
@@ -448,7 +510,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
   ctx.previousNodeId = nodeId
 
   // Track multi-output nodes
-  if (isMultiOutputNode(step.nodeType)) {
+  if (isMultiOutputType(effectiveType)) {
     ctx.lastMultiOutputNodeId = nodeId
   }
 }
@@ -487,6 +549,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     lastMultiOutputNodeId: null,
     branchEndpoints: [],
     maxBranchX: 0,
+    warnings: ctx.warnings,
   }
 
   // Process the first step in the branch with a sourceHandle edge
@@ -498,7 +561,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     if (!isNodeTypeValidForPlatform(firstStep.nodeType, ctx.platform)) return
 
     const position = branchLayout.getNextSequentialPosition()
-    const nodeId = `plan-${firstStep.nodeType}-${ctx.nodes.length + 1}`
+    const nodeId = `plan-${firstStep.nodeType}-${ctx.nodes.length + 1}-${rand4()}`
 
     let node: Node
     try {
@@ -532,7 +595,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
 
     branchCtx.previousNodeId = nodeId
 
-    if (isMultiOutputNode(firstStep.nodeType)) {
+    if (isMultiOutputType(firstStep.nodeType)) {
       branchCtx.lastMultiOutputNodeId = nodeId
     }
   }
@@ -607,11 +670,62 @@ export function contentToNodeData(
   return data
 }
 
+// isMultiOutputType is imported from platform-helpers.ts
+
 /**
- * Node types that can have multiple outputs (buttons / options).
+ * Auto-convert quickReply → interactiveList when buttons exceed platform limit.
+ * WhatsApp/Instagram quickReply supports max 3 buttons; interactiveList supports up to 10.
+ * Mutates the node in place. Returns the effective base nodeType after conversion.
  */
-function isMultiOutputNode(nodeType: string): boolean {
-  return ["quickReply", "interactiveList"].includes(nodeType)
+function maybeAutoConvertToList(
+  node: Node,
+  originalType: string,
+  platform: Platform,
+  warnings: string[]
+): string {
+  if (originalType !== "quickReply") return originalType
+
+  const buttons = (node.data?.buttons as ButtonData[]) || []
+  const limit = BUTTON_LIMITS[platform]
+
+  if (buttons.length <= limit) return originalType
+
+  const conversion = shouldConvertToList(buttons.length, platform)
+
+  if (!conversion.shouldConvert) {
+    // Can't convert (e.g., web doesn't have interactiveList) — trim buttons
+    node.data = { ...node.data, buttons: buttons.slice(0, limit) }
+    warnings.push(`quickReply trimmed from ${buttons.length} to ${limit} buttons (${platform} limit)`)
+    return originalType
+  }
+
+  // Convert: buttons → options, change type to interactiveList
+  const options = convertButtonsToOptions(buttons)
+  try {
+    const listNode = createNode("interactiveList", platform, node.position, node.id)
+    // Preserve content fields (question, label, etc.) but swap buttons → options
+    const { buttons: _removedButtons, ...contentData } = node.data as Record<string, unknown>
+    node.type = listNode.type
+    node.data = {
+      ...listNode.data,
+      ...contentData,
+      options,
+      listTitle: (contentData as any).listTitle || "Select an option",
+    }
+  } catch {
+    // Fallback: trim buttons if createNode fails for interactiveList
+    node.data = { ...node.data, buttons: buttons.slice(0, limit) }
+    warnings.push(`quickReply trimmed from ${buttons.length} to ${limit} buttons (createNode fallback)`)
+    return originalType
+  }
+
+  warnings.push(`quickReply auto-converted to interactiveList: ${buttons.length} buttons exceeds ${platform} limit of ${limit}`)
+  return "interactiveList"
+}
+
+/** Generate a short random suffix for node IDs to prevent collisions on duplicate runs */
+function rand4(): string {
+  return Math.random().toString(36).slice(2, 6)
 }
 
 /**

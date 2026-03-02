@@ -4,6 +4,7 @@ import {
   getPlatformSpecificLabel,
   getPlatformSpecificContent,
   getBaseNodeType,
+  isMultiOutputType,
 } from "../platform-helpers"
 
 describe("getPlatformSpecificNodeType", () => {
@@ -97,5 +98,28 @@ describe("getBaseNodeType", () => {
     expect(getBaseNodeType("shopify")).toBe("shopify")
     expect(getBaseNodeType("name")).toBe("name")
     expect(getBaseNodeType("condition")).toBe("condition")
+  })
+})
+
+describe("isMultiOutputType", () => {
+  it("returns true for base quickReply and list types", () => {
+    expect(isMultiOutputType("quickReply")).toBe(true)
+    expect(isMultiOutputType("interactiveList")).toBe(true)
+  })
+
+  it("returns true for platform-specific quickReply and list types", () => {
+    expect(isMultiOutputType("whatsappQuickReply")).toBe(true)
+    expect(isMultiOutputType("instagramQuickReply")).toBe(true)
+    expect(isMultiOutputType("webQuickReply")).toBe(true)
+    expect(isMultiOutputType("whatsappInteractiveList")).toBe(true)
+  })
+
+  it("returns false for non-multi-output types", () => {
+    expect(isMultiOutputType("question")).toBe(false)
+    expect(isMultiOutputType("whatsappQuestion")).toBe(false)
+    expect(isMultiOutputType("name")).toBe(false)
+    expect(isMultiOutputType("shopify")).toBe(false)
+    expect(isMultiOutputType("homeDelivery")).toBe(false)
+    expect(isMultiOutputType("whatsappMessage")).toBe(false)
   })
 })

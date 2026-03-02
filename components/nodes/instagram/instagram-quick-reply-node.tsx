@@ -13,6 +13,7 @@ import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { getNodeLimits } from "@/constants"
 import { useState, useEffect, useRef } from "react"
 import type { Platform, ButtonData } from "@/types"
+import { convertButtonsToOptions } from "@/utils/node-operations"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
@@ -125,17 +126,45 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   }
 
   const handleUpdateButtons = (newButtons: ButtonData[]) => {
-    const formattedButtons = newButtons.slice(0, maxButtons).map(btn => ({
+    const formattedButtons = newButtons.map(btn => ({
       text: btn.label,
       id: btn.id,
       value: btn.value
     }))
 
-    if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+    // If we have more buttons than the Quick Reply limit, trigger conversion to List
+    if (formattedButtons.length > maxButtons) {
+      handleConvertToListWithButtons(formattedButtons)
+    } else {
+      if (data.onNodeUpdate) {
+        data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+      }
     }
   }
 
+  const handleConvertToListWithButtons = (buttons: any[]) => {
+    // Convert buttons to options using shared utility
+    const buttonData = buttons.map((b: any) => ({
+      text: b.text || b.label || "",
+      label: b.label || b.text || "",
+      id: b.id,
+      value: b.value,
+    })) as ButtonData[]
+    const options = convertButtonsToOptions(buttonData)
+
+    // Convert to List node
+    if (data.onConvert) {
+      data.onConvert(data.id, 'interactiveList', {
+        ...data,
+        question: data.question || "",
+        options,
+        buttons: undefined,
+      })
+      toast.success('Upgraded to Interactive List!', {
+        description: `Now you have ${options.length} options (was limited to ${maxButtons} buttons)`
+      })
+    }
+  }
 
   const handleImproveButton = async (index: number) => {
     const button = buttons[index]

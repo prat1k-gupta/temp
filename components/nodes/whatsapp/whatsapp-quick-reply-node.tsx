@@ -13,6 +13,7 @@ import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
+import { convertButtonsToOptions } from "@/utils/node-operations"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
@@ -146,30 +147,25 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
   }
 
   const handleConvertToListWithButtons = (buttons: any[]) => {
-    const questionText = editingQuestionValue || data.question
-
-    if (!questionText?.trim()) {
-      toast.error('Please add a question first')
-      return
-    }
-
-    // Convert buttons to options
-    const options = buttons.map((b: any) => ({
-      id: b.id || `opt-${Date.now()}-${Math.random()}`,
-      text: b.text || b.label,
-      value: b.value || b.text?.toLowerCase().replace(/\s+/g, '_')
-    }))
+    // Convert buttons to options using shared utility
+    const buttonData = buttons.map((b: any) => ({
+      text: b.text || b.label || "",
+      label: b.label || b.text || "",
+      id: b.id,
+      value: b.value,
+    })) as ButtonData[]
+    const options = convertButtonsToOptions(buttonData)
 
     // Convert to List node
     if (data.onConvert) {
       data.onConvert(data.id, 'whatsappInteractiveList', {
         ...data,
-        question: questionText,
+        question: editingQuestionValue || data.question || "",
         options,
-        buttons: undefined // Remove buttons field
+        buttons: undefined,
       })
       toast.success('Upgraded to WhatsApp List!', {
-        description: `Now you have ${options.length} options (was limited to 3 buttons)`
+        description: `Now you have ${options.length} options (was limited to ${maxButtons} buttons)`
       })
     }
   }

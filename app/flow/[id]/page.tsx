@@ -660,6 +660,8 @@ function MagicFlowInner() {
         clipboard={clipboard.clipboard}
         onClose={() => nodeOps.setIsPropertiesPanelOpen(false)}
         onNodeUpdate={nodeOps.updateNodeData}
+        onAddButton={nodeOps.addButtonToNode}
+        onRemoveButton={nodeOps.removeButtonFromNode}
         copyNodes={clipboard.copyNodes}
         pasteNodes={clipboard.pasteNodes}
         selectAllNodes={clipboard.selectAllNodes}

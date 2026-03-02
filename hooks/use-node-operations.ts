@@ -14,6 +14,8 @@ import {
   areButtonsWithinNodeLimits,
   areOptionsWithinNodeLimits,
 } from "@/constants"
+import { BUTTON_LIMITS } from "@/constants/platform-limits"
+import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
 import { changeTracker } from "@/utils/change-tracker"
 import { updateFlow } from "@/utils/flow-storage"
 import type { FlowData } from "@/utils/flow-storage"
@@ -176,27 +178,19 @@ export function useNodeOperations({
           const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
           const nodePlatform = (node.data.platform as Platform) || "web"
 
-          const canAddButton = areButtonsWithinNodeLimits(currentButtons.length + 1, node.type, nodePlatform)
+          const conversion = shouldConvertToList(currentButtons.length + 1, nodePlatform)
 
-          if (!canAddButton.valid) {
-            const newType = getPlatformSpecificNodeType("interactiveList", nodePlatform)
-            const newLabel = getPlatformSpecificLabel("interactiveList", nodePlatform)
-
-            const convertedOptions = currentButtons.map((btn: ButtonData) => ({
-              id: btn.id || `opt-${Date.now()}-${Math.random()}`,
-              text: btn.text || btn.label || "",
-              value: btn.value || btn.text?.toLowerCase().replace(/\s+/g, "_") || "",
-            }))
-
+          if (conversion.shouldConvert) {
+            const convertedOptions = convertButtonsToOptions(currentButtons)
             const newOptions = [...convertedOptions, createOptionData("", currentButtons.length)] as OptionData[]
 
             withEditTracking()
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, label: newLabel, options: newOptions, buttons: undefined },
+              { ...node.data, label: conversion.newLabel, options: newOptions, buttons: undefined },
               node.type,
-              newType
+              conversion.newNodeType
             )
             updateDraftChanges()
 
@@ -205,8 +199,8 @@ export function useNodeOperations({
                 n.id === nodeId
                   ? {
                       ...n,
-                      type: newType,
-                      data: { ...n.data, label: newLabel, options: newOptions, buttons: undefined },
+                      type: conversion.newNodeType,
+                      data: { ...n.data, label: conversion.newLabel, options: newOptions, buttons: undefined },
                     }
                   : n
               )
@@ -215,8 +209,8 @@ export function useNodeOperations({
             console.log(
               `[v0] Auto-converted Quick Reply to List (${currentButtons.length} → ${newOptions.length} options)`
             )
-            toast.success(`Upgraded to ${newLabel}!`, {
-              description: `You can now add up to 10 options (was limited to 3 buttons)`,
+            toast.success(`Upgraded to ${conversion.newLabel}!`, {
+              description: `You can now add up to 10 options (was limited to ${currentButtons.length} buttons)`,
             })
             setNodeToFocus(nodeId)
           } else {
@@ -288,8 +282,9 @@ export function useNodeOperations({
           node.type === "whatsappInteractiveList"
         ) {
           const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
+          const buttonLimit = BUTTON_LIMITS[nodePlatform]
 
-          if (newOptions.length <= 3) {
+          if (newOptions.length <= buttonLimit) {
             const newType = getPlatformSpecificNodeType("quickReply", nodePlatform)
             const buttonsFromOptions = newOptions.map((opt) => ({
               text: opt.text || "",
@@ -300,7 +295,7 @@ export function useNodeOperations({
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, label: "Quick Reply", buttons: buttonsFromOptions },
+              { ...node.data, label: "Quick Reply", buttons: buttonsFromOptions, options: undefined },
               node.type,
               newType
             )
@@ -312,7 +307,7 @@ export function useNodeOperations({
                   ? {
                       ...n,
                       type: newType,
-                      data: { ...n.data, label: "Quick Reply", buttons: buttonsFromOptions },
+                      data: { ...n.data, label: "Quick Reply", buttons: buttonsFromOptions, options: undefined },
                     }
                   : n
               )

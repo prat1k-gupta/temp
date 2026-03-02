@@ -7,6 +7,7 @@ import { z } from "zod"
 import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
+import { isMultiOutputType } from "@/utils/platform-helpers"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -35,6 +36,8 @@ export interface GenerateFlowResponse {
     removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
   }
   action: "create" | "edit" | "suggest"
+  warnings?: string[]
+  debugData?: Record<string, unknown>
 }
 
 function getNodeTypeLabel(nodeType: string, platform: Platform): string {
@@ -174,8 +177,7 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     const children = adjacency.get(nodeId) || []
 
     // Show button labels for quickReply / interactiveList nodes
-    const isButtonNode = node.type?.includes("QuickReply") || node.type?.includes("quickReply") ||
-      node.type?.includes("List") || node.type?.includes("interactiveList")
+    const isButtonNode = node.type ? isMultiOutputType(node.type) : false
     const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
     const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
 
@@ -507,7 +509,7 @@ export async function generateFlow(
         }))
 
         const existingNodes = request.existingFlow?.nodes || []
-        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges } = buildEditFlowFromPlan(
+        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, warnings } = buildEditFlowFromPlan(
           editPlan,
           request.platform,
           existingNodes
@@ -519,13 +521,18 @@ export async function generateFlow(
           nodeUpdates: nodeUpdates.length,
           removeNodeIds,
           removeEdges,
+          warnings,
         })
 
         // Convert nodeUpdates to full node objects for handleUpdateFlow
         const updatedNodes: Node[] = nodeUpdates.map((update) => {
           const existing = existingNodes.find((n) => n.id === update.nodeId)
           if (!existing) return null
-          return { ...existing, data: { ...existing.data, ...update.data } }
+          return {
+            ...existing,
+            type: update.newType || existing.type,
+            data: { ...existing.data, ...update.data },
+          }
         }).filter(Boolean) as Node[]
 
         return {
@@ -538,6 +545,8 @@ export async function generateFlow(
             removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
           },
           action: "edit",
+          warnings: warnings.length > 0 ? warnings : undefined,
+          debugData: { rawPlan: editPlan },
         }
       } else {
         // CREATE MODE: LLM outputs a semantic plan, code builds the flow
@@ -548,12 +557,14 @@ export async function generateFlow(
         })
 
         // Convert plan → ReactFlow nodes + edges
-        const { nodes, edges, nodeOrder } = buildFlowFromPlan(plan, request.platform)
+        const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform)
 
         return {
           message: plan.message || "Flow generated successfully",
           flowData: { nodes, edges, nodeOrder },
           action: "create",
+          warnings: warnings.length > 0 ? warnings : undefined,
+          debugData: { rawPlan: plan },
         }
       }
     } catch (error) {
@@ -585,7 +596,7 @@ export async function generateFlow(
           if (isEditRequest) {
             const editPlan = editFlowPlanSchema.parse(rawPlan)
             const existingNodes = request.existingFlow?.nodes || []
-            const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges } = buildEditFlowFromPlan(
+            const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, warnings } = buildEditFlowFromPlan(
               editPlan,
               request.platform,
               existingNodes
@@ -593,7 +604,11 @@ export async function generateFlow(
             const updatedNodes: Node[] = nodeUpdates.map((update) => {
               const existing = existingNodes.find((n) => n.id === update.nodeId)
               if (!existing) return null
-              return { ...existing, data: { ...existing.data, ...update.data } }
+              return {
+                ...existing,
+                type: update.newType || existing.type,
+                data: { ...existing.data, ...update.data },
+              }
             }).filter(Boolean) as Node[]
 
             return {
@@ -606,14 +621,16 @@ export async function generateFlow(
                 removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
               },
               action: "edit",
+              warnings: warnings.length > 0 ? warnings : undefined,
             }
           } else {
             const plan = flowPlanSchema.parse(rawPlan)
-            const { nodes, edges, nodeOrder } = buildFlowFromPlan(plan, request.platform)
+            const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform)
             return {
               message: plan.message || "Flow generated successfully",
               flowData: { nodes, edges, nodeOrder },
               action: "create",
+              warnings: warnings.length > 0 ? warnings : undefined,
             }
           }
         }
@@ -764,6 +781,7 @@ function getCreateInstructions(): string {
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
     '- Max branches per platform: web=10, whatsapp=3, instagram=3',
+    '- **WhatsApp/Instagram quickReply limit:** Max 3 buttons. If you need more than 3 choices, use interactiveList with options[] instead (supports up to 10). The system will auto-convert if you exceed the limit, but prefer using the correct type upfront.',
     '- Each branch should contain ONLY the steps that are UNIQUE to that button choice.',
   ].join("\n")
 }
@@ -806,14 +824,31 @@ function getEditInstructions(): string {
     '1. removeNodeIds: ["X-id"] (this also removes all edges to/from X)',
     '2. chains: [\\{ "attachTo": "previous-node-id", "steps": [new node], "connectTo": "next-node-id" \\}]',
     '',
+    '**Converting a node type (e.g., question → quickReply to "add options"):**',
+    'When the user says "add options" or "add buttons" to a question node, they want to REPLACE it with a quickReply:',
+    '1. removeNodeIds: ["question-node-id"]',
+    '2. chains: [\\{ "attachTo": "previous-node-id", "steps": [\\{ "step": "node", "nodeType": "quickReply", "content": \\{ "question": "same question text", "buttons": ["Option A", "Option B"] \\} \\}], "connectTo": "next-node-id" \\}]',
+    'Do NOT add a new quickReply AFTER the existing question — that creates a redundant extra step.',
+    '',
+    '**Redirecting buttons to an existing node (IMPORTANT — no new nodes needed):**',
+    'When the user wants to point buttons at an EXISTING node, use removeEdges + addEdges. Do NOT create new chains/nodes.',
+    'Example: Make buttons 0, 1, 2 all point to the same existing question node:',
+    '1. removeEdges: remove edges from buttons that currently go elsewhere',
+    '2. addEdges: connect those buttons to the target existing node using sourceButtonIndex',
+    '3. removeNodeIds: delete any orphaned nodes that are no longer needed',
+    'This is a REWIRE, not a rebuild. Never create duplicate nodes when an existing node already has the right content.',
+    '',
     '**Content fields (all optional — factory provides defaults):**',
     '- question, buttons[], options[], listTitle, text, label, message',
     '',
     '**MINIMAL CHANGE RULES (critical):**',
     '- Make the MINIMUM changes needed. One new node = one chain or one nodeUpdate. That\'s it.',
+    '- **NEVER create a new node when an existing node already has the right content.** To rewire a button to an existing node, use removeEdges + addEdges. chains create NEW nodes — only use chains when you actually need a new node on the canvas.',
     '- NEVER remove or rewire edges not directly related to your change.',
     '- NEVER create edges pointing backward in the flow (toward earlier nodes).',
     '- When updating content (question text, button labels): use nodeUpdates ONLY. Do NOT recreate the node.',
+    '- When changing a node\'s TYPE (e.g., question → quickReply): use removeNodeIds + chain. This is a REPLACE, not an ADD.',
+    '- NEVER add a new node after an existing node when the user asked to modify the existing node.',
     '- "chains" can be empty [] if you\'re only doing nodeUpdates or addEdges.',
     '- Do NOT touch nodes or edges the user didn\'t ask about.',
     '- If a Focus Area node is specified, apply changes relative to that node.',
@@ -833,6 +868,7 @@ function getEditInstructions(): string {
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
     '- Max branches per platform: web=10, whatsapp=3, instagram=3',
+    '- **WhatsApp/Instagram quickReply limit:** Max 3 buttons. If you need more than 3 choices, use interactiveList with options[] instead (supports up to 10). The system will auto-convert if you exceed the limit, but prefer using the correct type upfront.',
   ].join("\n")
 }
 
@@ -903,6 +939,31 @@ function getEditResponseFormat(): string {
     addEdges: [{ source: "plan-quickReply-1", target: "plan-address-3", sourceButtonIndex: 2 }],
   }, null, 2)
 
+  const ex5 = JSON.stringify({
+    message: "Converted open question to quickReply with fruit drink frequency options",
+    removeNodeIds: ["plan-question-4"],
+    chains: [{
+      attachTo: "plan-quickReply-3",
+      attachHandle: "button-0",
+      steps: [{ step: "node", nodeType: "quickReply", content: { question: "How often do you consume fruit-based drinks?", buttons: ["Daily", "Weekly", "Occasionally", "Never"] } }],
+      connectTo: "plan-quickReply-5",
+    }],
+  }, null, 2)
+
+  // Example 6: Redirect buttons to an existing node (merge/converge — NO new nodes)
+  const ex6 = JSON.stringify({
+    message: "All three buttons now point to the same dietary restriction question",
+    removeEdges: [
+      { source: "plan-quickReply-1", target: "plan-question-3" },
+      { source: "plan-quickReply-1", target: "plan-question-4" },
+    ],
+    removeNodeIds: ["plan-question-3", "plan-question-4"],
+    addEdges: [
+      { source: "plan-quickReply-1", target: "plan-question-2", sourceButtonIndex: 1 },
+      { source: "plan-quickReply-1", target: "plan-question-2", sourceButtonIndex: 2 },
+    ],
+  }, null, 2)
+
   return [
     "Example 1 — Insert email before an existing node:",
     ex1,
@@ -915,6 +976,12 @@ function getEditResponseFormat(): string {
     "",
     "Example 4 — Add a new button and connect it to an existing node:",
     ex4,
+    "",
+    "Example 5 — Convert question to quickReply (\"add options to a question\"):",
+    ex5,
+    "",
+    "Example 6 — Redirect buttons to an existing node (merge duplicate paths):",
+    ex6,
     "",
     "**IMPORTANT:**",
     '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',

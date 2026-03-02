@@ -1,15 +1,18 @@
 import { useState, useCallback, useEffect } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
-import type { Platform } from "@/types"
-import { getBaseNodeType } from "@/utils/platform-helpers"
+import type { Platform, ButtonData } from "@/types"
+import { getBaseNodeType, getPlatformSpecificNodeType } from "@/utils/platform-helpers"
 import { createNode, createCommentNode } from "@/utils/node-factory"
+import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
 import { processAiNodes, processAiEdges, transformAiNodeData, normalizeAiNodeType } from "@/utils/ai-data-transform"
 import { changeTracker } from "@/utils/change-tracker"
 import { updateFlow } from "@/utils/flow-storage"
 import type { FlowData } from "@/utils/flow-storage"
 import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
 import { toast } from "sonner"
+import { sendDebugLog } from "@/utils/ai-debug-logger"
+import type { AiDebugEntry } from "@/utils/ai-debug-logger"
 
 interface UseFlowAIParams {
   flowId: string
@@ -55,38 +58,22 @@ function isEdgeDuplicate(existing: Edge[], candidate: Edge): boolean {
 }
 
 /**
- * Remove any existing edge that conflicts with a new edge on source+sourceHandle.
+ * Remove any existing edge that has the exact same source+sourceHandle but a different target.
  * Enforces one outgoing edge per button handle.
- * Also removes ambiguous handleless edges from the same source — when button-specific
- * routing is being added, a handleless edge is ambiguous and causes visual "two edges
- * from one button" bugs because ReactFlow renders it from the first button handle.
+ * Does NOT touch handleless edges — those are resolved to actual button handles
+ * by the normalization pass (resolveHandlelessEdges) which has access to node data.
  */
 function removeConflictingEdges(edges: Edge[], newEdge: Edge): Edge[] {
   if (!newEdge.sourceHandle) return edges
-  const before = edges.length
-  const filtered = edges.filter(
-    (e) => {
-      if (e.source !== newEdge.source) return true // different source → keep
-
-      // Remove exact handle match pointing to a different target
-      if ((e.sourceHandle || "") === (newEdge.sourceHandle || "") && e.target !== newEdge.target) {
-        return false
-      }
-
-      // Remove handleless edges from the same source — button routing supersedes ambiguous default.
-      // ReactFlow renders handleless edges from the first available handle (usually button-0),
-      // causing the visual "two edges from one button" bug.
-      if (!e.sourceHandle) {
-        console.log(`[EdgeDedup] Removing ambiguous handleless edge: ${e.source} → ${e.target} (superseded by button-specific edge to ${newEdge.target})`)
-        return false
-      }
-
-      return true
+  const filtered = edges.filter((e) => {
+    if (e.source !== newEdge.source) return true
+    // Only remove if exact same handle is being reassigned to a different target
+    if (e.sourceHandle && e.sourceHandle === newEdge.sourceHandle && e.target !== newEdge.target) {
+      console.log(`[EdgeDedup] Removing conflicting edge: ${e.source} → ${e.target} (handle ${e.sourceHandle} reassigned to ${newEdge.target})`)
+      return false
     }
-  )
-  if (filtered.length < before) {
-    console.log(`[EdgeDedup] Removed ${before - filtered.length} conflicting edge(s) for handle ${newEdge.sourceHandle} on ${newEdge.source}`)
-  }
+    return true
+  })
   return filtered
 }
 
@@ -338,7 +325,7 @@ export function useFlowAI({
   )
 
   const handleApplyFlow = useCallback(
-    async (flowData: { nodes: Node[]; edges: Edge[]; nodeOrder?: string[] }) => {
+    async (flowData: { nodes: Node[]; edges: Edge[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => {
       try {
         // Snapshot current state for undo
         const preApplyNodes = [...nodes]
@@ -408,6 +395,28 @@ export function useFlowAI({
           },
           duration: 8000,
         })
+
+        if (meta?.warnings && meta.warnings.length > 0) {
+          toast.warning(`${meta.warnings.length} item(s) skipped`, {
+            description: meta.warnings.slice(0, 3).join("; "),
+            duration: 6000,
+          })
+        }
+
+        // Fire-and-forget debug logging
+        sendDebugLog({
+          timestamp: new Date().toISOString(),
+          operationType: "create",
+          input: { userPrompt: meta?.userPrompt || "(unknown)", platform },
+          aiPlan: meta?.debugData,
+          buildResult: {
+            newNodes: processedNodes.filter(n => n.id !== "1").map(n => ({ id: n.id, type: n.type || "" })),
+            newEdges: processedEdges.map(e => ({ source: e.source, target: e.target, sourceHandle: e.sourceHandle || undefined })),
+          },
+          flowBefore: { nodeCount: preApplyNodes.length, edgeCount: preApplyEdges.length, nodeIds: preApplyNodes.map(n => n.id) },
+          flowAfter: { nodeCount: processedNodes.length, edgeCount: processedEdges.length, nodeIds: processedNodes.map(n => n.id) },
+          warnings: meta?.warnings || [],
+        })
       } catch (error) {
         console.error("[handleApplyFlow] Error:", error)
         toast.error("Failed to apply AI-generated flow. Please try again.")
@@ -423,7 +432,7 @@ export function useFlowAI({
       description?: string
       removeNodeIds?: string[]
       removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
-    }) => {
+    }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => {
       try {
         // Snapshot current state for undo
         const preUpdateNodes = [...nodes]
@@ -438,29 +447,32 @@ export function useFlowAI({
           newEdges: updates.edges?.length || 0,
         })
 
-        // Step 1: Remove nodes and edges first
-        if (updates.removeNodeIds && updates.removeNodeIds.length > 0) {
-          const idsToRemove = new Set(updates.removeNodeIds)
+        // Step 1: Remove nodes and edges in a single pass to avoid race conditions
+        const idsToRemove = new Set(updates.removeNodeIds || [])
+        if (idsToRemove.size > 0) {
           console.log("[handleUpdateFlow] Removing nodes:", [...idsToRemove])
           setNodes((nds) => nds.filter((n) => !idsToRemove.has(n.id)))
-          // Also remove edges connected to removed nodes
-          setEdges((eds) =>
-            eds.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
-          )
         }
 
-        if (updates.removeEdges && updates.removeEdges.length > 0) {
-          console.log("[handleUpdateFlow] Removing edges:", updates.removeEdges)
-          setEdges((eds) =>
-            eds.filter((e) => {
-              return !updates.removeEdges!.some(
-                (re) =>
-                  re.source === e.source &&
-                  re.target === e.target &&
-                  (!re.sourceHandle || re.sourceHandle === e.sourceHandle)
+        if (idsToRemove.size > 0 || (updates.removeEdges && updates.removeEdges.length > 0)) {
+          console.log("[handleUpdateFlow] Removing edges:", updates.removeEdges || [])
+          setEdges((eds) => {
+            let filtered = eds
+            if (idsToRemove.size > 0) {
+              filtered = filtered.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
+            }
+            if (updates.removeEdges && updates.removeEdges.length > 0) {
+              filtered = filtered.filter((e) =>
+                !updates.removeEdges!.some(
+                  (re) =>
+                    re.source === e.source &&
+                    re.target === e.target &&
+                    (!re.sourceHandle || re.sourceHandle === e.sourceHandle)
+                )
               )
-            })
-          )
+            }
+            return filtered
+          })
         }
 
         // Step 2: Process node additions and updates
@@ -480,7 +492,25 @@ export function useFlowAI({
             if (existingNode) {
               const transformedAiData = transformAiNodeData(aiNode.data || {}, baseType)
               const updatedData = { ...existingNode.data, ...transformedAiData }
-              updatedExisting.push({ ...existingNode, ...aiNode, data: updatedData })
+
+              // Auto-convert quickReply → interactiveList if buttons exceed platform limit
+              let effectiveType = aiNode.type
+              if (baseType === "quickReply" && updatedData.buttons) {
+                const buttons = updatedData.buttons as ButtonData[]
+                const nodePlatform = (updatedData.platform as Platform) || platform
+                const conversion = shouldConvertToList(buttons.length, nodePlatform)
+                if (conversion.shouldConvert) {
+                  const options = convertButtonsToOptions(buttons)
+                  updatedData.options = options
+                  updatedData.buttons = undefined
+                  updatedData.label = conversion.newLabel
+                  updatedData.listTitle = updatedData.listTitle || "Select an option"
+                  effectiveType = conversion.newNodeType
+                  console.log(`[handleUpdateFlow] Auto-converted quickReply → interactiveList for ${aiNode.id} (${buttons.length} buttons)`)
+                }
+              }
+
+              updatedExisting.push({ ...existingNode, ...aiNode, type: effectiveType, data: updatedData })
             } else {
               try {
                 const nodePlatform = (aiNode.data?.platform as Platform) || platform
@@ -493,16 +523,8 @@ export function useFlowAI({
 
                 brandNewNodes.push({ ...newNode, ...aiNode, data: mergedData })
               } catch (error) {
-                console.error(`[handleUpdateFlow] Error creating node ${aiNode.type}:`, error)
-                brandNewNodes.push({
-                  id: aiNode.id,
-                  type: aiNode.type,
-                  position: aiNode.position || { x: 250, y: 200 },
-                  data: {
-                    platform: (aiNode.data?.platform as Platform) || platform,
-                    ...(aiNode.data || {}),
-                  },
-                } as Node)
+                console.warn(`[handleUpdateFlow] Skipping unrecognized node type "${aiNode.type}":`, error)
+                continue
               }
             }
           }
@@ -656,10 +678,13 @@ export function useFlowAI({
           })
         }
 
-        // Normalize: convert handleless edges from multi-output nodes to "next-step".
-        // This prevents the visual bug where ReactFlow renders handleless edges from
-        // the first button handle, making it look like "two edges from one button".
+        // Resolve handleless edges from multi-output nodes to actual button handles.
+        // ReactFlow renders handleless edges from the first available handle, causing
+        // the "two edges from one button" visual bug. We resolve each handleless edge
+        // to the first unoccupied button handle, falling back to "next-step" only if
+        // all buttons are already taken.
         setEdges((eds) => {
+          // Collect which source nodes have button-specific edges
           const nodesWithButtonEdges = new Set<string>()
           for (const e of eds) {
             if (e.sourceHandle && e.sourceHandle !== "next-step") {
@@ -667,12 +692,32 @@ export function useFlowAI({
             }
           }
 
+          // Collect occupied handles per source node
+          const occupiedHandles = new Map<string, Set<string>>()
+          for (const e of eds) {
+            if (e.sourceHandle) {
+              if (!occupiedHandles.has(e.source)) occupiedHandles.set(e.source, new Set())
+              occupiedHandles.get(e.source)!.add(e.sourceHandle)
+            }
+          }
+
           let changed = false
           const normalized = eds.map((e) => {
             if (!e.sourceHandle && nodesWithButtonEdges.has(e.source)) {
-              console.log(`[handleUpdateFlow] Normalizing handleless edge to "next-step": ${e.source} → ${e.target}`)
+              // Try to assign to an unoccupied button handle using node data
+              const sourceNode = nodes.find((n) => n.id === e.source)
+              const buttons = (sourceNode?.data?.buttons as ButtonData[]) || []
+              const occupied = occupiedHandles.get(e.source) || new Set()
+
+              const freeButton = buttons.find((btn) => btn.id && !occupied.has(btn.id))
+              const resolvedHandle = freeButton?.id || "next-step"
+
+              console.log(`[handleUpdateFlow] Resolving handleless edge: ${e.source} → ${e.target} → handle "${resolvedHandle}"`)
               changed = true
-              return { ...e, sourceHandle: "next-step" }
+              // Mark the handle as occupied so subsequent handleless edges don't pick the same one
+              if (!occupiedHandles.has(e.source)) occupiedHandles.set(e.source, new Set())
+              occupiedHandles.get(e.source)!.add(resolvedHandle)
+              return { ...e, sourceHandle: resolvedHandle }
             }
             return e
           })
@@ -702,6 +747,31 @@ export function useFlowAI({
             duration: 8000,
           }
         )
+
+        if (meta?.warnings && meta.warnings.length > 0) {
+          toast.warning(`${meta.warnings.length} item(s) skipped`, {
+            description: meta.warnings.slice(0, 3).join("; "),
+            duration: 6000,
+          })
+        }
+
+        // Fire-and-forget debug logging
+        sendDebugLog({
+          timestamp: new Date().toISOString(),
+          operationType: "edit",
+          input: { userPrompt: meta?.userPrompt || "(unknown)", platform },
+          aiPlan: meta?.debugData,
+          buildResult: {
+            newNodes: brandNewNodes.map(n => ({ id: n.id, type: n.type || "" })),
+            newEdges: (updates.edges || []).map((e: Edge) => ({ source: e.source, target: e.target, sourceHandle: (e as any).sourceHandle })),
+            nodeUpdates: updatedExisting.map(n => ({ nodeId: n.id, fields: Object.keys(n.data || {}) })),
+            removedNodeIds: updates.removeNodeIds,
+            removedEdges: updates.removeEdges?.map(re => ({ source: re.source, target: re.target })),
+          },
+          flowBefore: { nodeCount: preUpdateNodes.length, edgeCount: preUpdateEdges.length, nodeIds: preUpdateNodes.map(n => n.id) },
+          flowAfter: { nodeCount: nodes.length + brandNewNodes.length, edgeCount: edges.length, nodeIds: [...nodes.map(n => n.id), ...brandNewNodes.map(n => n.id)] },
+          warnings: meta?.warnings || [],
+        })
       } catch (error) {
         console.error("[handleUpdateFlow] Error:", error)
         toast.error("Failed to apply updates. Please try again.")

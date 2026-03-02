@@ -199,8 +199,57 @@ export function buildEditFlowFromPlan(
         }
       }
     } else {
-      // No attachHandle — walk all steps normally
-      walkSteps(chain.steps, ctx)
+      // No attachHandle — check if anchor is a multi-output node (quickReply/list)
+      // If so, use "next-step" handle to avoid creating ambiguous handleless edges
+      const anchorType = anchorNode.type || ""
+      const anchorIsMultiOutput =
+        anchorType.includes("QuickReply") || anchorType.includes("quickReply") ||
+        anchorType.includes("List") || anchorType.includes("interactiveList")
+
+      if (anchorIsMultiOutput && chain.steps.length > 0 && chain.steps[0].step === "node") {
+        const firstStep = chain.steps[0]
+        if (!isNodeTypeValidForPlatform(firstStep.nodeType, platform)) continue
+
+        const position = layout.getNextSequentialPosition()
+        const nodeId = `edit-${firstStep.nodeType}-${newNodes.length + 1}`
+
+        let node: Node
+        try {
+          node = createNode(firstStep.nodeType, platform, position, nodeId)
+        } catch {
+          continue
+        }
+
+        if (firstStep.content) {
+          node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
+        }
+
+        newNodes.push(node)
+        nodeOrder.push(nodeId)
+
+        // Use "next-step" handle for multi-output nodes to avoid handleless ambiguity
+        console.log(`[buildEditFlow] Using "next-step" handle for chain from multi-output node ${chain.attachTo}`)
+        newEdges.push({
+          id: `e-${chain.attachTo}-${nodeId}-next`,
+          source: chain.attachTo,
+          sourceHandle: "next-step",
+          target: nodeId,
+          type: "default",
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        } as Edge)
+
+        ctx.previousNodeId = nodeId
+        if (isMultiOutputNode(firstStep.nodeType)) {
+          ctx.lastMultiOutputNodeId = nodeId
+        }
+
+        if (chain.steps.length > 1) {
+          walkSteps(chain.steps.slice(1), ctx)
+        }
+      } else {
+        // Regular node — walk all steps normally (creates sequential handleless edges)
+        walkSteps(chain.steps, ctx)
+      }
     }
 
     // connectTo: link the last node in this chain to an existing node
@@ -239,6 +288,25 @@ export function buildEditFlowFromPlan(
           sourceHandle = buttons?.[newEdge.sourceButtonIndex]?.id
             || options?.[newEdge.sourceButtonIndex]?.id
             || `button-${newEdge.sourceButtonIndex}`
+        }
+      }
+
+      // Also resolve "button-N" style sourceHandle to actual button ID
+      if (sourceHandle) {
+        const buttonMatch = sourceHandle.match(/^button-(\d+)$/)
+        if (buttonMatch) {
+          const idx = parseInt(buttonMatch[1], 10)
+          const sourceNode = allNodes.find(n => n.id === newEdge.source)
+          if (sourceNode) {
+            const updatedData = updatedNodeData.get(newEdge.source)
+            const buttons = (updatedData?.buttons || sourceNode.data?.buttons) as ButtonData[] | undefined
+            const options = (updatedData?.options || sourceNode.data?.options) as OptionData[] | undefined
+            const resolved = buttons?.[idx]?.id || options?.[idx]?.id
+            if (resolved) {
+              console.log(`[buildEditFlow] Resolved addEdge sourceHandle "${sourceHandle}" → "${resolved}"`)
+              sourceHandle = resolved
+            }
+          }
         }
       }
 

@@ -57,18 +57,35 @@ function isEdgeDuplicate(existing: Edge[], candidate: Edge): boolean {
 /**
  * Remove any existing edge that conflicts with a new edge on source+sourceHandle.
  * Enforces one outgoing edge per button handle.
+ * Also removes ambiguous handleless edges from the same source — when button-specific
+ * routing is being added, a handleless edge is ambiguous and causes visual "two edges
+ * from one button" bugs because ReactFlow renders it from the first button handle.
  */
 function removeConflictingEdges(edges: Edge[], newEdge: Edge): Edge[] {
   if (!newEdge.sourceHandle) return edges
   const before = edges.length
   const filtered = edges.filter(
-    (e) =>
-      !(e.source === newEdge.source &&
-        (e.sourceHandle || "") === (newEdge.sourceHandle || "") &&
-        e.target !== newEdge.target)
+    (e) => {
+      if (e.source !== newEdge.source) return true // different source → keep
+
+      // Remove exact handle match pointing to a different target
+      if ((e.sourceHandle || "") === (newEdge.sourceHandle || "") && e.target !== newEdge.target) {
+        return false
+      }
+
+      // Remove handleless edges from the same source — button routing supersedes ambiguous default.
+      // ReactFlow renders handleless edges from the first available handle (usually button-0),
+      // causing the visual "two edges from one button" bug.
+      if (!e.sourceHandle) {
+        console.log(`[EdgeDedup] Removing ambiguous handleless edge: ${e.source} → ${e.target} (superseded by button-specific edge to ${newEdge.target})`)
+        return false
+      }
+
+      return true
+    }
   )
   if (filtered.length < before) {
-    console.log(`[EdgeDedup] Removed ${before - filtered.length} conflicting edge(s) for handle ${newEdge.sourceHandle} on ${newEdge.source} (new target: ${newEdge.target})`)
+    console.log(`[EdgeDedup] Removed ${before - filtered.length} conflicting edge(s) for handle ${newEdge.sourceHandle} on ${newEdge.source}`)
   }
   return filtered
 }
@@ -638,6 +655,29 @@ export function useFlowAI({
             return updated
           })
         }
+
+        // Normalize: convert handleless edges from multi-output nodes to "next-step".
+        // This prevents the visual bug where ReactFlow renders handleless edges from
+        // the first button handle, making it look like "two edges from one button".
+        setEdges((eds) => {
+          const nodesWithButtonEdges = new Set<string>()
+          for (const e of eds) {
+            if (e.sourceHandle && e.sourceHandle !== "next-step") {
+              nodesWithButtonEdges.add(e.source)
+            }
+          }
+
+          let changed = false
+          const normalized = eds.map((e) => {
+            if (!e.sourceHandle && nodesWithButtonEdges.has(e.source)) {
+              console.log(`[handleUpdateFlow] Normalizing handleless edge to "next-step": ${e.source} → ${e.target}`)
+              changed = true
+              return { ...e, sourceHandle: "next-step" }
+            }
+            return e
+          })
+          return changed ? normalized : eds
+        })
 
         if (updates.description && flowId) {
           updateFlow(flowId, { description: updates.description })

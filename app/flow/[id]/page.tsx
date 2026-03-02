@@ -586,6 +586,7 @@ function MagicFlowInner() {
                 platform={platform}
                 flowContext={persistence.currentFlow?.description}
                 existingFlow={{ nodes, edges }}
+                selectedNode={nodeOps.selectedNode}
                 onApplyFlow={flowAI.handleApplyFlow}
                 onUpdateFlow={flowAI.handleUpdateFlow}
               />

@@ -12,22 +12,25 @@ interface Message {
   role: "user" | "assistant"
   content: string
   timestamp: Date
-  flowData?: { nodes: any[]; edges: any[] }
-  updates?: { nodes?: any[]; edges?: any[]; description?: string }
+  flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
+  updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }
+  isAutoApplied?: boolean
 }
 
 interface AIAssistantProps {
   platform: "web" | "whatsapp" | "instagram"
   flowContext?: string
   existingFlow?: { nodes: any[]; edges: any[] }
-  onApplyFlow?: (flowData: { nodes: any[]; edges: any[] }) => void
-  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string }) => void
+  selectedNode?: any
+  onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }) => void
+  onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[] }) => void
 }
 
 export function AIAssistant({
   platform,
   flowContext,
   existingFlow,
+  selectedNode,
   onApplyFlow,
   onUpdateFlow,
 }: AIAssistantProps) {
@@ -115,13 +118,14 @@ export function AIAssistant({
     }
   }, [])
 
-  // Auto-expand for new messages with updates
+  // Auto-expand for new messages with updates (but not auto-applied creates)
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
     if (
       lastMessage &&
       lastMessage.role === "assistant" &&
       (lastMessage.flowData || lastMessage.updates) &&
+      !lastMessage.isAutoApplied &&
       !seenMessageIds.has(lastMessage.id) &&
       !isFocused
     ) {
@@ -203,6 +207,7 @@ export function AIAssistant({
           platform,
           flowContext,
           existingFlow,
+          selectedNode: selectedNode ? { id: selectedNode.id, type: selectedNode.type, data: selectedNode.data, position: selectedNode.position } : undefined,
           conversationHistory: messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -216,6 +221,8 @@ export function AIAssistant({
 
       const data = await response.json()
 
+      const isAutoApply = data.action === "create" && data.flowData && onApplyFlow
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -223,11 +230,17 @@ export function AIAssistant({
         timestamp: new Date(),
         flowData: data.flowData,
         updates: data.updates,
+        isAutoApplied: !!isAutoApply,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      if (data.flowData || data.updates) {
+      if (isAutoApply) {
+        // Auto-apply: collapse chat and apply flow immediately
+        setIsFocused(false)
+        onApplyFlow(data.flowData)
+      } else if (data.flowData || data.updates) {
+        // Edit/suggest mode: keep chat open, show buttons
         setIsFocused(true)
       }
     } catch (error) {
@@ -380,7 +393,7 @@ export function AIAssistant({
                   {/* Apply buttons */}
                   {message.role === "assistant" && (
                     <div className="mt-3 space-y-2">
-                      {message.flowData && onApplyFlow && (
+                      {message.flowData && onApplyFlow && !message.isAutoApplied && (
                         <Button
                           onClick={() => onApplyFlow(message.flowData!)}
                           className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"

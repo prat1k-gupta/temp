@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       flowContext,
       conversationHistory,
       existingFlow,
+      selectedNode,
     } = body
 
     if (!message || !platform) {
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       flowContext,
       conversationHistory,
       existingFlow,
+      selectedNode,
     })
 
     if (!result) {

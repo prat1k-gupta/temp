@@ -1,9 +1,12 @@
 import { getAIClient } from "../core/ai-client"
-import { getPlatformGuidelines, getNodeDocumentationForPrompt } from "../core/ai-context"
+import { getPlatformGuidelines } from "../core/ai-context"
+import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
 import type { Platform } from "@/types"
-import { createNode } from "@/utils"
 import type { Node, Edge } from "@xyflow/react"
 import { z } from "zod"
+import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
+import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
+import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -14,6 +17,7 @@ export interface GenerateFlowRequest {
     nodes: Node[]
     edges: Edge[]
   }
+  selectedNode?: Node
 }
 
 export interface GenerateFlowResponse {
@@ -21,11 +25,14 @@ export interface GenerateFlowResponse {
   flowData?: {
     nodes: Node[]
     edges: Edge[]
+    nodeOrder?: string[]
   }
   updates?: {
     nodes?: Node[]
     edges?: Edge[]
     description?: string
+    removeNodeIds?: string[]
+    removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
   }
   action: "create" | "edit" | "suggest"
 }
@@ -68,6 +75,156 @@ function getNodeTypeLabel(nodeType: string, platform: Platform): string {
 
   // Return mapped label or capitalize the type
   return typeMap[nodeType] || nodeType.charAt(0).toUpperCase() + nodeType.slice(1)
+}
+
+/**
+ * Deduplicate edges so each source+sourceHandle pair has exactly one outgoing edge.
+ * For button nodes: each button (button-0, button-1, etc.) connects to one target.
+ * For non-button nodes: one outgoing edge per node (sourceHandle defaults to 'default').
+ * Keeps the first edge encountered for each key (first-wins).
+ */
+export function deduplicateEdges(edges: Edge[]): Edge[] {
+  const edgeKeyMap = new Map<string, Edge>()
+  edges.forEach((edge) => {
+    const edgeKey = `${edge.source}-${edge.sourceHandle || "default"}`
+    if (!edgeKeyMap.has(edgeKey)) {
+      edgeKeyMap.set(edgeKey, edge)
+    }
+  })
+  return Array.from(edgeKeyMap.values())
+}
+
+/**
+ * Build a human-readable tree representation of the flow graph.
+ * Walks the graph via DFS from the start node, showing button labels,
+ * convergence points, cycles, and disconnected nodes.
+ */
+export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
+  if (nodes.length === 0) return "(empty flow)"
+
+  // Build adjacency: source+sourceHandle → target
+  const adjacency = new Map<string, Array<{ target: string; sourceHandle?: string }>>()
+  for (const edge of edges) {
+    const key = edge.source
+    if (!adjacency.has(key)) adjacency.set(key, [])
+    adjacency.get(key)!.push({ target: edge.target, sourceHandle: edge.sourceHandle || undefined })
+  }
+
+  const nodeMap = new Map<string, Node>(nodes.map(n => [n.id, n]))
+
+  // Find start node
+  const startNode = nodes.find(n => n.type === "start")
+  const startId = startNode?.id || "1"
+
+  const visited = new Set<string>()
+  const dfsStack = new Set<string>() // for cycle detection
+  const lines: string[] = ["Flow Graph:\n"]
+
+  function getNodeSummary(node: Node): string {
+    const label = (node.data as any)?.label || ""
+    const question = typeof (node.data as any)?.question === "string" ? (node.data as any).question : ""
+    const text = typeof (node.data as any)?.text === "string" ? (node.data as any).text : ""
+    const displayText = question || text
+    const labelPart = label ? ` ${label}` : ""
+    const contentPart = displayText ? ` — "${displayText.substring(0, 60)}${displayText.length > 60 ? "..." : ""}"` : ""
+    return `[${node.id}]${labelPart} (${node.type})${contentPart}`
+  }
+
+  function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {
+    if (!sourceHandle) return null
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    // Match by handle ID like "button-0", "button-1"
+    const match = sourceHandle.match(/^button-(\d+)$/)
+    if (match) {
+      const idx = parseInt(match[1], 10)
+      if (idx < buttons.length) {
+        return buttons[idx]?.text || buttons[idx]?.label || `Button ${idx}`
+      }
+    }
+    // Also try matching by button.id
+    const byId = buttons.find(b => b.id === sourceHandle)
+    if (byId) return byId.text || byId.label || sourceHandle
+    // Handle "next-step" or other named handles
+    if (sourceHandle === "next-step") return null
+    return null
+  }
+
+  function dfs(nodeId: string, prefix: string, connector: string) {
+    const node = nodeMap.get(nodeId)
+    if (!node) return
+
+    // Cycle detection
+    if (dfsStack.has(nodeId)) {
+      lines.push(`${prefix}${connector} [${nodeId}] (cycle)`)
+      return
+    }
+
+    // Already visited — convergence
+    if (visited.has(nodeId)) {
+      lines.push(`${prefix}${connector} [${nodeId}] (see above)`)
+      return
+    }
+
+    visited.add(nodeId)
+    dfsStack.add(nodeId)
+
+    lines.push(`${prefix}${connector} ${getNodeSummary(node)}`)
+
+    // Get children
+    const children = adjacency.get(nodeId) || []
+
+    // Show button labels for quickReply / interactiveList nodes
+    const isButtonNode = node.type?.includes("QuickReply") || node.type?.includes("quickReply") ||
+      node.type?.includes("List") || node.type?.includes("interactiveList")
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+
+    if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
+      const items = buttons.length > 0
+        ? buttons.map((b, i) => `"${b.text || b.label || "?"}" (handle: ${b.id || `button-${i}`})`)
+        : options.map((o, i) => `"${o.text || "?"}" (handle: ${o.id || `button-${i}`})`)
+      const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+      lines.push(`${childPrefix}│ Buttons: [${items.join(", ")}]`)
+    }
+
+    if (children.length === 0) {
+      dfsStack.delete(nodeId)
+      return
+    }
+
+    const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+
+    children.forEach((child, idx) => {
+      const isLast = idx === children.length - 1
+      const childConnector = isLast ? "└→ " : "├→ "
+      const buttonLabel = getButtonLabel(node, child.sourceHandle)
+      if (buttonLabel) {
+        const labelPrefix = isLast ? "└─ " : "├─ "
+        const handleInfo = child.sourceHandle ? ` [handle: ${child.sourceHandle}]` : ""
+        lines.push(`${childPrefix}${labelPrefix}"${buttonLabel}"${handleInfo} →`)
+        const deeperPrefix = childPrefix + (isLast ? "   " : "│  ")
+        dfs(child.target, deeperPrefix, "└→ ")
+      } else {
+        dfs(child.target, childPrefix, childConnector)
+      }
+    })
+
+    dfsStack.delete(nodeId)
+  }
+
+  // Walk from start
+  dfs(startId, "", "")
+
+  // Find disconnected nodes
+  const disconnected = nodes.filter(n => !visited.has(n.id) && n.type !== "start")
+  if (disconnected.length > 0) {
+    lines.push("\nDisconnected Nodes:")
+    for (const node of disconnected) {
+      lines.push(`  ${getNodeSummary(node)}`)
+    }
+  }
+
+  return lines.join("\n")
 }
 
 /**
@@ -195,19 +352,9 @@ function processFlowResponse(
           })
       }
 
-      // Fix edges: remove true duplicates but allow button branching
+      // Fix edges: enforce one outgoing edge per sourceHandle (or one per node if no handle)
       if (parsed.flowData?.nodes && parsed.flowData?.edges) {
-        // Remove true duplicates (same source, sourceHandle, and target)
-        const edgeKeyMap = new Map<string, Edge>()
-        parsed.flowData.edges.forEach((edge: Edge) => {
-          // Create unique key: source + sourceHandle + target
-          // This allows multiple edges from same source if they have different sourceHandles (button branching)
-          const edgeKey = `${edge.source}-${edge.sourceHandle || 'default'}-${edge.target}`
-          if (!edgeKeyMap.has(edgeKey)) {
-            edgeKeyMap.set(edgeKey, edge)
-          }
-        })
-        parsed.flowData.edges = Array.from(edgeKeyMap.values())
+        parsed.flowData.edges = deduplicateEdges(parsed.flowData.edges)
         
         // Ensure nodes are connected, but don't force linear chains
         // Allow branching flows as designed by AI
@@ -242,17 +389,7 @@ function processFlowResponse(
       }
 
       if (parsed.updates?.edges) {
-        // Remove true duplicates but allow button branching
-        const edgeKeyMap = new Map<string, Edge>()
-        parsed.updates.edges.forEach((edge: Edge) => {
-          // Create unique key: source + sourceHandle + target
-          // This allows multiple edges from same source if they have different sourceHandles (button branching)
-          const edgeKey = `${edge.source}-${edge.sourceHandle || 'default'}-${edge.target}`
-          if (!edgeKeyMap.has(edgeKey)) {
-            edgeKeyMap.set(edgeKey, edge)
-          }
-        })
-        parsed.updates.edges = Array.from(edgeKeyMap.values())
+        parsed.updates.edges = deduplicateEdges(parsed.updates.edges)
       }
 
       // Validate delivery flows have required nodes
@@ -335,8 +472,14 @@ export async function generateFlow(
     const platformGuidelines = getPlatformGuidelines(request.platform)
 
     // Determine action type from prompt
+    // A canvas with only the start node is a fresh flow → create mode
+    const hasRealNodes = request.existingFlow &&
+      request.existingFlow.nodes.some(n => n.type !== "start")
+    const hasEdges = request.existingFlow &&
+      request.existingFlow.edges.length > 0
+
     const isEditRequest =
-      Boolean(request.existingFlow && (request.existingFlow.nodes.length > 0 || request.existingFlow.edges.length > 0)) ||
+      Boolean(hasRealNodes || hasEdges) ||
       request.prompt.toLowerCase().includes("edit") ||
       request.prompt.toLowerCase().includes("update") ||
       request.prompt.toLowerCase().includes("modify") ||
@@ -347,68 +490,75 @@ export async function generateFlow(
 
     // Try structured output first, fallback to text generation
     try {
-      // Define schema based on action type
-      const nodeDataSchema = z.object({
-        id: z.string(),
-        type: z.string(),
-        position: z.object({
-          x: z.number(),
-          y: z.number()
-        }),
-        data: z.record(z.any())
-      }).passthrough()
-
-      const edgeSchema = z.object({
-        id: z.string(),
-        source: z.string(),
-        target: z.string(),
-        sourceHandle: z.string().optional(),
-        type: z.string().optional()
-      }).passthrough()
-
       if (isEditRequest) {
-        const editResponseSchema = z.object({
-          message: z.string(),
-          action: z.literal("edit"),
-          updates: z.object({
-            nodes: z.array(nodeDataSchema).optional(),
-            edges: z.array(edgeSchema).optional(),
-            description: z.string().optional()
-          }).optional()
-        }) as z.ZodType<GenerateFlowResponse>
-
-        const response = await aiClient.generateJSON<GenerateFlowResponse>({
+        // EDIT MODE: LLM outputs an edit plan, code builds the new nodes
+        const editPlan = await aiClient.generateJSON<EditFlowPlan>({
           systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
           userPrompt,
-          schema: editResponseSchema
+          schema: editFlowPlanSchema
         })
 
-        // Process the structured response
-        const parsed = processFlowResponse(response, request.platform, isEditRequest, request.existingFlow)
-        return parsed
+        console.log("[generate-flow] Edit plan from AI:", JSON.stringify({
+          chains: editPlan.chains?.length || 0,
+          nodeUpdates: editPlan.nodeUpdates?.length || 0,
+          removeNodeIds: editPlan.removeNodeIds?.length || 0,
+          removeEdges: editPlan.removeEdges?.length || 0,
+          addEdges: editPlan.addEdges?.length || 0,
+        }))
+
+        const existingNodes = request.existingFlow?.nodes || []
+        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges } = buildEditFlowFromPlan(
+          editPlan,
+          request.platform,
+          existingNodes
+        )
+
+        console.log("[generate-flow] Built edit result:", {
+          newNodes: newNodes.length,
+          newEdges: newEdges.map(e => `${e.source} → ${e.target} (handle: ${e.sourceHandle || "default"})`),
+          nodeUpdates: nodeUpdates.length,
+          removeNodeIds,
+          removeEdges,
+        })
+
+        // Convert nodeUpdates to full node objects for handleUpdateFlow
+        const updatedNodes: Node[] = nodeUpdates.map((update) => {
+          const existing = existingNodes.find((n) => n.id === update.nodeId)
+          if (!existing) return null
+          return { ...existing, data: { ...existing.data, ...update.data } }
+        }).filter(Boolean) as Node[]
+
+        return {
+          message: editPlan.message || "Flow updated successfully",
+          updates: {
+            nodes: [...updatedNodes, ...newNodes],
+            edges: newEdges,
+            description: editPlan.description,
+            removeNodeIds: removeNodeIds.length > 0 ? removeNodeIds : undefined,
+            removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
+          },
+          action: "edit",
+        }
       } else {
-        const createResponseSchema = z.object({
-          message: z.string(),
-          action: z.literal("create"),
-          flowData: z.object({
-            nodes: z.array(nodeDataSchema),
-            edges: z.array(edgeSchema)
-          })
-        }) as z.ZodType<GenerateFlowResponse>
-
-        const response = await aiClient.generateJSON<GenerateFlowResponse>({
+        // CREATE MODE: LLM outputs a semantic plan, code builds the flow
+        const plan = await aiClient.generateJSON<FlowPlan>({
           systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
           userPrompt,
-          schema: createResponseSchema
+          schema: flowPlanSchema
         })
 
-        // Process the structured response
-        const parsed = processFlowResponse(response, request.platform, isEditRequest, request.existingFlow)
-        return parsed
+        // Convert plan → ReactFlow nodes + edges
+        const { nodes, edges, nodeOrder } = buildFlowFromPlan(plan, request.platform)
+
+        return {
+          message: plan.message || "Flow generated successfully",
+          flowData: { nodes, edges, nodeOrder },
+          action: "create",
+        }
       }
     } catch (error) {
       console.warn("[generate-flow] Structured output failed, falling back to text generation:", error)
-      
+
       // Fallback to text generation with parsing
       const response = await aiClient.generate({
         systemPrompt,
@@ -423,7 +573,55 @@ export async function generateFlow(
         return null
       }
 
-      // Parse AI response using existing parser
+      // Try to parse as plan first (both create and edit)
+      try {
+        const aiClientRef = getAIClient()
+        const extracted = aiClientRef.extractJSON(content)
+        const jsonText = extracted || content
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const rawPlan = JSON.parse(jsonMatch[0])
+
+          if (isEditRequest) {
+            const editPlan = editFlowPlanSchema.parse(rawPlan)
+            const existingNodes = request.existingFlow?.nodes || []
+            const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges } = buildEditFlowFromPlan(
+              editPlan,
+              request.platform,
+              existingNodes
+            )
+            const updatedNodes: Node[] = nodeUpdates.map((update) => {
+              const existing = existingNodes.find((n) => n.id === update.nodeId)
+              if (!existing) return null
+              return { ...existing, data: { ...existing.data, ...update.data } }
+            }).filter(Boolean) as Node[]
+
+            return {
+              message: editPlan.message || "Flow updated successfully",
+              updates: {
+                nodes: [...updatedNodes, ...newNodes],
+                edges: newEdges,
+                description: editPlan.description,
+                removeNodeIds: removeNodeIds.length > 0 ? removeNodeIds : undefined,
+                removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
+              },
+              action: "edit",
+            }
+          } else {
+            const plan = flowPlanSchema.parse(rawPlan)
+            const { nodes, edges, nodeOrder } = buildFlowFromPlan(plan, request.platform)
+            return {
+              message: plan.message || "Flow generated successfully",
+              flowData: { nodes, edges, nodeOrder },
+              action: "create",
+            }
+          }
+        }
+      } catch (planError) {
+        console.warn("[generate-flow] Plan fallback parse failed, using legacy parser:", planError)
+      }
+
+      // Final fallback: legacy parser (raw nodes/edges)
       const parsed = parseFlowResponse(content, request.platform, isEditRequest, request.existingFlow)
       return parsed
     }
@@ -440,8 +638,8 @@ function buildSystemPrompt(
 ): string {
   const action = isEdit ? "edit" : "create"
 
-  // Get comprehensive node documentation
-  const nodeDocs = getNodeDocumentationForPrompt(request.platform)
+  // Both modes are plan-based now — use compact docs
+  const nodeDocs = getSimplifiedNodeDocumentation(request.platform)
 
   let prompt = `You are an expert conversational flow designer for ${request.platform} platforms.
 
@@ -450,7 +648,7 @@ Your task is to ${action} a conversational flow based on user requirements.
 **Platform Guidelines:**
 ${platformGuidelines}
 
-**COMPREHENSIVE NODE DOCUMENTATION:**
+**${isEdit ? "COMPREHENSIVE NODE DOCUMENTATION" : "AVAILABLE NODE TYPES"}:**
 ${nodeDocs}
 
 **Flow Context:**
@@ -476,34 +674,24 @@ Platform: ${request.platform}`
 
   // Add existing flow information if editing
   if (isEdit && request.existingFlow) {
-    prompt += `\n\nExisting Flow Structure:`
     const startNode = request.existingFlow.nodes.find(n => n.type === "start")
     if (startNode) {
-      prompt += `\n- Start Node: id="${startNode.id}" (DO NOT create a new start node, connect to this one)`
+      prompt += `\n\nStart Node: id="${startNode.id}" (DO NOT create a new start node, connect to this one)`
     }
-    prompt += `\n- Total Nodes: ${request.existingFlow.nodes.length}`
-    prompt += `\n- Total Edges: ${request.existingFlow.edges.length}`
-    
-    // List existing nodes with their types and labels
-    if (request.existingFlow.nodes.length > 0) {
-      prompt += `\n\nExisting Nodes:`
-      request.existingFlow.nodes.forEach((node, index) => {
-        const labelPart = node.data.label ? ` - "${node.data.label}"` : ""
-        const question = typeof node.data.question === 'string' ? node.data.question : ''
-        const questionPart = question ? ` - Question: "${question.substring(0, 50)}${question.length > 50 ? '...' : ''}"` : ""
-        prompt += `\n${index + 1}. ${node.id} - ${node.type}${labelPart}${questionPart}`
-      })
+
+    // Tree-based flow representation
+    const graphTree = buildFlowGraphString(request.existingFlow.nodes, request.existingFlow.edges)
+    console.log("[generate-flow] Flow graph sent to AI:\n" + graphTree)
+    prompt += `\n\n${graphTree}`
+
+    // Focus area: if user has a node selected, scope edits around it
+    if (request.selectedNode) {
+      const sn = request.selectedNode
+      const snLabel = (sn.data as any)?.label || ""
+      prompt += `\n\n**Focus Area:** The user has node [${sn.id}] "${snLabel}" (${sn.type}) selected.`
+      prompt += `\nApply your changes relative to this node. Do NOT modify nodes or edges far from this area unless explicitly asked.`
     }
-    
-    // List existing edges
-    if (request.existingFlow.edges.length > 0) {
-      prompt += `\n\nExisting Connections:`
-      request.existingFlow.edges.forEach((edge, index) => {
-        const handlePart = edge.sourceHandle ? ` (button: ${edge.sourceHandle})` : ""
-        prompt += `\n${index + 1}. ${edge.source} → ${edge.target}${handlePart}`
-      })
-    }
-    
+
     prompt += `\n\nIMPORTANT: Each source node can only have ONE edge per sourceHandle. If you need to change a connection, replace the existing edge.`
   }
 
@@ -512,27 +700,14 @@ Platform: ${request.platform}`
   const mentionsDelivery = promptLower.includes("deliver") || promptLower.includes("delivery") || promptLower.includes("ship") || promptLower.includes("home") || promptLower.includes("sample")
   
   if (mentionsDelivery && !isEdit) {
-    prompt += `\n\n⚠️ DELIVERY FLOW REQUIRED:
-Flow Pattern: Start → name (collect) → Quick Reply (offer with buttons) → Address (collect) → homeDelivery (fulfill)
-- ALWAYS start with "name" node (super node) to collect user information
-- Use Quick Reply node (not Question) for the offer
-- Create branching from Quick Reply buttons (button-0, button-1, button-2)
-- MUST include "address" node (super node)
-- MUST include "homeDelivery" node
-- Consider adding metaAudience integration for WhatsApp/Instagram`
+    prompt += `\n\nDELIVERY FLOW: Include name → quickReply (offer) → branches → address → homeDelivery. Consider metaAudience for WhatsApp/Instagram.`
   } else if (!isEdit) {
-    prompt += `\n\n💡 CREATE COMPREHENSIVE FLOW:
-- Start with information collection: Start → name (or email/dob) → first interaction
-- Use super nodes (name, email, dob, address) for data collection - NOT question nodes
-- Include branching: Quick Reply buttons should connect to different paths using sourceHandle
-- Add integrations: Include metaAudience (WhatsApp/Instagram), shopify, or other relevant integrations
-- Add fulfillment: Include homeDelivery, event, or retailStore when appropriate
-- Create multiple paths, not just linear chains`
+    prompt += `\n\nOnly include nodes that are directly relevant to the user's request. Do NOT add name, email, address, or other data-collection nodes unless the user asks for them or the flow logically requires them (e.g., delivery needs address). Use quickReply for choices with branches.`
   }
 
   // Always include start node info for new flows
   if (!isEdit || !request.existingFlow) {
-    prompt += `\n\nIMPORTANT: The flow already has a start node with id "1". Connect your first node to it (source: "1").`
+    prompt += `\n\nThe flow already has a start node — your first step connects to it automatically.`
   }
 
   // Add conversation history if available
@@ -547,326 +722,214 @@ Flow Pattern: Start → name (collect) → Quick Reply (offer with buttons) → 
 }
 
 function getCreateInstructions(): string {
-  return `Create a comprehensive conversational flow based on the user's requirements.
-
-**CRITICAL: Only use node types that are listed in "Available Node Types" section. Do not invent or use node types that don't exist.**
-
-**Flow Structure - Build Rich, Connected Flows:**
-1. **Start node already exists** - connect your first node to it (source: "1")
-2. **Information Collection First** - Start with information nodes (name, email, dob) to collect user data early
-3. **Interaction Nodes** - Use Question/Quick Reply/List for conversations (use exact platform-specific types)
-4. **Branching from Buttons** - Quick Reply buttons should branch to different paths (use sourceHandle: "button-0", "button-1", "button-2")
-5. **Fulfillment Nodes** - Include homeDelivery, event, or retailStore for service delivery
-6. **Integration Nodes** - Add relevant integrations (metaAudience for WhatsApp/Instagram, shopify, stripe, etc.)
-
-**Key Rules:**
-- **ALWAYS include information nodes** - Add "name" node early in the flow (Start → name → ...)
-- **Use Quick Reply nodes when you need buttons** - they already have buttons built-in
-- **Create branching flows** - Each Quick Reply button can connect to different nodes using sourceHandle
-  - Button 0: sourceHandle: "button-0"
-  - Button 1: sourceHandle: "button-1"  
-  - Button 2: sourceHandle: "button-2"
-- **For delivery: MUST include "address" node AND "homeDelivery" node**
-- **Include integrations** - Add metaAudience, shopify, or other relevant integrations
-- **Write comprehensive questions** - full sentences, not "Choose:" or "Select:"
-- **All nodes must be connected** - Create multiple paths and branches, not just linear chains
-- **Space nodes 350px apart** - x positions: 600, 950, 1300, 1650, etc.
-
-**Node Data:**
-- Always include "label" (descriptive: "Free Sample Offer" not "Question")
-- Quick Reply: Include "question" and "buttons" array (e.g., ["Yes, send it!", "No, thanks"])
-- List: Include "question" and "options" array (e.g., ["Shampoo", "Conditioner"])
-- Always include "platform" field
-
-**Edge Connections:**
-- Standard edges: {"source": "node-id", "target": "target-id"}
-- Button branches: {"source": "quick-reply-id", "sourceHandle": "button-0", "target": "target-id"}
-- Create multiple edges from Quick Reply nodes - one per button for branching
-
-Return complete flow as JSON with nodes and edges. Make it comprehensive with information collection, branching, and integrations.`
+  // NOTE: Using array join to avoid esbuild template literal parse issues with { } chars
+  return [
+    'Output a semantic flow PLAN (not raw nodes/edges). The system will build the actual flow.',
+    '',
+    '**CRITICAL: Only use nodeType values from the "AVAILABLE NODE TYPES" list. Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.**',
+    '',
+    '**Plan Structure:**',
+    '- "steps" is an ordered array of NodeStep and BranchStep objects',
+    '- NodeStep: \\{ "step": "node", "nodeType": "<base-type>", "content": \\{ ... \\} \\}',
+    '- BranchStep: \\{ "step": "branch", "buttonIndex": <n>, "steps": [...] \\}',
+    '  - Branches MUST follow a quickReply or interactiveList node',
+    '  - buttonIndex 0 = first button, 1 = second, etc.',
+    '',
+    '**Content fields (all optional — factory provides defaults):**',
+    '- question: string — for question, quickReply, interactiveList, super nodes',
+    '- buttons: string[] — plain labels for quickReply (e.g. ["Yes", "No"])',
+    '- options: string[] — plain labels for interactiveList',
+    '- listTitle: string — for interactiveList',
+    '- text: string — for whatsappMessage, instagramDM, instagramStory',
+    '- label: string — custom display label (otherwise auto-generated)',
+    '- message: string — for trackingNotification',
+    '',
+    '**Key Rules:**',
+    '- Only include nodes directly relevant to the user\'s request — do NOT add name, email, dob, or address unless the flow logically needs that data',
+    '- Use "question" when asking the user something that expects a text reply back',
+    '- Use "whatsappMessage" / "instagramDM" ONLY for one-way informational messages where NO user response is needed (e.g., "Thank you!", confirmations)',
+    '- Use quickReply (not question) when you need buttons/choices',
+    '- **Prefer quickReply over question when the answer domain is finite.** Examples:',
+    '  - "What\'s your dog breed?" → quickReply with breed buttons',
+    '  - "What size?" → quickReply ["S", "M", "L", "XL"]',
+    '  - "Rate your experience" → quickReply ["Great", "Good", "Could be better"]',
+    '  Only use "question" for truly open-ended input (comments, descriptions, freeform feedback).',
+    '- **After a quickReply/interactiveList:**',
+    '  - If ALL buttons lead to the SAME follow-up: place node steps directly after the quickReply (no branches needed) — every button will connect to the same node.',
+    '  - If buttons lead to DIFFERENT paths: use branch steps for the differing parts.',
+    '  - If branches converge to shared follow-up steps: place the shared steps AFTER all branch steps — they\'ll be created once and all branches will connect to them.',
+    '  - Do NOT duplicate identical nodes inside every branch.',
+    '- For delivery flows: MUST include "address" + "homeDelivery"',
+    '- Include integrations (metaAudience, shopify, etc.) only when relevant',
+    '- Write full sentences for questions, not "Choose:" or "Select:"',
+    '- Each branch must have a unique buttonIndex',
+    '- Max branches per platform: web=10, whatsapp=3, instagram=3',
+    '- Each branch should contain ONLY the steps that are UNIQUE to that button choice.',
+  ].join("\n")
 }
 
 function getEditInstructions(): string {
-  return `Modify the existing flow based on user requirements.
-
-**CRITICAL: Only use node types that are listed in "Available Node Types" section. Do not invent or use node types that don't exist. Use exact platform-specific type names.**
-
-**Key Rules:**
-- **Add information nodes when needed** - Include name, email, dob, or address nodes for data collection
-- **Use Quick Reply nodes when you need buttons** - not Question nodes
-- **Create branching flows** - Quick Reply buttons can branch to different paths using sourceHandle
-  - Button 0: sourceHandle: "button-0"
-  - Button 1: sourceHandle: "button-1"
-  - Button 2: sourceHandle: "button-2"
-- **For delivery: MUST include "address" node AND "homeDelivery" node**
-- **Add integrations** - Include metaAudience, shopify, or other relevant integrations
-- **Write comprehensive questions** - full sentences, not "Choose:" or "Select:"
-- **Multiple edges from Quick Reply** - Each button can connect to a different node
-- **All new nodes must be connected** to the flow chain
-- **Space nodes 350px apart** horizontally
-
-**Node Data:**
-- Always include "label" (descriptive and context-aware)
-- Quick Reply: "question" + "buttons" array
-- List: "question" + "options" array
-- Always include "platform" field
-
-**Edge Connections:**
-- Standard edges: {"source": "node-id", "target": "target-id"}
-- Button branches: {"source": "quick-reply-id", "sourceHandle": "button-0", "target": "target-id"}
-
-Return only the changes/updates as JSON. Make flows comprehensive with information collection, branching, and integrations.`
+  // NOTE: Using array join to avoid esbuild template literal parse issues with { } chars
+  return [
+    'Output a semantic edit PLAN (not raw nodes/edges). The system will build the actual nodes.',
+    '',
+    '**CRITICAL: Only use nodeType values from the "AVAILABLE NODE TYPES" list. Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.**',
+    '',
+    '**Edit Plan Structure:**',
+    '',
+    '1. **chains** — add new nodes attached to existing nodes',
+    '   - Each chain: \\{ "attachTo": "<existing-node-id>", "steps": [...] \\}',
+    '   - attachTo: the ID of an existing node to connect from',
+    '   - attachHandle: optional, e.g. "button-0" to branch from a specific button',
+    '   - connectTo: optional, connect the LAST node in this chain to an existing node (for inserting between nodes)',
+    '   - steps: same as create mode (NodeStep and BranchStep objects)',
+    '',
+    '2. **removeNodeIds** — array of existing node IDs to delete from the canvas',
+    '',
+    '3. **removeEdges** — array of edges to disconnect: \\{ "source": "node-id", "target": "node-id", "sourceHandle": "optional" \\}',
+    '',
+    '4. **nodeUpdates** — modify existing node content without replacing them',
+    '   - Each: \\{ "nodeId": "<existing-node-id>", "content": \\{ question?, text?, buttons?, label?, ... \\} \\}',
+    '',
+    '5. **addEdges** — create new edges between existing or newly-created nodes',
+    '   - Each: \\{ "source": "<node-id>", "target": "<node-id>", "sourceButtonIndex": <n> \\}',
+    '   - sourceButtonIndex: which button on the source node (0-based) — used when connecting from a quickReply/interactiveList button',
+    '   - sourceHandle: direct handle ID (use "next-step" for default sequential connection from quickReply/list bottom handle)',
+    '',
+    '**Inserting a node between two existing nodes:**',
+    'To insert node B between existing A → C:',
+    '1. removeEdges: [\\{ "source": "A-id", "target": "C-id" \\}]',
+    '2. chains: [\\{ "attachTo": "A-id", "steps": [\\{ "step": "node", ... \\}], "connectTo": "C-id" \\}]',
+    '',
+    '**Replacing a node:**',
+    'To replace node X with a new node:',
+    '1. removeNodeIds: ["X-id"] (this also removes all edges to/from X)',
+    '2. chains: [\\{ "attachTo": "previous-node-id", "steps": [new node], "connectTo": "next-node-id" \\}]',
+    '',
+    '**Content fields (all optional — factory provides defaults):**',
+    '- question, buttons[], options[], listTitle, text, label, message',
+    '',
+    '**MINIMAL CHANGE RULES (critical):**',
+    '- Make the MINIMUM changes needed. One new node = one chain or one nodeUpdate. That\'s it.',
+    '- NEVER remove or rewire edges not directly related to your change.',
+    '- NEVER create edges pointing backward in the flow (toward earlier nodes).',
+    '- When updating content (question text, button labels): use nodeUpdates ONLY. Do NOT recreate the node.',
+    '- "chains" can be empty [] if you\'re only doing nodeUpdates or addEdges.',
+    '- Do NOT touch nodes or edges the user didn\'t ask about.',
+    '- If a Focus Area node is specified, apply changes relative to that node.',
+    '',
+    '**Key Rules:**',
+    '- When restructuring, always remove old edges/nodes THEN add new ones',
+    '- Use "question" when asking the user something that expects a text reply',
+    '- Use "whatsappMessage" / "instagramDM" ONLY for one-way informational messages (no reply expected)',
+    '- Use quickReply (not question) when you need buttons/choices',
+    '- **Prefer quickReply over question when the answer domain is finite.** Examples:',
+    '  - "What\'s your dog breed?" → quickReply with breed buttons',
+    '  - "What size?" → quickReply ["S", "M", "L", "XL"]',
+    '  Only use "question" for truly open-ended input (comments, descriptions, freeform feedback).',
+    '- Only add information nodes (name, email, dob, address) when the flow logically needs them',
+    '- Steps after branch steps become shared nodes — do not duplicate identical follow-ups in each branch',
+    '- For delivery flows: MUST include "address" + "homeDelivery"',
+    '- Write full sentences for questions, not "Choose:" or "Select:"',
+    '- Each branch must have a unique buttonIndex',
+    '- Max branches per platform: web=10, whatsapp=3, instagram=3',
+  ].join("\n")
 }
 
 function getCreateResponseFormat(): string {
-  return `{
-  "message": "I've created a comprehensive flow for [purpose]. Here's what I included...",
-  "action": "create",
-  "flowData": {
-    "nodes": [
-      {
-        "id": "name-1",
-        "type": "name",
-        "position": { "x": 600, "y": 150 },
-        "data": {
-          "label": "Collect Name",
-          "platform": "whatsapp",
-          "fieldLabel": "Full Name",
-          "validationRules": {
-            "required": true,
-            "minLength": 2,
-            "maxLength": 50
-          }
-        }
-      },
-      {
-        "id": "2",
-        "type": "whatsappQuestion",
-        "position": { "x": 950, "y": 150 },
-        "data": {
-          "label": "Product Inquiry",
-          "platform": "whatsapp",
-          "question": "Hi! We'd love to send you a free sample. What hair problems are you experiencing?"
-        }
-      },
-      {
-        "id": "3",
-        "type": "whatsappQuickReply",
-        "position": { "x": 1300, "y": 150 },
-        "data": {
-          "label": "Hair Problem Selection",
-          "platform": "whatsapp",
-          "question": "Which hair issue would you like help with?",
-          "buttons": ["Dandruff", "Oily Hair", "Hair Loss"]
-        }
-      },
-      {
-        "id": "4",
-        "type": "address",
-        "position": { "x": 1650, "y": 150 },
-        "data": {
-          "label": "Delivery Address",
-          "platform": "whatsapp",
-          "fieldLabel": "Address",
-          "validationRules": {
-            "required": true,
-            "validatePostalCode": true
-          }
-        }
-      },
-      {
-        "id": "5",
-        "type": "homeDelivery",
-        "position": { "x": 2000, "y": 150 },
-        "data": {
-          "label": "Schedule Delivery",
-          "platform": "whatsapp",
-          "description": "Schedule a home delivery"
-        }
-      },
-      {
-        "id": "6",
-        "type": "whatsappQuestion",
-        "position": { "x": 1650, "y": 400 },
-        "data": {
-          "label": "Follow-up Question",
-          "platform": "whatsapp",
-          "question": "Would you like to learn more about our products?"
-        }
-      },
-      {
-        "id": "meta-1",
-        "type": "metaAudience",
-        "position": { "x": 2000, "y": 400 },
-        "data": {
-          "label": "Meta Audience Sync",
-          "platform": "whatsapp",
-          "description": "Sync with Meta audiences"
-        }
-      }
+  // NOTE: Using JSON.stringify + join to avoid esbuild template literal parse issues
+  const example = JSON.stringify({
+    message: "Created a sample delivery flow with feedback collection",
+    steps: [
+      { step: "node", nodeType: "quickReply", content: { question: "Choose a delivery slot for your sample.", buttons: ["Morning", "Afternoon", "Evening"] } },
+      { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Morning slot confirmed!" } }] },
+      { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Afternoon slot confirmed!" } }] },
+      { step: "branch", buttonIndex: 2, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Evening slot confirmed!" } }] },
+      { step: "node", nodeType: "address" },
+      { step: "node", nodeType: "homeDelivery" },
+      { step: "node", nodeType: "question", content: { question: "How was your experience with the sample?" } },
+      { step: "node", nodeType: "metaAudience" },
     ],
-    "edges": [
-      {
-        "id": "e1-name",
-        "source": "1",
-        "target": "name-1",
-        "type": "default"
-      },
-      {
-        "id": "e-name-2",
-        "source": "name-1",
-        "target": "2",
-        "type": "default"
-      },
-      {
-        "id": "e2-3",
-        "source": "2",
-        "target": "3",
-        "type": "default"
-      },
-      {
-        "id": "e3-4-button0",
-        "source": "3",
-        "sourceHandle": "button-0",
-        "target": "4",
-        "type": "default"
-      },
-      {
-        "id": "e3-4-button1",
-        "source": "3",
-        "sourceHandle": "button-1",
-        "target": "4",
-        "type": "default"
-      },
-      {
-        "id": "e3-6-button2",
-        "source": "3",
-        "sourceHandle": "button-2",
-        "target": "6",
-        "type": "default"
-      },
-      {
-        "id": "e4-5",
-        "source": "4",
-        "target": "5",
-        "type": "default"
-      },
-      {
-        "id": "e6-meta",
-        "source": "6",
-        "target": "meta-1",
-        "type": "default"
-      }
-    ]
-  }
-}
+  }, null, 2)
 
-**IMPORTANT - Create Comprehensive Flows:**
-- **ALWAYS start with information nodes** - Connect Start → name (or email/dob) → first interaction node
-- **Create branching flows** - Quick Reply buttons should branch to different paths using sourceHandle
-  - Button 0: {"source": "node-id", "sourceHandle": "button-0", "target": "target-id"}
-  - Button 1: {"source": "node-id", "sourceHandle": "button-1", "target": "target-id"}
-  - Button 2: {"source": "node-id", "sourceHandle": "button-2", "target": "target-id"}
-- **Include multiple paths** - Not just linear chains, create branches and alternative flows
-- **Add integration nodes** - Include metaAudience (for WhatsApp/Instagram), shopify, or other relevant integrations
-- **Include fulfillment nodes** - Add homeDelivery, event, or retailStore when appropriate
-- **Connect to existing start node (id: "1")** - do not create a new one
-- **For delivery: Use Quick Reply (not Question) + Address + homeDelivery**
-- **Write comprehensive questions** - full sentences, not "Choose:" or "Select:"
-- **Use platform-specific node types** (whatsappQuestion, whatsappQuickReply, whatsappInteractiveList for WhatsApp)
-- **Space nodes 350px apart** - x: 600, 950, 1300, 1650, etc.
-- **Always include "label" and "platform"** in node data
-- **Make flows rich and connected** - Include information collection, branching, integrations, and fulfillment`
+  return example + "\n\n" + [
+    "**IMPORTANT:**",
+    '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',
+    '- Only include information nodes (name, email, dob, address) when the flow needs that data — do NOT add them by default',
+    '- Use "question" when asking users something that expects a text reply; use "whatsappMessage"/"instagramDM" ONLY for one-way messages (no reply expected)',
+    "- Use quickReply for choices/buttons (not question)",
+    "- Steps AFTER all branch steps become shared convergence nodes — all branches connect to them. Do NOT duplicate identical follow-up nodes inside every branch.",
+    "- If ALL buttons lead to the same path, skip branches entirely and place steps directly after the quickReply.",
+    "- For delivery: MUST include address + homeDelivery",
+    "- Add integrations only when relevant (metaAudience for WhatsApp/Instagram)",
+    "- Write full, natural questions",
+    "- Branches follow the last quickReply/interactiveList in the current scope",
+  ].join("\n")
 }
 
 function getEditResponseFormat(): string {
-  return `{
-  "message": "I've updated your flow. Here's what I changed...",
-  "action": "edit",
-  "updates": {
-    "nodes": [
-      {
-        "id": "name-new",
-        "type": "name",
-        "position": { "x": 950, "y": 150 },
-        "data": {
-          "label": "Collect Name",
-          "platform": "web",
-          "fieldLabel": "Full Name",
-          "validationRules": {
-            "required": true,
-            "minLength": 2
-          }
-        }
-      },
-      {
-        "id": "quick-reply-id",
-        "type": "webQuickReply",
-        "position": { "x": 1300, "y": 150 },
-        "data": {
-          "label": "Product Selection",
-          "platform": "web",
-          "question": "Which product would you like to learn more about?",
-          "buttons": ["Shampoo", "Conditioner", "Hair Mask"]
-        }
-      },
-      {
-        "id": "meta-new",
-        "type": "metaAudience",
-        "position": { "x": 1650, "y": 400 },
-        "data": {
-          "label": "Meta Audience Sync",
-          "platform": "web",
-          "description": "Sync with Meta audiences"
-        }
-      }
-    ],
-    "edges": [
-      {
-        "id": "e-existing-name",
-        "source": "existing-node-id",
-        "target": "name-new",
-        "type": "default"
-      },
-      {
-        "id": "e-name-quick",
-        "source": "name-new",
-        "target": "quick-reply-id",
-        "type": "default"
-      },
-      {
-        "id": "e-quick-address-button0",
-        "source": "quick-reply-id",
-        "sourceHandle": "button-0",
-        "target": "address-node-id",
-        "type": "default"
-      },
-      {
-        "id": "e-quick-meta-button2",
-        "source": "quick-reply-id",
-        "sourceHandle": "button-2",
-        "target": "meta-new",
-        "type": "default"
-      }
-    ]
-  }
-}
+  // NOTE: Using JSON.stringify to avoid esbuild template literal parse issues
+  const ex1 = JSON.stringify({
+    message: "Inserted email collection before the feedback question",
+    removeEdges: [{ source: "1", target: "plan-quickReply-1" }],
+    chains: [{ attachTo: "1", steps: [{ step: "node", nodeType: "email" }], connectTo: "plan-quickReply-1" }],
+  }, null, 2)
 
-**IMPORTANT - Create Comprehensive Updates:**
-- **Add information nodes** - Include name, email, dob, or address when collecting user data
-- **Create branching flows** - Quick Reply buttons should branch to different paths using sourceHandle
-  - Button 0: {"source": "node-id", "sourceHandle": "button-0", "target": "target-id"}
-  - Button 1: {"source": "node-id", "sourceHandle": "button-1", "target": "target-id"}
-  - Button 2: {"source": "node-id", "sourceHandle": "button-2", "target": "target-id"}
-- **ALL nodes must be connected** - every new/updated node connected to flow chain
-- **Use Quick Reply (not Question) when you need buttons**
-- **For delivery: MUST include Address + homeDelivery**
-- **Add integrations** - Include metaAudience, shopify, or other relevant integrations
-- **Write comprehensive questions** - full sentences, not "Choose:" or "Select:"
-- **Use platform-specific node types** - space nodes 350px apart
-- **Multiple edges from Quick Reply** - Each button can connect to a different node
-- **Always include "label" and "platform"** in node data
-- **Make flows rich and connected** - Include information collection, branching, integrations, and fulfillment`
+  const ex2 = JSON.stringify({
+    message: "Added follow-up question after 'Needs improvement' and updated the main question",
+    chains: [{
+      attachTo: "plan-quickReply-2", attachHandle: "button-2",
+      steps: [
+        { step: "node", nodeType: "question", content: { question: "What improvements would you suggest?" } },
+        { step: "node", nodeType: "metaAudience" },
+      ],
+    }],
+    nodeUpdates: [{ nodeId: "plan-quickReply-2", content: { question: "How was your experience with our product?" } }],
+  }, null, 2)
+
+  const ex3 = JSON.stringify({
+    message: "Replaced the message node with a question node",
+    removeNodeIds: ["plan-whatsappMessage-3"],
+    chains: [{
+      attachTo: "plan-quickReply-2", attachHandle: "button-1",
+      steps: [{ step: "node", nodeType: "question", content: { question: "What could be better?" } }],
+      connectTo: "plan-metaAudience-4",
+    }],
+  }, null, 2)
+
+  const ex4 = JSON.stringify({
+    message: "Added a new button and connected it",
+    nodeUpdates: [{ nodeId: "plan-quickReply-1", content: { buttons: ["Existing A", "Existing B", "New C"] } }],
+    addEdges: [{ source: "plan-quickReply-1", target: "plan-address-3", sourceButtonIndex: 2 }],
+  }, null, 2)
+
+  return [
+    "Example 1 — Insert email before an existing node:",
+    ex1,
+    "",
+    "Example 2 — Add nodes after a button + update existing content:",
+    ex2,
+    "",
+    "Example 3 — Replace a node:",
+    ex3,
+    "",
+    "Example 4 — Add a new button and connect it to an existing node:",
+    ex4,
+    "",
+    "**IMPORTANT:**",
+    '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',
+    '- "attachTo" MUST be an existing node ID from the flow',
+    '- "connectTo" links the last new node back to an existing node (for insertion/replacement)',
+    '- "removeNodeIds" deletes nodes AND all their connected edges',
+    '- "removeEdges" disconnects specific edges by source+target',
+    '- "addEdges" creates new edges — use sourceButtonIndex to connect from a specific button (0-based)',
+    "- When restructuring: remove old edges/nodes first, then add new chains",
+    '- Use "question" when asking users something that expects a text reply',
+    '- Use "whatsappMessage"/"instagramDM" ONLY for one-way messages (no reply expected)',
+    "- Use quickReply for choices/buttons (not question)",
+    "- Only add information nodes (name, email, etc.) when the flow needs that data",
+    "- Write full, natural questions",
+  ].join("\n")
 }
 
 function getAvailableNodeTypes(platform: Platform): string {

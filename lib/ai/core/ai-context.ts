@@ -174,20 +174,7 @@ ${doc.usage.examples.map(e => `- ${e}`).join("\n")}`
     }
   }
 
-  // Fallback to simple guidelines
-  const guidelines: Record<string, string> = {
-    question: 'This is a question node. The text should be clear, specific, and encourage a response.',
-    quickReply: 'These are quick reply buttons. Keep labels short, action-oriented, and easy to tap.',
-    message: 'This is a message node. Provide clear information or instructions.',
-    list: 'This is a list of options. Keep labels concise and descriptions helpful.',
-    condition: 'This is a conditional logic node. Keep conditions clear and unambiguous.',
-    name: 'This is a name collection node. Ask for name in a friendly, natural way.',
-    email: 'This is an email collection node. Explain why you need their email.',
-    dob: 'This is a date of birth collection node. Be clear about format and purpose.',
-    address: 'This is an address collection node. Break down into clear steps.',
-  }
-
-  return guidelines[nodeType] || `This is a ${nodeType} node.`
+  return `This is a ${nodeType} node. Generate appropriate content for this node type.`
 }
 
 function formatLimitsForGuidelines(limits: any): string {

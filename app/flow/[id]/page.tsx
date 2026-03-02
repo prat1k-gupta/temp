@@ -1,6 +1,5 @@
 "use client"
 
-import type React from "react"
 import { useState, useCallback, useEffect, useRef } from "react"
 import {
   ReactFlow,
@@ -9,10 +8,8 @@ import {
   Background,
   useNodesState,
   useEdgesState,
-  addEdge,
-  type Connection,
-  type Edge,
   type Node,
+  type Edge,
   BackgroundVariant,
   useReactFlow,
   ReactFlowProvider,
@@ -20,50 +17,15 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
-// Component imports
-import { StartNode } from "@/components/nodes/start-node"
-import { CommentNode } from "@/components/nodes/comment-node"
-import { WebQuestionNode } from "@/components/nodes/web/web-question-node"
-import { WebQuickReplyNode } from "@/components/nodes/web/web-quick-reply-node"
-import { WhatsAppQuestionNode } from "@/components/nodes/whatsapp/whatsapp-question-node"
-import { WhatsAppQuickReplyNode } from "@/components/nodes/whatsapp/whatsapp-quick-reply-node"
-import { WhatsAppListNode } from "@/components/nodes/whatsapp/whatsapp-list-node"
-import { WhatsAppMessageNode } from "@/components/nodes/whatsapp/whatsapp-message-node"
-import { InstagramQuestionNode } from "@/components/nodes/instagram/instagram-question-node"
-import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-quick-reply-node"
-import { InstagramListNode } from "@/components/nodes/instagram/instagram-list-node"
-import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
-import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
-// Logic nodes
-import { ConditionNode } from "@/components/nodes/logic/condition-node"
-// Super nodes
-import { NameNode } from "@/components/nodes/super/name-node"
-import { EmailNode } from "@/components/nodes/super/email-node"
-import { AddressNode } from "@/components/nodes/super/address-node"
-import { DobNode } from "@/components/nodes/super/dob-node"
-// Fulfillment nodes
-import { HomeDeliveryNode } from "@/components/nodes/fulfillment/home-delivery-node"
-import { TrackingNotificationNode } from "@/components/nodes/fulfillment/tracking-notification-node"
-import { EventNode } from "@/components/nodes/fulfillment/event-node"
-import { RetailStoreNode } from "@/components/nodes/fulfillment/retail-store-node"
-// Integration nodes
-import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
+import type { Platform } from "@/types"
 import { NodeSidebar } from "@/components/node-sidebar"
-import { PropertiesPanel } from "@/components/properties-panel"
 import { AISuggestionsPanel, AIAssistant } from "@/components/ai"
-import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
-import { PlatformSelector } from "@/components/platform-selector"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { ConnectionMenu } from "@/components/connection-menu"
+import { ExportModal } from "@/components/export-modal"
+import { ScreenshotModal } from "@/components/screenshot-modal"
+import { VersionHistoryModal } from "@/components/version-history-modal"
+import { ChangesModal } from "@/components/changes-modal"
+import { FlowSetupModal } from "@/components/flow-setup-modal"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,129 +36,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { getPlatformDisplayName } from "@/utils/platform-labels"
-import { Download, Undo2, Redo2, MessageCircle, MessageSquare, List, MessageSquareText, Camera, Eye, History, Upload, Clock, Sparkles, MoreHorizontal, RotateCcw, ChevronDown, Edit3, ExternalLink, Pencil, EyeOff, ArrowLeft, Loader2, Trash2 } from "lucide-react"
-import { ConnectionMenu } from "@/components/connection-menu"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { ExportModal } from "@/components/export-modal"
-import { ScreenshotModal } from "@/components/screenshot-modal"
-import { VersionHistoryModal } from "@/components/version-history-modal"
-import { PublishModal } from "@/components/publish-modal"
-import { ChangesModal } from "@/components/changes-modal"
-import { FlowSetupModal } from "@/components/flow-setup-modal"
-import { useVersionManager } from "@/hooks/use-version-manager"
-import { changeTracker } from "@/utils/change-tracker"
-import { toast } from "sonner"
+import { Loader2, Sparkles } from "lucide-react"
 import { Toaster } from "@/components/ui/sonner"
 import { useSearchParams, useParams, useRouter } from "next/navigation"
+import { toast } from "sonner"
 
-// Modular imports
-import type {
-  Platform,
-  NodeData,
-  ButtonData,
-  OptionData,
-  ContextMenuState,
-  ConnectionMenuState,
-  Coordinates
-} from "@/types"
-import {
-  OPTION_LIMITS,
-  INTERACTION_THRESHOLDS,
-  getNodeLimits,
-  areButtonsWithinNodeLimits,
-  areOptionsWithinNodeLimits
-} from "@/constants"
-import {
-  getClientCoordinates,
-  isDoubleClick,
-  getPlatformSpecificNodeType,
-  getPlatformSpecificLabel,
-  getPlatformSpecificContent,
-  isValidNodeId,
-  isValidPlatform,
-  createButtonData,
-  createOptionData,
-  createNode,
-  createCommentNode,
-  getBaseNodeType
-} from "@/utils"
-import {
-  getAddNodeLabel,
-  platformSupportsNodeType
-} from "@/utils/platform-labels"
+// Refactored imports
+import { nodeTypes, initialNodes, initialEdges } from "@/constants/node-types-registry"
+import { injectNodeCallbacks } from "@/utils/node-data-injection"
+import { useVersionManager } from "@/hooks/use-version-manager"
+import { useFlowPersistence } from "@/hooks/use-flow-persistence"
+import { useNodeOperations } from "@/hooks/use-node-operations"
+import { useClipboard } from "@/hooks/use-clipboard"
+import { useFlowAI } from "@/hooks/use-flow-ai"
+import { useFlowInteractions } from "@/hooks/use-flow-interactions"
+import { FlowHeader } from "@/components/flow/flow-header"
+import { PaneContextMenu } from "@/components/flow/pane-context-menu"
+import { NodeContextMenu } from "@/components/flow/node-context-menu"
+import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
+import { changeTracker } from "@/utils/change-tracker"
 import { publishVersion } from "@/utils/version-storage"
-import { getFlow, updateFlow, createFlow, deleteSharedFlow, type FlowData } from "@/utils/flow-storage"
 
-const nodeTypes = {
-  start: StartNode,
-  comment: CommentNode,
-  // Web specific nodes
-  webQuestion: WebQuestionNode,
-  webQuickReply: WebQuickReplyNode,
-  // WhatsApp specific nodes
-  whatsappQuestion: WhatsAppQuestionNode,
-  whatsappQuickReply: WhatsAppQuickReplyNode,
-  whatsappList: WhatsAppListNode,
-  whatsappListSpecific: WhatsAppListNode,
-  whatsappMessage: WhatsAppMessageNode,
-  // Backwards compatibility aliases
-  question: WebQuestionNode,
-  quickReply: WebQuickReplyNode,
-  // Logic nodes
-  condition: ConditionNode,
-  // Instagram specific nodes
-  instagramQuestion: InstagramQuestionNode,
-  instagramQuickReply: InstagramQuickReplyNode,
-  instagramList: InstagramListNode,
-  instagramDM: InstagramDMNode,
-  instagramStory: InstagramStoryNode,
-  // Super nodes (platform-agnostic)
-  name: NameNode,
-  email: EmailNode,
-  address: AddressNode,
-  dob: DobNode,
-  // Fulfillment nodes
-  homeDelivery: HomeDeliveryNode,
-  trackingNotification: TrackingNotificationNode,
-  event: EventNode,
-  retailStore: RetailStoreNode,
-  // Integration nodes
-  shopify: GenericIntegrationNode,
-  metaAudience: GenericIntegrationNode,
-  stripe: GenericIntegrationNode,
-  zapier: GenericIntegrationNode,
-  google: GenericIntegrationNode,
-  salesforce: GenericIntegrationNode,
-  mailchimp: GenericIntegrationNode,
-  twilio: GenericIntegrationNode,
-  slack: GenericIntegrationNode,
-  airtable: GenericIntegrationNode,
-}
-
-const initialNodes: Node[] = [
-  {
-    id: "1",
-    type: "start",
-    position: { x: 250, y: 25 },
-    data: { label: "Start", platform: "web" },
-    draggable: true,
-    selectable: true,
-  },
-]
-
-const initialEdges: Edge[] = [
-  {
-    id: "e1-2",
-    source: "1",
-    target: "2",
-    type: "default",
-    style: { stroke: "#2872F4", strokeWidth: 2 }, // Freestand info blue
-  },
-]
-
-export default function MagicFlow() {
+function MagicFlowInner() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -204,2943 +65,267 @@ export default function MagicFlow() {
   const isNewFlow = flowId === "new"
   const isSetupMode = searchParams?.get("setup") === "true" || isNewFlow
   const loadFromDb = searchParams?.get("loadFrom") === "db"
-  const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
+
+  // Core ReactFlow state
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChangeOriginal] = useEdgesState(initialEdges)
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [platform, setPlatform] = useState<Platform>("web")
-  const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false)
-  const [draftStateLoaded, setDraftStateLoaded] = useState(false)
-  const [isLoadingVersion, setIsLoadingVersion] = useState(false)
-  const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
-  const [flowLoaded, setFlowLoaded] = useState(false)
+
+  // Modal open/close booleans
   const [showSetupModal, setShowSetupModal] = useState(isSetupMode)
-  const [isAISuggestionsPanelOpen, setIsAISuggestionsPanelOpen] = useState(false)
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false)
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false)
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
-  const [isEditingFlowName, setIsEditingFlowName] = useState(false)
-  const [editingFlowNameValue, setEditingFlowNameValue] = useState("")
-  const [isLoadingFromDb, setIsLoadingFromDb] = useState(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
-  // Sync editing value when flow changes
-  useEffect(() => {
-    if (currentFlow && !isEditingFlowName) {
-      setEditingFlowNameValue(currentFlow.name)
-    }
-  }, [currentFlow?.name, isEditingFlowName])
+  // Version loading state
+  const [draftStateLoaded, setDraftStateLoaded] = useState(false)
+  const [isLoadingVersion, setIsLoadingVersion] = useState(false)
+  const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
 
-  // Node suggestions hook
-  const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
+  const flowElementRef = useRef<HTMLDivElement>(null)
+  const { screenToFlowPosition } = useReactFlow()
 
-  // Fetch suggestions when node is selected (skip start and comment nodes)
-  useEffect(() => {
-    if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
-      setIsAISuggestionsPanelOpen(true)
-      fetchSuggestions({
-        currentNodeType: selectedNode.type,
-        platform,
-        flowContext: currentFlow?.description,
-        existingNodes: nodes
-          .filter(n => n.type)
-          .map(n => ({ type: n.type!, label: n.data.label as string | undefined })),
-        maxSuggestions: 2,
-      })
-    } else {
-      setIsAISuggestionsPanelOpen(false)
-      clearSuggestions()
-    }
+  // --- Hook Instantiation ---
 
-    // Cleanup on unmount
-    return () => {
-      clearSuggestions()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.id, selectedNode?.type, platform, currentFlow?.description])
-
-  // Version management
+  const versionManager = useVersionManager(flowId)
   const {
     editModeState,
     toggleEditMode,
     toggleViewDraft,
-    enterEditMode,
-    exitEditMode,
     autoEnterEditMode,
     createNewVersion,
     createAndPublishVersion,
     publishCurrentVersion,
     loadVersion,
     getAllVersions,
-    getLatestVersion,
     resetToPublished,
     updateDraftChanges,
-    discardChanges,
     hasActualChanges,
     getChangesSummary,
     getChangesCount,
     loadDraftState,
     saveCurrentStateAsDraft,
-    debugLocalStorageState,
     isEditMode,
     currentVersion,
-    draftChanges
-  } = useVersionManager(flowId)
-  const flowElementRef = useRef<HTMLDivElement>(null)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-    isOpen: false,
-    x: 0,
-    y: 0,
+    draftChanges,
+  } = versionManager
+
+  const persistence = useFlowPersistence({
+    flowId,
+    isNewFlow,
+    isSetupMode,
+    loadFromDb,
+    nodes,
+    edges,
+    platform,
+    setNodes,
+    setEdges,
+    setPlatform,
   })
-  const [nodeContextMenu, setNodeContextMenu] = useState<{
-    isOpen: boolean
-    x: number
-    y: number
-    nodeId: string | null
-  }>({
-    isOpen: false,
-    x: 0,
-    y: 0,
-    nodeId: null,
+
+  const nodeOps = useNodeOperations({
+    flowId,
+    nodes,
+    edges,
+    platform,
+    setNodes,
+    setEdges,
+    setPlatform,
+    onNodesChangeOriginal,
+    onEdgesChangeOriginal,
+    isEditMode,
+    autoEnterEditMode,
+    updateDraftChanges,
+    currentFlow: persistence.currentFlow,
+    setCurrentFlow: persistence.setCurrentFlow,
+    flowLoaded: persistence.flowLoaded,
+    setFlowLoaded: persistence.setFlowLoaded,
   })
-  const [draggedNodeType, setDraggedNodeType] = useState<string | null>(null)
-  const [connectionMenu, setConnectionMenu] = useState<ConnectionMenuState>({
-    isOpen: false,
-    x: 0,
-    y: 0,
-    sourceNodeId: null,
-    sourceHandleId: null,
+
+  const clipboard = useClipboard({
+    nodes,
+    edges,
+    platform,
+    setNodes,
+    setEdges,
+    setPlatform,
+    deleteNode: nodeOps.deleteNode,
+    setSelectedNode: nodeOps.setSelectedNode,
+    setIsPropertiesPanelOpen: nodeOps.setIsPropertiesPanelOpen,
+    setNodeToFocus: nodeOps.setNodeToFocus,
+    isEditMode,
+    autoEnterEditMode,
+    updateDraftChanges,
   })
-  const [lastClickTime, setLastClickTime] = useState<number>(0)
-  const [lastClickPosition, setLastClickPosition] = useState<Coordinates>({ x: 0, y: 0 })
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
-  const [nodeToFocus, setNodeToFocus] = useState<string | null>(null)
-  const [clipboard, setClipboard] = useState<{ nodes: Node[], edges: Edge[] } | null>(null)
-  const [selectedNodes, setSelectedNodes] = useState<Node[]>([])
-  const [pastePosition, setPastePosition] = useState<{ x: number, y: number } | null>(null)
 
-  const { screenToFlowPosition, fitView, getNodes, getEdges } = useReactFlow();
-
-  // Load flow data when flowId changes
-  useEffect(() => {
-    if (flowId && !isSetupMode && !isNewFlow) {
-      const loadFlowData = async () => {
-        if (loadFromDb) {
-          // Load from database via API
-          console.log('[App] Loading flow from database for flowId:', flowId)
-          setIsLoadingFromDb(true)
-
-          try {
-            const response = await fetch(`/api/flows/${flowId}`)
-
-            if (!response.ok) {
-              throw new Error(`Failed to fetch flow: ${response.statusText}`)
-            }
-
-            const flowData = await response.json()
-
-            console.log('[App] Flow data loaded from database:', {
-              name: flowData.name,
-              nodes: flowData.nodes?.length || 0,
-              edges: flowData.edges?.length || 0,
-              platform: flowData.platform
-            })
-
-            // Ensure nodes and edges are arrays
-            const formattedFlowData: FlowData = {
-              ...flowData,
-              nodes: flowData.nodes || [],
-              edges: flowData.edges || [],
-            }
-
-            setCurrentFlow(formattedFlowData)
-            setNodes(formattedFlowData.nodes)
-            setEdges(formattedFlowData.edges)
-            setPlatform(formattedFlowData.platform)
-            setFlowLoaded(true)
-
-            toast.success("Flow loaded from database")
-          } catch (error) {
-            console.error('[App] Error loading flow from database:', error)
-            toast.error("Failed to load flow from database")
-          } finally {
-            setIsLoadingFromDb(false)
-          }
-        } else {
-          // Load from localStorage (existing behavior)
-          console.log('[App] Loading flow data from localStorage for flowId:', flowId)
-          const flowData = getFlow(flowId)
-
-          if (flowData) {
-            console.log('[App] Flow data loaded:', {
-              name: flowData.name,
-              nodes: flowData.nodes.length,
-              edges: flowData.edges.length,
-              platform: flowData.platform
-            })
-
-            setCurrentFlow(flowData)
-            setNodes(flowData.nodes)
-            setEdges(flowData.edges)
-            setPlatform(flowData.platform)
-            setFlowLoaded(true)
-          } else {
-            console.log('[App] No flow data found for flowId:', flowId)
-          }
-        }
-      }
-
-      loadFlowData()
-    }
-  }, [flowId, isSetupMode, isNewFlow, loadFromDb])
-
-  // Track if we're currently saving to prevent infinite loops
-  const isSavingRef = useRef(false)
-  const lastSavedDataRef = useRef<string>('')
-
-  // Auto-save flow data when nodes, edges, or platform change
-  useEffect(() => {
-    if (flowId && currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && !isSavingRef.current) {
-      // Create a hash of the data we're about to save to avoid saving if nothing changed
-      const dataToSave = JSON.stringify({ nodes, edges, platform })
-
-      // Skip if this is the same data we last saved
-      if (dataToSave === lastSavedDataRef.current) {
-        return
-      }
-
-      const timeoutId = setTimeout(async () => {
-        // Prevent concurrent saves
-        if (isSavingRef.current) {
-          return
-        }
-
-        isSavingRef.current = true
-        console.log('[App] Auto-saving flow data for flowId:', flowId)
-
-        if (loadFromDb) {
-          // Save to database via API
-          try {
-            const response = await fetch(`/api/flows/${flowId}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                nodes,
-                edges,
-                platform,
-                name: currentFlow.name,
-                description: currentFlow.description,
-                triggerId: currentFlow.triggerId,
-                triggerIds: currentFlow.triggerIds,
-              }),
-            })
-
-            if (!response.ok) {
-              throw new Error(`Failed to update flow: ${response.statusText}`)
-            }
-
-            const updatedFlow = await response.json()
-
-            // Update last saved data hash to prevent re-saving the same data
-            lastSavedDataRef.current = dataToSave
-
-            // Update currentFlow with the response (includes updatedAt timestamp)
-            // This won't trigger the useEffect since we removed currentFlow from dependencies
-            setCurrentFlow(updatedFlow)
-
-            console.log('[App] Flow saved to database successfully')
-          } catch (error) {
-            console.error('[App] Error saving flow to database:', error)
-            // Don't show toast for auto-save errors to avoid spam
-          } finally {
-            isSavingRef.current = false
-          }
-        } else {
-          // Save to localStorage (existing behavior)
-          updateFlow(flowId, {
-            nodes,
-            edges,
-            platform
-          })
-          lastSavedDataRef.current = dataToSave
-          isSavingRef.current = false
-        }
-      }, 1000) // Debounce for 1 second
-
-      return () => {
-        clearTimeout(timeoutId)
-        isSavingRef.current = false
-      }
-    }
-  }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow, loadFromDb]) // Removed currentFlow from dependencies
-
-  // Custom onNodesChange to prevent deletion of start nodes
-  const onNodesChange = useCallback((changes: any[]) => {
-    // Filter out deletion changes for start nodes
-    const filteredChanges = changes.filter(change => {
-      if (change.type === 'remove') {
-        const nodeToRemove = nodes.find(n => n.id === change.id)
-        if (nodeToRemove?.type === 'start') {
-          toast.error("Start node cannot be deleted")
-          return false
-        }
-      }
-      return true
-    })
-
-    // Apply the filtered changes
-    onNodesChangeOriginal(filteredChanges)
-  }, [nodes, onNodesChangeOriginal])
-
-  const deleteNode = useCallback(
-    (nodeId: string) => {
-      const nodeToDelete = nodes.find(n => n.id === nodeId)
-
-      // Prevent deletion of start nodes
-      if (nodeToDelete?.type === "start") {
-        toast.error("Start node cannot be deleted")
-        return
-      }
-
-      // Track the deletion
-      if (nodeToDelete) {
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeDelete(nodeId, nodeToDelete.type, nodeToDelete.data?.label as string | undefined)
-        updateDraftChanges()
-      }
-
-      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
-      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
-      if (selectedNode?.id === nodeId) {
-        setSelectedNode(null)
-        setIsPropertiesPanelOpen(false)
-      }
-
-      // Show toast notification
-      if (nodeToDelete) {
-        toast.success(`"${nodeToDelete.data.label || nodeToDelete.type}" deleted`)
-      }
-    },
-    [setNodes, setEdges, selectedNode, setIsPropertiesPanelOpen, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges, platform],
-  )
-
-  const copyNodes = useCallback(() => {
-    if (selectedNodes.length === 0) return
-
-    // Filter out start nodes from copying
-    const copyableNodes = selectedNodes.filter(node => node.type !== "start")
-
-    if (copyableNodes.length === 0) {
-      toast.error("Start nodes cannot be copied")
-      return
-    }
-
-    if (copyableNodes.length !== selectedNodes.length) {
-      toast.warning("Start nodes were excluded from copy operation")
-    }
-
-    // Get all edges that connect the copyable nodes
-    const copyableNodeIds = copyableNodes.map(node => node.id)
-    const connectedEdges = edges.filter(edge =>
-      copyableNodeIds.includes(edge.source) && copyableNodeIds.includes(edge.target)
-    )
-
-    setClipboard({
-      nodes: copyableNodes.map(node => ({ ...node })),
-      edges: connectedEdges.map(edge => ({ ...edge }))
-    })
-
-    // Show toast notification for copy
-    toast.success(`${copyableNodes.length} node${copyableNodes.length > 1 ? 's' : ''} copied to clipboard`)
-
-    console.log("[v0] Copied nodes:", copyableNodes.length, "edges:", connectedEdges.length)
-  }, [selectedNodes, edges])
-
-  const pasteNodes = useCallback((cursorPosition?: { x: number, y: number }) => {
-    if (!clipboard) return
-
-    const nodeIdMap = new Map<string, string>()
-
-    // Calculate the center of the original nodes for offset calculation
-    const originalCenter = {
-      x: clipboard.nodes.reduce((sum, node) => sum + node.position.x, 0) / clipboard.nodes.length,
-      y: clipboard.nodes.reduce((sum, node) => sum + node.position.y, 0) / clipboard.nodes.length
-    }
-
-    // Use cursor position if provided, otherwise use stored paste position or default offset
-    let targetPosition: { x: number, y: number }
-    if (cursorPosition) {
-      targetPosition = cursorPosition
-    } else if (pastePosition) {
-      targetPosition = pastePosition
-    } else {
-      targetPosition = { x: originalCenter.x + 50, y: originalCenter.y + 50 }
-    }
-
-    // Create new nodes with updated IDs and positions relative to cursor
-    const newNodes = clipboard.nodes.map(node => {
-      const newNodeId = `${node.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      nodeIdMap.set(node.id, newNodeId)
-
-      // Calculate offset from original center to this node
-      const offsetFromCenter = {
-        x: node.position.x - originalCenter.x,
-        y: node.position.y - originalCenter.y
-      }
-
-      return {
-        ...node,
-        id: newNodeId,
-        position: {
-          x: targetPosition.x + offsetFromCenter.x,
-          y: targetPosition.y + offsetFromCenter.y
-        },
-        data: {
-          ...node.data,
-          id: newNodeId
-        }
-      }
-    })
-
-    // Create new edges with updated node IDs
-    const newEdges = clipboard.edges.map(edge => {
-      const newSourceId = nodeIdMap.get(edge.source)
-      const newTargetId = nodeIdMap.get(edge.target)
-
-      if (!newSourceId || !newTargetId) return null
-
-      return {
-        ...edge,
-        id: `e${newSourceId}-${newTargetId}-${Date.now()}`,
-        source: newSourceId,
-        target: newTargetId
-      }
-    }).filter(Boolean) as Edge[]
-
-    // Add new nodes and edges
-    setNodes(nds => [...nds, ...newNodes])
-    setEdges(eds => [...eds, ...newEdges])
-
-    // Select the newly pasted nodes
-    setSelectedNodes(newNodes)
-    setSelectedNode(newNodes[0] || null)
-    setIsPropertiesPanelOpen(true)
-
-    // Focus on the first pasted non-comment node (skip focusing comment nodes)
-    if (newNodes.length > 0) {
-      const firstNonComment = newNodes.find(n => n.type !== "comment")
-      if (firstNonComment) {
-        setNodeToFocus(firstNonComment.id)
-      }
-    }
-
-    // No toast for paste - user requested only copy, delete, and multiple selection
-
-    console.log("[v0] Pasted nodes:", newNodes.length, "edges:", newEdges.length, "at position:", targetPosition)
-  }, [clipboard, setNodes, setEdges, pastePosition])
-
-  const selectAllNodes = useCallback(() => {
-    const allNodes = getNodes()
-    // Filter out start nodes from selection
-    const selectableNodes = allNodes.filter(node => node.type !== "start")
-    setSelectedNodes(selectableNodes)
-    setSelectedNode(selectableNodes[0] || null)
-    setIsPropertiesPanelOpen(true)
-
-    // No toast for select all - user requested only copy, delete, and multiple selection
-  }, [getNodes])
-
-
-  const onConnect = useCallback(
-    (params: Connection) => {
-      if (!params.source || !params.target) {
-        console.warn("[v0] Invalid connection params:", params)
-        return
-      }
-
-      const existingConnection = edges.find(
-        (edge) => edge.source === params.source && edge.sourceHandle === params.sourceHandle,
-      )
-
-      if (existingConnection) {
-        console.log("[v0] Connection blocked - source handle already connected:", {
-          source: params.source,
-          sourceHandle: params.sourceHandle,
-          existingTarget: existingConnection.target,
-        })
-        return
-      }
-
-      const newEdge = {
-        ...params,
-        type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
-      }
-
-      // Track the connection
-      if (!isEditMode) {
-        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-      }
-      changeTracker.trackEdgeAdd(newEdge)
-      updateDraftChanges()
-
-      console.log("[v0] Creating new connection:", params)
-      setEdges((eds) => addEdge(newEdge, eds))
-
-      // SCENARIO 2: If connecting TO a condition node, update its connectedNode data
-      setNodes((nds) => {
-        const targetNode = nds.find(n => n.id === params.target)
-        const sourceNode = nds.find(n => n.id === params.source)
-
-        // Only update connectedNode when connecting to a condition node's main target handle
-        if (targetNode?.type === "condition" && sourceNode && !params.targetHandle) {
-          const updatedNodes = nds.map((node) =>
-            node.id === params.target
-              ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  connectedNode: {
-                    id: sourceNode.id,
-                    type: sourceNode.type,
-                    label: sourceNode.data?.label || sourceNode.type
-                  }
-                }
-              }
-              : node
-          )
-
-          // Also update selectedNode if this condition node is currently selected
-          setSelectedNode((currentSelected) => {
-            if (currentSelected?.id === params.target) {
-              return updatedNodes.find(n => n.id === params.target) || currentSelected
-            }
-            return currentSelected
-          })
-
-          return updatedNodes
-        }
-
-        return nds
-      })
-    },
-    [setEdges, edges, isEditMode, updateDraftChanges, autoEnterEditMode, setNodes, setSelectedNode, setPlatform, nodes, platform],
-  )
-
-  const addButtonToNode = useCallback(
-    (nodeId: string) => {
-      try {
-        const node = nodes.find((n) => n.id === nodeId)
-        if (!node) {
-          console.warn(`[v0] Node with id ${nodeId} not found`)
-          return
-        }
-
-        // Handle question nodes (convert to quick reply)
-        if (node.type === "question" || node.type === "webQuestion" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
-          const platform = (node.data.platform as Platform) || "web"
-          const newType = getPlatformSpecificNodeType("quickReply", platform)
-
-          // Track the type transition
-          if (!isEditMode) {
-            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-          }
-          changeTracker.trackNodeUpdate(nodeId, node.data, {
-            ...node.data,
-            label: "Quick Reply",
-            buttons: [{ text: "Option 1" }],
-          }, node.type, newType)
-          updateDraftChanges()
-
-          setNodes((nds) =>
-            nds.map((n) =>
-              n.id === nodeId
-                ? {
-                  ...n,
-                  type: newType,
-                  data: {
-                    ...n.data,
-                    label: "Quick Reply",
-                    buttons: [{ text: "Option 1" }],
-                  },
-                }
-                : n,
-            ),
-          )
-          // Request focus on the converted node
-          setNodeToFocus(nodeId)
-        }
-        // Handle quick reply nodes (add button or convert to list)
-        else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
-          const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
-          const platform = (node.data.platform as Platform) || "web"
-
-          // Check if adding one more button would exceed the limit
-          const canAddButton = areButtonsWithinNodeLimits(currentButtons.length + 1, node.type, platform)
-
-          if (!canAddButton.valid) {
-            // Convert to list node if at max buttons
-            const newType = getPlatformSpecificNodeType("whatsappList", platform)
-            const newLabel = getPlatformSpecificLabel("whatsappList", platform)
-
-            // Convert buttons to options
-            const convertedOptions = currentButtons.map((btn: ButtonData) => ({
-              id: btn.id || `opt-${Date.now()}-${Math.random()}`,
-              text: btn.text || btn.label || "",
-              value: btn.value || btn.text?.toLowerCase().replace(/\s+/g, '_') || ""
-            }))
-
-            // Add the new option
-            const newOptions = [...convertedOptions, createOptionData("", currentButtons.length)] as OptionData[]
-
-            // Track the type transition
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              label: newLabel,
-              options: newOptions,
-              buttons: undefined, // Remove buttons field
-            }, node.type, newType)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    type: newType,
-                    data: {
-                      ...n.data,
-                      label: newLabel,
-                      options: newOptions,
-                      buttons: undefined, // Remove buttons field
-                    },
-                  }
-                  : n,
-              ),
-            )
-
-            console.log(`[v0] Auto-converted Quick Reply to List (${currentButtons.length} → ${newOptions.length} options)`)
-
-            // Show toast notification
-            toast.success(`Upgraded to ${newLabel}!`, {
-              description: `You can now add up to 10 options (was limited to 3 buttons)`
-            })
-
-            // Request focus on the converted node
-            setNodeToFocus(nodeId)
-          } else {
-            // Add button
-            const newButtons = [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[]
-
-            // Track button addition
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              buttons: newButtons,
-            }, node.type, node.type)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      buttons: newButtons,
-                    },
-                  }
-                  : n,
-              ),
-            )
-          }
-        }
-        // Handle list nodes (add option)
-        else if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
-          const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
-          const platform = (node.data.platform as Platform) || "web"
-
-          // Check if adding one more option would exceed the limit
-          const canAddOption = areOptionsWithinNodeLimits(currentOptions.length + 1, node.type, platform)
-
-          if (canAddOption.valid) {
-            const newOptions = [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[]
-
-            // Track option addition
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              options: newOptions,
-            }, node.type, node.type)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      options: newOptions,
-                    },
-                  }
-                  : n,
-              ),
-            )
-          }
-        }
-      } catch (error) {
-        console.error(`[v0] Error adding button to node ${nodeId}:`, error)
-      }
-    },
-    [nodes, setNodes],
-  )
-
-  const removeButtonFromNode = useCallback(
-    (nodeId: string, buttonIndex: number) => {
-      try {
-        const node = nodes.find((n) => n.id === nodeId)
-        if (!node) {
-          console.warn(`[v0] Node with id ${nodeId} not found`)
-          return
-        }
-
-        const platform = (node.data.platform as Platform) || "web"
-        const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
-        const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
-
-        // Handle list nodes (remove option and potentially convert back to quick reply)
-        if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
-          const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
-
-          // If we have 3 or fewer options, convert back to quick reply
-          if (newOptions.length <= 3) {
-            const newType = getPlatformSpecificNodeType("quickReply", platform)
-            const buttonsFromOptions = newOptions.map(opt => ({ text: opt.text || "" }))
-
-            // Track the reverse transition
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              label: "Quick Reply",
-              buttons: buttonsFromOptions,
-            }, node.type, newType)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    type: newType,
-                    data: {
-                      ...n.data,
-                      label: "Quick Reply",
-                      buttons: buttonsFromOptions,
-                    },
-                  }
-                  : n,
-              ),
-            )
-          } else {
-            // Just remove the option
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              options: newOptions,
-            }, node.type, node.type)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      options: newOptions,
-                    },
-                  }
-                  : n,
-              ),
-            )
-          }
-        }
-        // Handle quick reply nodes (remove button and potentially convert back to question)
-        else if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
-          const newButtons = currentButtons.filter((_, i) => i !== buttonIndex)
-
-          // If no buttons left, convert back to question
-          if (newButtons.length === 0) {
-            const newType = getPlatformSpecificNodeType("question", platform)
-
-            // Track the reverse transition
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              label: "Question",
-            }, node.type, newType)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    type: newType,
-                    data: {
-                      ...n.data,
-                      label: "Question",
-                    },
-                  }
-                  : n,
-              ),
-            )
-          } else {
-            // Just remove the button
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeUpdate(nodeId, node.data, {
-              ...node.data,
-              buttons: newButtons,
-            }, node.type, node.type)
-            updateDraftChanges()
-
-            setNodes((nds) =>
-              nds.map((n) =>
-                n.id === nodeId
-                  ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      buttons: newButtons,
-                    },
-                  }
-                  : n,
-              ),
-            )
-          }
-        }
-      } catch (error) {
-        console.error(`[v0] Error removing button from node ${nodeId}:`, error)
-      }
-    },
-    [nodes, setNodes],
-  )
-
-  const addConnectedNode = useCallback(
-    (sourceNodeId: string) => {
-      const newNodeId = `${Date.now()}`
-      const sourceNode = nodes.find((n) => n.id === sourceNodeId)
-      if (!sourceNode) return
-
-      const newNode: Node = {
-        id: newNodeId,
-        type: "question",
-        position: {
-          x: sourceNode.position.x + 300,
-          y: sourceNode.position.y,
-        },
-        data: {
-          label: "New Question",
-          question: "What would you like to know?",
-        },
-      }
-
-      const newEdge: Edge = {
-        id: `e${sourceNodeId}-${newNodeId}`,
-        source: sourceNodeId,
-        target: newNodeId,
-        type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
-      }
-
-      // Track node and edge creation
-      if (!isEditMode) {
-        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-      }
-      changeTracker.trackNodeAdd(newNode)
-      changeTracker.trackEdgeAdd(newEdge)
-      updateDraftChanges()
-
-      setNodes((nds) => [...nds, newNode])
-      setEdges((eds) => [...eds, newEdge])
-      // Request focus on the newly created connected node
-      setNodeToFocus(newNodeId)
-    },
-    [nodes, setNodes, setEdges, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges, platform],
-  )
-
-  const exportFlow = useCallback(() => {
-    const flowData = {
-      nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
-      edges: edges.map(({ style, ...edge }) => edge),
-      platform,
-      timestamp: new Date().toISOString(),
-    }
-
-    const dataStr = JSON.stringify(flowData, null, 2)
-    const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr)
-
-    const exportFileDefaultName = `magic-flow-${platform}-${Date.now()}.json`
-
-    const linkElement = document.createElement("a")
-    linkElement.setAttribute("href", dataUri)
-    linkElement.setAttribute("download", exportFileDefaultName)
-    linkElement.click()
-  }, [nodes, edges, platform])
-
-  const importFlow = useCallback((importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
-    console.log("[v0] Importing flow:", {
-      nodes: importedNodes.length,
-      edges: importedEdges.length,
-      platform: importedPlatform
-    })
-
-    // Track flow import
-    if (!isEditMode) {
-      autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-    }
-    changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
-    updateDraftChanges()
-
-    // Clear current flow
-    setNodes([])
-    setEdges([])
-    setSelectedNode(null)
-    setSelectedNodes([])
-    setIsPropertiesPanelOpen(false)
-
-    // Set new flow data
-    setNodes(importedNodes)
-    setEdges(importedEdges)
-    setPlatform(importedPlatform)
-
-    toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
-  }, [setNodes, setEdges, setPlatform, setSelectedNode, setSelectedNodes, setIsPropertiesPanelOpen, isEditMode, updateDraftChanges, autoEnterEditMode, nodes, edges, platform])
-
-  const onNodeDragStart = useCallback((event: React.DragEvent, nodeType: string) => {
-    setDraggedNodeType(nodeType)
-    event.dataTransfer.effectAllowed = "move"
-  }, [])
-
-  // Add node from AI suggestions (with generated content)
-  const onAcceptAISuggestion = useCallback(
-    (suggestion: { type: string; generatedContent?: any }) => {
-      if (!selectedNode) {
-        toast.error("No node selected")
-        return
-      }
-
-      // Normalize node type for createNode
-      // createNode expects base types (question, quickReply, whatsappList) not platform-specific types
-      // BUT it also accepts platform-specific message nodes (whatsappMessage, instagramDM, instagramStory) as-is
-      let normalizedType = suggestion.type
-
-      // Handle list types - createNode only accepts "whatsappList" regardless of platform
-      if (normalizedType === "list" || normalizedType === "whatsappList" || normalizedType === "instagramList" || normalizedType === "whatsappListSpecific") {
-        normalizedType = "whatsappList"
-      }
-      // For platform-specific question/quickReply types, convert to base types
-      else if (normalizedType === "whatsappQuestion" || normalizedType === "instagramQuestion" || normalizedType === "webQuestion") {
-        normalizedType = "question"
-      }
-      else if (normalizedType === "whatsappQuickReply" || normalizedType === "instagramQuickReply" || normalizedType === "webQuickReply") {
-        normalizedType = "quickReply"
-      }
-      // Platform-specific message nodes are passed as-is (whatsappMessage, instagramDM, instagramStory)
-      else if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
-        // Keep as-is - createNode now supports these
-        normalizedType = normalizedType
-      }
-      // For other types, use getBaseNodeType as fallback
-      else {
-        const baseType = getBaseNodeType(suggestion.type)
-        if (baseType !== suggestion.type) {
-          normalizedType = baseType
-        }
-      }
-
-      const newNodeId = `${suggestion.type}-${Date.now()}`
-      let newNode: Node
-
-      try {
-        // Calculate position to the right of selected node
-        const nodePosition = {
-          x: (selectedNode.position.x || 0) + 350,
-          y: (selectedNode.position.y || 0),
-        }
-
-        // Handle comment nodes specially
-        if (normalizedType === "comment") {
-          newNode = createCommentNode(
-            platform,
-            nodePosition,
-            newNodeId,
-            (updates: any) => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node,
-                ),
-              )
-            },
-            () => deleteNode(newNodeId)
-          )
-        } else {
-          newNode = createNode(normalizedType, platform, nodePosition, newNodeId)
-        }
-
-        // Populate node with generated content
-        if (suggestion.generatedContent) {
-          const content = suggestion.generatedContent
-          const updatedData: any = { ...newNode.data }
-
-          // Set label if provided
-          if (content.label) {
-            updatedData.label = content.label
-          }
-
-          // Handle message nodes (whatsappMessage, instagramDM, instagramStory) - they use "text" field
-          if (["whatsappMessage", "instagramDM", "instagramStory"].includes(normalizedType)) {
-            // Message nodes use "text" field, not "question"
-            if (content.text) {
-              updatedData.text = content.text
-            } else if (content.question) {
-              // Fallback: if question is provided, use it as text
-              updatedData.text = content.question
-            }
-          } else {
-            // For other nodes, use question field
-            if (content.question) {
-              updatedData.question = content.question
-            }
-            // Also set text if provided (for nodes that might use both)
-            if (content.text) {
-              updatedData.text = content.text
-            }
-          }
-
-          // Set buttons if provided
-          if (content.buttons && Array.isArray(content.buttons)) {
-            updatedData.buttons = content.buttons.map((btn: any, index: number) => ({
-              id: `btn-${Date.now()}-${index}`,
-              text: btn.text || btn.label || "",
-              label: btn.label || btn.text || "",
-            }))
-          }
-          // Set options if provided
-          if (content.options && Array.isArray(content.options)) {
-            updatedData.options = content.options.map((opt: any, index: number) => ({
-              text: opt.text || "",
-            }))
-          }
-
-          newNode.data = updatedData
-        }
-
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        // Add the node first
-        setNodes((nds) => [...nds, newNode])
-
-        // Auto-connect the new node to the selected node
-        // Create edge connection (same pattern as onConnect)
-        const newEdge: Edge = {
-          id: `e-${selectedNode.id}-${newNodeId}`,
-          source: selectedNode.id,
-          target: newNodeId,
-          type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
-        }
-
-        // Check if connection already exists
-        const existingConnection = edges.find(
-          (edge) => edge.source === selectedNode.id && edge.target === newNodeId,
-        )
-
-        if (!existingConnection) {
-          // Add edge using addEdge helper (same as onConnect)
-          setEdges((eds) => addEdge(newEdge, eds))
-          changeTracker.trackEdgeAdd(newEdge)
-          updateDraftChanges()
-        }
-
-        // Clear suggestions and close panel
-        clearSuggestions()
-        setIsAISuggestionsPanelOpen(false)
-
-        setNodeToFocus(newNodeId)
-        toast.success(`Added ${newNode.data.label || suggestion.type} node with AI-generated content`)
-      } catch (error) {
-        console.error(`[v0] Error creating suggested node ${suggestion.type}:`, error)
-        toast.error(`Failed to add ${suggestion.type} node`)
-      }
-    },
-    [selectedNode, platform, isEditMode, setNodes, setEdges, setPlatform, nodes, edges, autoEnterEditMode, updateDraftChanges, deleteNode, clearSuggestions],
-  )
-
-  // Add node from AI suggestions
-  const onAddNode = useCallback(
-    (nodeType: string, position?: { x: number; y: number }) => {
-      const newNodeId = `${nodeType}-${Date.now()}`
-      let newNode: Node
-
-      try {
-        // Use provided position or calculate position to the right of selected node
-        let nodePosition: { x: number; y: number }
-        if (position) {
-          nodePosition = position
-        } else if (selectedNode) {
-          nodePosition = {
-            x: (selectedNode.position.x || 0) + 350,
-            y: (selectedNode.position.y || 0),
-          }
-        } else {
-          nodePosition = { x: 250, y: 200 }
-        }
-
-        // Handle comment nodes specially
-        if (nodeType === "comment") {
-          newNode = createCommentNode(
-            platform,
-            nodePosition,
-            newNodeId,
-            (updates: any) => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node,
-                ),
-              )
-            },
-            () => deleteNode(newNodeId)
-          )
-        } else {
-          newNode = createNode(nodeType, platform, nodePosition, newNodeId)
-        }
-
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        setNodes((nds) => [...nds, newNode])
-        setNodeToFocus(newNodeId)
-      } catch (error) {
-        console.error(`[v0] Error creating suggested node ${nodeType}:`, error)
-        toast.error(`Failed to add ${nodeType} node`)
-      }
-    },
-    [selectedNode, platform, isEditMode, setNodes, setEdges, setPlatform, nodes, edges, autoEnterEditMode, updateDraftChanges, deleteNode],
-  )
-
-  // Apply AI-generated flow
-  const handleApplyFlow = useCallback(
-    (flowData: { nodes: Node[]; edges: Edge[] }) => {
-      try {
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-
-        // Keep the existing start node (id: "1")
-        const existingStartNode = nodes.find((n) => n.id === "1" && n.type === "start")
-
-        // Process AI-generated nodes using createNode for proper structure
-        const processedNodes: Node[] = []
-
-        // Add start node first if it exists
-        if (existingStartNode) {
-          processedNodes.push(existingStartNode)
-        }
-
-        // Process each AI-generated node
-        for (const aiNode of flowData.nodes || []) {
-          if (!aiNode.id || !aiNode.type) {
-            console.warn("[handleApplyFlow] Skipping node without id or type:", aiNode)
-            continue
-          }
-
-          // Skip start nodes (already handled above)
-          if (aiNode.type === "start") {
-            continue
-          }
-
-          try {
-            const nodePlatform = (aiNode.data?.platform as Platform) || platform
-            const nodePosition = aiNode.position || { x: 250, y: 200 }
-            const nodeId = aiNode.id
-
-            // Use the exact node type from AI (it should already be platform-specific)
-            // Only normalize if it's a generic type
-            const baseType = getBaseNodeType(aiNode.type)
-            let nodeTypeToCreate = aiNode.type
-
-            // If it's a generic type, convert to platform-specific
-            if (baseType === "list") {
-              nodeTypeToCreate = platform === "whatsapp" ? "whatsappList"
-                : platform === "instagram" ? "instagramList"
-                  : "whatsappList" // Default fallback
-            } else if (baseType === "question" && !aiNode.type.includes(platform)) {
-              nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
-                : platform === "instagram" ? "instagramQuestion"
-                  : "webQuestion"
-            } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
-              nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
-                : platform === "instagram" ? "instagramQuickReply"
-                  : "webQuickReply"
-            }
-
-            const newNode = createNode(
-              nodeTypeToCreate,
-              nodePlatform,
-              nodePosition,
-              nodeId
-            )
-
-            // Transform AI data first (especially buttons/options) before merging
-            const transformedAiData = { ...(aiNode.data || {}) }
-
-            // Transform data structure based on node type
-            if (baseType === "quickReply") {
-              // Convert options to buttons for quickReply nodes
-              if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
-                transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
-                  const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-                  return {
-                    id: `btn-${Date.now()}-${index}`,
-                    text,
-                    label: text,
-                  }
-                })
-                delete transformedAiData.options
-              }
-              // Also handle if buttons are provided as strings
-              if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
-                transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
-                  if (typeof btn === "string") {
-                    return {
-                      id: `btn-${Date.now()}-${index}`,
-                      text: btn,
-                      label: btn,
-                    }
-                  }
-                  return {
-                    id: btn.id || `btn-${Date.now()}-${index}`,
-                    text: btn.text || btn.label || "",
-                    label: btn.label || btn.text || "",
-                  }
-                })
-              }
-            } else if (baseType === "list") {
-              // Transform options to proper format for list nodes
-              if (Array.isArray(transformedAiData.options)) {
-                transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
-                  text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
-                }))
-              }
-            }
-
-            // Now merge with newNode data (transformed buttons will override defaults)
-            let mergedData = { ...newNode.data, ...transformedAiData }
-
-            processedNodes.push({
-              ...newNode,
-              ...aiNode,
-              data: mergedData,
-              position: nodePosition,
-            })
-          } catch (error) {
-            console.error(`[handleApplyFlow] Error creating node ${aiNode.type}:`, error)
-            // Fallback: use AI node as-is with minimal structure
-            processedNodes.push({
-              id: aiNode.id,
-              type: aiNode.type,
-              position: aiNode.position || { x: 250, y: 200 },
-              data: {
-                platform: (aiNode.data?.platform as Platform) || platform,
-                ...(aiNode.data || {}),
-              },
-            } as Node)
-          }
-        }
-
-        // Process edges - ensure they reference valid nodes
-        const processedEdges: Edge[] = []
-        const nodeIds = new Set(processedNodes.map((n) => n.id))
-
-        for (const aiEdge of flowData.edges || []) {
-          if (!aiEdge.source || !aiEdge.target) {
-            console.warn(`[handleApplyFlow] Skipping edge ${aiEdge.id}: missing source or target`)
-            continue
-          }
-
-          // Only add edges where both source and target nodes exist
-          if (nodeIds.has(aiEdge.source) && nodeIds.has(aiEdge.target)) {
-            processedEdges.push({
-              id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
-              source: aiEdge.source,
-              target: aiEdge.target,
-              type: aiEdge.type || "default",
-              sourceHandle: aiEdge.sourceHandle,
-              targetHandle: aiEdge.targetHandle,
-              style: aiEdge.style,
-            } as Edge)
-          } else {
-            console.warn(`[handleApplyFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
-          }
-        }
-
-        // Update nodes and edges
-        setNodes(processedNodes)
-        setEdges(processedEdges)
-
-        // Track changes
-        processedNodes.forEach((node) => {
-          if (node.id !== "1") {
-            changeTracker.trackNodeAdd(node)
-          }
-        })
-        processedEdges.forEach((edge) => changeTracker.trackEdgeAdd(edge))
-        updateDraftChanges()
-
-        toast.success(`AI-generated flow applied successfully! Added ${processedNodes.length - (existingStartNode ? 1 : 0)} nodes and ${processedEdges.length} connections.`)
-      } catch (error) {
-        console.error("[handleApplyFlow] Error:", error)
-        toast.error("Failed to apply AI-generated flow. Please try again.")
-      }
-    },
-    [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform, changeTracker, updateDraftChanges],
-  )
-
-  // Apply AI-suggested updates
-  const handleUpdateFlow = useCallback(
-    (updates: { nodes?: Node[]; edges?: Edge[]; description?: string }) => {
-      try {
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-
-        // Apply node updates
-        if (updates.nodes && updates.nodes.length > 0) {
-          const processedNodes: Node[] = []
-
-          for (const aiNode of updates.nodes) {
-            if (!aiNode.id || !aiNode.type) {
-              console.warn("[handleUpdateFlow] Skipping node without id or type:", aiNode)
-              continue
-            }
-
-            const existingNode = nodes.find((n) => n.id === aiNode.id)
-
-            if (existingNode) {
-              // Transform AI data first (especially buttons/options) before merging
-              const transformedAiData = { ...(aiNode.data || {}) }
-              const baseType = getBaseNodeType(aiNode.type)
-
-              // Transform data structure if needed
-              if (baseType === "quickReply") {
-                // Convert options to buttons for quickReply nodes
-                if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
-                  transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
-                    const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-                    return {
-                      id: `btn-${Date.now()}-${index}`,
-                      text,
-                      label: text,
-                    }
-                  })
-                  delete transformedAiData.options
-                }
-                // Also handle if buttons are provided as strings
-                if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
-                  transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
-                    if (typeof btn === "string") {
-                      return {
-                        id: `btn-${Date.now()}-${index}`,
-                        text: btn,
-                        label: btn,
-                      }
-                    }
-                    return {
-                      id: btn.id || `btn-${Date.now()}-${index}`,
-                      text: btn.text || btn.label || "",
-                      label: btn.label || btn.text || "",
-                    }
-                  })
-                }
-              } else if (baseType === "list") {
-                // Transform options to proper format for list nodes
-                if (Array.isArray(transformedAiData.options)) {
-                  transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
-                    text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
-                  }))
-                }
-              }
-
-              // Now merge with existing node data (transformed buttons will override existing)
-              let updatedData = { ...existingNode.data, ...transformedAiData }
-
-              processedNodes.push({
-                ...existingNode,
-                ...aiNode,
-                data: updatedData,
-              })
-            } else {
-              // Create new node using createNode to ensure proper structure
-              try {
-                const nodePlatform = (aiNode.data?.platform as Platform) || platform
-                const nodePosition = aiNode.position || { x: 250, y: 200 }
-                const nodeId = aiNode.id
-
-                // Use the exact node type from AI (it should already be platform-specific)
-                // Only normalize if it's a generic type
-                const baseType = getBaseNodeType(aiNode.type)
-                let nodeTypeToCreate = aiNode.type
-
-                // If it's a generic type, convert to platform-specific
-                if (baseType === "list") {
-                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappList"
-                    : platform === "instagram" ? "instagramList"
-                      : "whatsappList" // Default fallback
-                } else if (baseType === "question" && !aiNode.type.includes(platform)) {
-                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuestion"
-                    : platform === "instagram" ? "instagramQuestion"
-                      : "webQuestion"
-                } else if (baseType === "quickReply" && !aiNode.type.includes(platform)) {
-                  nodeTypeToCreate = platform === "whatsapp" ? "whatsappQuickReply"
-                    : platform === "instagram" ? "instagramQuickReply"
-                      : "webQuickReply"
-                }
-
-                const newNode = createNode(
-                  nodeTypeToCreate,
-                  nodePlatform,
-                  nodePosition,
-                  nodeId
-                )
-
-                // Transform AI data first (especially buttons/options) before merging
-                const transformedAiData = { ...(aiNode.data || {}) }
-
-                // Transform data structure based on node type
-                if (baseType === "quickReply") {
-                  // Convert options to buttons for quickReply nodes
-                  if (Array.isArray(transformedAiData.options) && !transformedAiData.buttons) {
-                    transformedAiData.buttons = transformedAiData.options.map((opt: string | any, index: number) => {
-                      const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-                      return {
-                        id: `btn-${Date.now()}-${index}`,
-                        text,
-                        label: text,
-                      }
-                    })
-                    delete transformedAiData.options
-                  }
-                  // Also handle if buttons are provided as strings
-                  if (Array.isArray(transformedAiData.buttons) && transformedAiData.buttons.length > 0) {
-                    transformedAiData.buttons = transformedAiData.buttons.map((btn: string | any, index: number) => {
-                      if (typeof btn === "string") {
-                        return {
-                          id: `btn-${Date.now()}-${index}`,
-                          text: btn,
-                          label: btn,
-                        }
-                      }
-                      return {
-                        id: btn.id || `btn-${Date.now()}-${index}`,
-                        text: btn.text || btn.label || "",
-                        label: btn.label || btn.text || "",
-                      }
-                    })
-                  }
-                } else if (baseType === "list") {
-                  // Transform options to proper format for list nodes
-                  if (Array.isArray(transformedAiData.options)) {
-                    transformedAiData.options = transformedAiData.options.map((opt: string | any) => ({
-                      text: typeof opt === "string" ? opt : (opt.text || opt.label || ""),
-                    }))
-                  }
-                }
-
-                // Now merge with newNode data (transformed buttons will override defaults)
-                let mergedData = { ...newNode.data, ...transformedAiData }
-
-                processedNodes.push({
-                  ...newNode,
-                  ...aiNode,
-                  data: mergedData,
-                })
-              } catch (error) {
-                console.error(`[handleUpdateFlow] Error creating node ${aiNode.type}:`, error)
-                // Fallback: use AI node as-is with minimal structure
-                processedNodes.push({
-                  id: aiNode.id,
-                  type: aiNode.type,
-                  position: aiNode.position || { x: 250, y: 200 },
-                  data: {
-                    platform: (aiNode.data?.platform as Platform) || platform,
-                    ...(aiNode.data || {}),
-                  },
-                } as Node)
-              }
-            }
-          }
-
-          // Update nodes state
-          setNodes((nds) => {
-            const existingIds = new Set(nds.map((n) => n.id))
-            const newNodes = processedNodes.filter((n) => !existingIds.has(n.id))
-            const updatedNodes = nds.map((node) => {
-              const update = processedNodes.find((n) => n.id === node.id)
-              return update || node
-            })
-            return [...updatedNodes, ...newNodes]
-          })
-
-          // Track new nodes
-          processedNodes.forEach((node) => {
-            if (!nodes.find((n) => n.id === node.id)) {
-              changeTracker.trackNodeAdd(node)
-            }
-          })
-
-          console.log(`[handleUpdateFlow] Processed ${processedNodes.length} nodes`)
-        }
-
-        // Apply edge updates - use addEdge to ensure proper React Flow structure
-        if (updates.edges && updates.edges.length > 0) {
-          setEdges((eds) => {
-            const existingIds = new Set(eds.map((e) => e.id))
-            const newEdges: Edge[] = []
-
-            // Process each new edge
-            for (const aiEdge of updates.edges!) {
-              // Skip if edge already exists
-              if (existingIds.has(aiEdge.id)) {
-                continue
-              }
-
-              // Verify source and target nodes exist (or will exist)
-              const sourceExists = nodes.some(n => n.id === aiEdge.source) ||
-                updates.nodes?.some(n => n.id === aiEdge.source)
-              const targetExists = nodes.some(n => n.id === aiEdge.target) ||
-                updates.nodes?.some(n => n.id === aiEdge.target)
-
-              if (!sourceExists || !targetExists) {
-                console.warn(`[handleUpdateFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
-                continue
-              }
-
-              // Create properly formatted edge
-              const newEdge: Edge = {
-                id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
-                source: aiEdge.source,
-                target: aiEdge.target,
-                type: aiEdge.type || "default",
-                style: aiEdge.style || {
-                  stroke: "#6366f1",
-                  strokeWidth: 2
-                },
-                animated: false,
-              }
-
-              newEdges.push(newEdge)
-            }
-
-            // Use addEdge to properly add edges to React Flow
-            let updatedEdges = [...eds]
-            for (const newEdge of newEdges) {
-              // Check if connection already exists
-              const existingConnection = updatedEdges.find(
-                (e) => e.source === newEdge.source && e.target === newEdge.target
-              )
-              if (!existingConnection) {
-                updatedEdges = addEdge(newEdge, updatedEdges)
-              }
-            }
-
-            return updatedEdges
-          })
-
-          // Track new edges
-          updates.edges.forEach((edge) => {
-            if (!edges.find((e) => e.id === edge.id)) {
-              changeTracker.trackEdgeAdd(edge)
-            }
-          })
-
-          console.log(`[handleUpdateFlow] Added ${updates.edges.length} edges`)
-        }
-
-        // Update flow description if provided
-        if (updates.description && flowId) {
-          updateFlow(flowId, { description: updates.description })
-          setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
-        }
-
-        updateDraftChanges()
-        toast.success(`Flow updated successfully! ${updates.nodes?.length || 0} nodes, ${updates.edges?.length || 0} edges`)
-      } catch (error) {
-        console.error("[handleUpdateFlow] Error:", error)
-        toast.error("Failed to apply updates. Please try again.")
-      }
-    },
-    [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform, changeTracker, updateDraftChanges, flowId, updateFlow, setCurrentFlow],
-  )
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-  }, [])
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault()
-      console.log("[v0] Dropping node at position:", getClientCoordinates(event))
-
-      if (!draggedNodeType) return
-
-      const reactFlowBounds = event.currentTarget.getBoundingClientRect()
-      const { x: clientX, y: clientY } = getClientCoordinates(event)
-      console.log("[v0] React flow bounds:", reactFlowBounds)
-
-      const position = screenToFlowPosition({ x: clientX, y: clientY })
-
-      console.log("[v0] Dragging node at position:", position)
-
-      const newNodeId = `${draggedNodeType}-${Date.now()}`
-      let newNode: Node
-
-      try {
-        // Handle comment nodes specially because they need inline callbacks
-        if (draggedNodeType === "comment") {
-          newNode = createCommentNode(
-            platform,
-            position,
-            newNodeId,
-            (updates: any) => {
-              console.log("[v0] Comment inline update:", newNodeId, updates)
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node,
-                ),
-              )
-            },
-            () => deleteNode(newNodeId)
-          )
-        } else {
-          // All other node types (interaction, super, fulfillment, integration)
-          // Use the unified createNode factory function
-          newNode = createNode(draggedNodeType, platform, position, newNodeId)
-        }
-
-        // Track node creation
-        console.log('[App] Creating node in view mode:', {
-          isEditMode,
-          draggedNodeType,
-          newNodeId,
-          currentNodes: nodes.length
-        })
-
-        if (!isEditMode) {
-          console.log('[App] Auto-entering edit mode before adding node')
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        console.log('[App] Adding node to React state:', newNodeId)
-        setNodes((nds) => {
-          const newNodes = [...nds, newNode]
-          console.log('[App] New nodes array length:', newNodes.length)
-          return newNodes
-        })
-        setDraggedNodeType(null)
-        // Request focus on the newly created node (skip for comment)
-        if (draggedNodeType !== "comment") {
-          setNodeToFocus(newNodeId)
-        }
-
-        // No toast for node creation - user requested only copy, delete, and multiple selection
-      } catch (error) {
-        console.error(`[v0] Error creating dragged node ${draggedNodeType}:`, error)
-        setDraggedNodeType(null)
-      }
-    },
-    [draggedNodeType, setNodes, deleteNode, platform, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
-  )
-
-  const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
-    event.preventDefault()
-
-    // Type guard to check if event has React properties
-    if (!('clientX' in event) || !('clientY' in event)) {
-      return
-    }
-
-    setContextMenu({
-      isOpen: true,
-      x: (event as any).clientX,
-      y: (event as any).clientY,
-    })
-  }, [])
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu({ isOpen: false, x: 0, y: 0 })
-  }, [])
-
-  const closeNodeContextMenu = useCallback(() => {
-    setNodeContextMenu({ isOpen: false, x: 0, y: 0, nodeId: null })
-  }, [])
-
-  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
-    event.preventDefault()
-    event.stopPropagation()
-
-    setNodeContextMenu({
-      isOpen: true,
-      x: event.clientX,
-      y: event.clientY,
-      nodeId: node.id,
-    })
-  }, [])
-
-  const addNodeAtPosition = useCallback(
-    (nodeType: string) => {
-      const { x: flowX, y: flowY } = screenToFlowPosition({
-        x: contextMenu.x,
-        y: contextMenu.y,
-      })
-
-      const position = { x: flowX, y: flowY }
-      const newNodeId = `${nodeType}-${Date.now()}`
-      let newNode: Node
-
-      try {
-        switch (nodeType) {
-          case "comment":
-            newNode = createCommentNode(
-              platform,
-              position,
-              newNodeId,
-              (updates: any) => {
-                setNodes((nds) =>
-                  nds.map((node) =>
-                    node.id === newNodeId ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() } : node,
-                  ),
-                )
-              },
-              () => deleteNode(newNodeId)
-            )
-            break
-          case "question":
-            newNode = createNode("question", platform, position, newNodeId)
-            break
-          case "quickReply":
-            newNode = createNode("quickReply", platform, position, newNodeId)
-            break
-          case "whatsappList":
-            newNode = createNode("whatsappList", platform, position, newNodeId)
-            break
-          default:
-            console.warn(`[v0] Unknown node type: ${nodeType}`)
-            return
-        }
-
-        // Track node creation
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        setNodes((nds) => [...nds, newNode])
-        closeContextMenu()
-        if (nodeType !== "comment") {
-          setNodeToFocus(newNodeId)
-        }
-
-        // No toast for node creation - user requested only copy, delete, and multiple selection
-      } catch (error) {
-        console.error(`[v0] Error creating node ${nodeType}:`, error)
-      }
-    },
-    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, deleteNode, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
-  )
-
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Prevent selection of start nodes
-    if (node.type === "start") {
-      return
-    }
-
-    setSelectedNode(node)
-    setIsPropertiesPanelOpen(true)
-  }, [])
-
-  // Handle double-click for super nodes
-  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
-    console.log("Node double-clicked:", node.type, node.data)
-
-    const superNodeTypes = ["name", "email", "address", "dob"]
-
-    if (superNodeTypes.includes(node.type || "")) {
-      console.log("✨ Super node double-clicked!", node.type)
-      toast.info(`🔧 Configure ${node.data?.label || node.type} validation rules`, {
-        description: "Configuration modal coming soon...",
-        duration: 3000,
-      })
-    } else {
-      // For other nodes, just log
-      console.log("Regular node double-clicked (no special action)")
-    }
-  }, [])
-
-  const onSelectionChange = useCallback(({ nodes: selectedNodesFromFlow }: { nodes: Node[], edges: Edge[] }) => {
-    // Filter out start nodes from selection
-    const filteredNodes = selectedNodesFromFlow.filter(node => node.type !== "start")
-
-    // Update our selected nodes state with filtered nodes
-    setSelectedNodes(filteredNodes)
-
-    // Handle node selection
-    if (filteredNodes.length === 1) {
-      setSelectedNode(filteredNodes[0])
-      setIsPropertiesPanelOpen(true)
-    } else if (filteredNodes.length > 1) {
-      setSelectedNode(null)
-      setIsPropertiesPanelOpen(true)
-    } else {
-      setSelectedNode(null)
-      setIsPropertiesPanelOpen(false)
-    }
-
-    // Show toast notification for selection changes (but not for single node clicks)
-    if (filteredNodes.length > 1) {
-      toast.info(`${filteredNodes.length} nodes selected`)
-    }
-  }, [])
-
-  const onPaneClick = useCallback(
-    (event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
-      setSelectedNode(null)
-      setSelectedNodes([])
-      setIsPropertiesPanelOpen(false)
-
-      const currentTime = Date.now()
-
-      // Type guard to check if event has React properties
-      if (!('currentTarget' in event) || !('clientX' in event) || !('clientY' in event)) {
-        return
-      }
-
-      const reactFlowBounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
-      const clickPosition: Coordinates = getClientCoordinates(event)
-
-      // Double-click detected if within threshold
-      if (isDoubleClick(currentTime, lastClickTime, clickPosition, lastClickPosition,
-        INTERACTION_THRESHOLDS.doubleClick.time,
-        INTERACTION_THRESHOLDS.doubleClick.distance)) {
-        console.log("[v0] Double-click detected at:", clickPosition)
-
-        const position = screenToFlowPosition(clickPosition)
-
-        const newNodeId = `comment-${Date.now()}`
-        const newNode = createCommentNode(
-          platform,
-          position,
-          newNodeId,
-          (updates: any) => {
-            console.log("[v0] Comment inline update:", newNodeId, updates)
-
-            // Track the comment update
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-
-            // Find the current node to get old data for change tracking
-            const currentNode = nodes.find(n => n.id === newNodeId)
-            if (currentNode) {
-              const oldData = { ...currentNode.data }
-              const newData = { ...oldData, ...updates }
-              changeTracker.trackNodeUpdate(newNodeId, oldData, newData, currentNode.type, currentNode.type)
-              updateDraftChanges()
-            }
-
-            setNodes((nds) =>
-              nds.map((node) =>
-                node.id === newNodeId
-                  ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                  : node,
-              ),
-            )
-          },
-          () => deleteNode(newNodeId)
-        )
-        // Track comment node creation
-        if (!isEditMode) {
-          autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-        }
-        changeTracker.trackNodeAdd(newNode)
-        updateDraftChanges()
-
-        setNodes((nds) => [...nds, newNode])
-        console.log("[v0] Added comment node at position:", position)
-
-        // No toast for comment creation - user requested only copy, delete, and multiple selection
-      }
-
-      setLastClickTime(currentTime)
-      setLastClickPosition(clickPosition)
-    },
-    [lastClickTime, lastClickPosition, setNodes, deleteNode, platform, setSelectedNodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, nodes, edges],
-  )
-
-  const handleNodeTypeSelection = useCallback(
-    (nodeType: string) => {
-      if (!connectionMenu.sourceNodeId) {
-        setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
-        return
-      }
-
-      const newNodeId = `${nodeType}-${Date.now()}`
-      const sourceNode = nodes.find((n) => n.id === connectionMenu.sourceNodeId)
-      if (!sourceNode) {
-        setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
-        return
-      }
-
-      const reactFlowElement = document.querySelector(".react-flow")
-      const reactFlowBounds = reactFlowElement?.getBoundingClientRect()
-
-      let nodePosition = screenToFlowPosition({
-        x: connectionMenu.x,
-        y: connectionMenu.y,
-      })
-
-      console.log("[v0] creating node", {
-        nodeType,
-        nodePosition,
-        newNodeId,
-        sourceNode,
-        connectionMenu,
-      })
-
-      let newNode: Node
-
-      // Use the unified createNode factory for all node types
-      if (nodeType === "comment") {
-        newNode = createCommentNode(
-          platform,
-          nodePosition,
-          newNodeId,
-          (updates: any) => updateNodeData(newNodeId, updates),
-          () => deleteNode(newNodeId)
-        )
-      } else {
-        // All other node types (interaction, super, fulfillment, integration)
-        try {
-          newNode = createNode(nodeType, platform, nodePosition, newNodeId)
-
-          // SCENARIO 1: If creating a condition node from connection menu, set connectedNode data
-          if (nodeType === "condition") {
-            newNode.data = {
-              ...newNode.data,
-              connectedNode: {
-                id: sourceNode.id,
-                type: sourceNode.type,
-                label: sourceNode.data?.label || sourceNode.type
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`[v0] Error creating node type ${nodeType}:`, error)
-          return
-        }
-      }
-
-      const newEdge: Edge = {
-        id: `e${connectionMenu.sourceNodeId}-${newNodeId}`,
-        source: connectionMenu.sourceNodeId,
-        sourceHandle: connectionMenu.sourceHandleId,
-        target: newNodeId,
-        type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
-      }
-
-      // Track node and edge creation
-      console.log('[App] Creating connected node in view mode:', {
-        isEditMode,
-        nodeType,
-        newNodeId,
-        currentNodes: nodes.length
-      })
-
-      if (!isEditMode) {
-        console.log('[App] Auto-entering edit mode before adding connected node')
-        setIsAutoEnteringEditMode(true)
-        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-      }
-      changeTracker.trackNodeAdd(newNode)
-      changeTracker.trackEdgeAdd(newEdge)
-      updateDraftChanges()
-
-      console.log('[App] Adding connected node to React state:', newNodeId)
-      setNodes((nds) => {
-        const newNodes = [...nds, newNode]
-        console.log('[App] New connected nodes array length:', newNodes.length)
-        return newNodes
-      })
-      setEdges((eds) => {
-        const newEdges = [...eds, newEdge]
-        console.log('[App] New connected edges array length:', newEdges.length)
-        return newEdges
-      })
-      setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
-      // Request focus on the newly created node
-      setNodeToFocus(newNodeId)
-
-      // No toast for node connection - user requested only copy, delete, and multiple selection
-    },
-    [connectionMenu.sourceNodeId, connectionMenu.sourceHandleId, nodes, setNodes, setEdges, platform, isEditMode, updateDraftChanges, autoEnterEditMode, setPlatform, edges],
-  )
-
-  const updateNodeData = useCallback(
-    (nodeId: string, updates: any, shouldFocus: boolean = false) => {
-      try {
-        if (!isValidNodeId(nodeId)) {
-          console.error("[v0] Invalid nodeId provided to updateNodeData:", nodeId)
-          return
-        }
-
-        console.log("[v0] Updating node data:", nodeId, updates)
-
-        // Track node update
-        const oldNode = nodes.find(n => n.id === nodeId)
-        if (oldNode) {
-          if (!isEditMode) {
-            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-          }
-          const oldData = { ...oldNode.data }
-          const newData = { ...oldData, ...updates }
-          changeTracker.trackNodeUpdate(nodeId, oldData, newData, oldNode.type, oldNode.type)
-          updateDraftChanges()
-        }
-
-        setNodes((nds) => {
-          const updatedNodes = nds.map((node) => {
-            if (node.id === nodeId) {
-              const updatedNode = {
-                ...node,
-                data: { ...node.data, ...updates },
-                _timestamp: Date.now(),
-              }
-              console.log("[v0] Updated node:", updatedNode)
-
-              // If updating start node triggers, also update flow data
-              if (node.type === "start" && updates.triggerIds && flowId) {
-                updateFlow(flowId, {
-                  triggerIds: updates.triggerIds,
-                  triggerId: updates.triggerIds[0] // backwards compatibility
-                })
-              }
-              // If updating start node flow description, also update flow data
-              if (node.type === "start" && updates.flowDescription !== undefined && flowId) {
-                updateFlow(flowId, { description: updates.flowDescription })
-                setCurrentFlow((prev) => (prev ? { ...prev, description: updates.flowDescription } : null))
-              }
-
-              return updatedNode
-            }
-            return node
-          })
-          return updatedNodes
-        })
-        setSelectedNode((prev) => (prev && prev.id === nodeId ? { ...prev, data: { ...prev.data, ...updates } } : prev))
-
-        // Request focus on the node if requested (for significant updates)
-        if (shouldFocus) {
-          setNodeToFocus(nodeId)
-        }
-      } catch (error) {
-        console.error(`[v0] Error updating node data for ${nodeId}:`, error)
-      }
-    },
-    [setNodes, setSelectedNode, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform, flowId],
-  )
-
-  // Convert node from one type to another
-  const convertNode = useCallback(
-    (nodeId: string, newNodeType: string, updatedData: any) => {
-      try {
-        if (!isValidNodeId(nodeId)) {
-          console.error("[v0] Invalid nodeId provided to convertNode:", nodeId)
-          return
-        }
-
-        console.log("[v0] Converting node:", nodeId, "to", newNodeType)
-
-        const oldNode = nodes.find(n => n.id === nodeId)
-        if (oldNode) {
-          if (!isEditMode) {
-            autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-          }
-          // Track the conversion as a type change
-          changeTracker.trackNodeUpdate(nodeId, oldNode.data, updatedData, oldNode.type, newNodeType)
-          updateDraftChanges()
-        }
-
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id === nodeId) {
-              return {
-                ...node,
-                type: newNodeType,
-                data: {
-                  ...node.data,
-                  ...updatedData,
-                },
-                _timestamp: Date.now(),
-              }
-            }
-            return node
-          })
-        )
-
-        console.log("[v0] Node converted successfully")
-      } catch (error) {
-        console.error(`[v0] Error converting node ${nodeId}:`, error)
-      }
-    },
-    [setNodes, nodes, isEditMode, updateDraftChanges, autoEnterEditMode, setEdges, setPlatform, edges, platform],
-  )
-
-  // Custom onEdgesChange to handle condition node disconnection
-  const onEdgesChange = useCallback((changes: any[]) => {
-    // Check for edge removals
-    changes.forEach(change => {
-      if (change.type === 'remove') {
-        // Find the edge being removed
-        const edgeToRemove = edges.find(e => e.id === change.id)
-        if (edgeToRemove) {
-          // Check if the target is a condition node
-          const targetNode = nodes.find(n => n.id === edgeToRemove.target)
-          if (targetNode?.type === "condition") {
-            // Clear the connectedNode data
-            console.log("[v0] Clearing connected node data from condition node")
-            updateNodeData(edgeToRemove.target, {
-              connectedNode: null,
-              conditionRules: [] // Also clear any rules when disconnecting
-            })
-          }
-        }
-      }
-    })
-
-    // Apply the original edge changes
-    onEdgesChangeOriginal(changes)
-  }, [edges, nodes, onEdgesChangeOriginal, updateNodeData])
-
-  const closeConnectionMenu = useCallback(() => {
-    setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
-  }, [])
-
-  const onConnectStart = useCallback((event: MouseEvent | TouchEvent | React.MouseEvent, params: any) => {
-    console.log("[v0] Connection start:", params)
-    setIsConnecting(true)
-    setConnectingFrom(params.nodeId)
-    console.log("[v0] Connection state set - isConnecting: true, connectingFrom:", params.nodeId)
-  }, [])
-
-  const onConnectEnd = useCallback(
-    (event: MouseEvent | TouchEvent | React.MouseEvent, connectionState: any) => {
-      console.log("[v0] Connection end - event:", event.type, "connectionState:", connectionState)
-      console.log(
-        "[v0] Connection end - current state - isConnecting:",
-        isConnecting,
-        "connectingFrom:",
-        connectingFrom,
-      )
-
-      // Reset connection state first
-      setIsConnecting(false)
-      setConnectingFrom(null)
-
-      // Check if we have a valid connection attempt
-      if (connectionState && connectionState.fromNode) {
-        const target = event.target as Element
-        const isOnNode = target.closest(".react-flow__node")
-        const isOnHandle = target.closest(".react-flow__handle")
-        const isOnEdge = target.closest(".react-flow__edge")
-
-        console.log("[v0] Connection end - target analysis:", {
-          isOnNode: !!isOnNode,
-          isOnHandle: !!isOnHandle,
-          isOnEdge: !!isOnEdge,
-          targetElement: target.className,
-          ...getClientCoordinates(event),
-          fromNode: connectionState.fromNode.id,
-        })
-
-        const { x: clientX, y: clientY } = getClientCoordinates(event)
-
-        // Show menu only when dropping in empty space (not on nodes, handles, or edges)
-        if (!isOnNode && !isOnHandle && !isOnEdge) {
-          console.log("[v0] Showing connection menu at:", clientX, clientY)
-          setConnectionMenu({
-            isOpen: true,
-            x: clientX,
-            y: clientY,
-            sourceNodeId: connectionState.fromNode.id,
-            sourceHandleId: connectionState.fromHandle?.id || null,
-          })
-        } else {
-          console.log("[v0] Not showing menu - dropped on:", {
-            node: !!isOnNode,
-            handle: !!isOnHandle,
-            edge: !!isOnEdge,
-          })
-        }
-      } else {
-        console.log("[v0] Not showing menu - no connection state or fromNode")
-      }
-    },
-    [isConnecting, connectingFrom],
-  )
-
-
-  useEffect(() => {
-    const handleResizeObserverError = (e: ErrorEvent) => {
-      if (e.message === "ResizeObserver loop completed with undelivered notifications.") {
-        e.preventDefault()
-        e.stopPropagation()
-        return false
-      }
-    }
-
-    window.addEventListener("error", handleResizeObserverError)
-
-    return () => {
-      window.removeEventListener("error", handleResizeObserverError)
-    }
-  }, [])
-
-  // Keyboard shortcuts for copy-paste
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if we're in an input field or textarea
-      const target = event.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
-        return
-      }
-
-      const isCtrlOrCmd = event.ctrlKey || event.metaKey
-
-      if (isCtrlOrCmd) {
-        switch (event.key.toLowerCase()) {
-          case 'c':
-            event.preventDefault()
-            copyNodes()
-            break
-          case 'v':
-            event.preventDefault()
-            // Get current mouse position for paste
-            const reactFlowElement = document.querySelector('.react-flow')
-            if (reactFlowElement) {
-              const rect = reactFlowElement.getBoundingClientRect()
-              const centerX = rect.left + rect.width / 2
-              const centerY = rect.top + rect.height / 2
-              const flowPosition = screenToFlowPosition({ x: centerX, y: centerY })
-              pasteNodes(flowPosition)
-            } else {
-              pasteNodes()
-            }
-            break
-          case 'a':
-            event.preventDefault()
-            selectAllNodes()
-            break
-        }
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [copyNodes, pasteNodes, selectAllNodes, screenToFlowPosition])
-
-  // Close context menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (contextMenu.isOpen) {
-        closeContextMenu()
-      }
-      if (nodeContextMenu.isOpen) {
-        closeNodeContextMenu()
-      }
-    }
-
-    if (contextMenu.isOpen || nodeContextMenu.isOpen) {
-      document.addEventListener("click", handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener("click", handleClickOutside)
-    }
-  }, [contextMenu.isOpen, nodeContextMenu.isOpen, closeContextMenu, closeNodeContextMenu])
-
-
-  const convertNodesToPlatform = useCallback(
-    (newPlatform: Platform) => {
-      console.log("[v0] Converting nodes to platform:", newPlatform)
-
-      setNodes((currentNodes) =>
-        currentNodes.map((node) => {
-          // Skip start and comment nodes as they don't need platform conversion
-          if (node.type === "start" || node.type === "comment") {
-            return {
-              ...node,
-              data: { ...node.data, platform: newPlatform } as NodeData
-            }
-          }
-
-          let newType = node.type
-          const newData: any = { ...node.data, platform: newPlatform }
-
-          // Convert question nodes
-          if (node.type === "question" || node.type === "webQuestion" || node.type === "whatsappQuestion" || node.type === "instagramQuestion") {
-            switch (newPlatform) {
-              case "web":
-                newType = "webQuestion"
-                newData.label = "Web Message"
-                break
-              case "whatsapp":
-                newType = "whatsappQuestion"
-                newData.label = "WhatsApp Message"
-                break
-              case "instagram":
-                newType = "instagramQuestion"
-                newData.label = "Instagram Message"
-                break
-              default:
-                newType = "webQuestion"
-                newData.label = "Question"
-            }
-          }
-
-          // Convert quick reply nodes
-          if (node.type === "quickReply" || node.type === "webQuickReply" || node.type === "whatsappQuickReply" || node.type === "instagramQuickReply") {
-            switch (newPlatform) {
-              case "web":
-                newType = "webQuickReply"
-                newData.label = "Web Actions"
-                break
-              case "whatsapp":
-                newType = "whatsappQuickReply"
-                newData.label = "WhatsApp Actions"
-                break
-              case "instagram":
-                newType = "instagramQuickReply"
-                newData.label = "Instagram Actions"
-                break
-              default:
-                newType = "webQuickReply"
-                newData.label = "Quick Reply"
-            }
-          }
-
-          // Convert list nodes
-          if (node.type === "whatsappList" || node.type === "whatsappListSpecific" || node.type === "instagramList") {
-            switch (newPlatform) {
-              case "whatsapp":
-                newType = "whatsappListSpecific"
-                newData.label = "WhatsApp List"
-                break
-              case "instagram":
-                newType = "instagramList"
-                newData.label = "Instagram List"
-                break
-              default:
-                newType = "whatsappList"
-                newData.label = "WhatsApp List"
-            }
-          }
-
-          // Convert message/DM/story nodes
-          if (node.type === "whatsappMessage" || node.type === "instagramDM" || node.type === "instagramStory") {
-            switch (newPlatform) {
-              case "whatsapp":
-                newType = "whatsappMessage"
-                newData.label = "WhatsApp Message"
-                // Ensure text field exists for BaseNode components
-                if (!newData.text && newData.question) {
-                  newData.text = newData.question
-                }
-                break
-              case "instagram":
-                // Convert to Instagram DM by default
-                newType = "instagramDM"
-                newData.label = "Instagram DM"
-                // Ensure text field exists for BaseNode components
-                if (!newData.text && newData.question) {
-                  newData.text = newData.question
-                }
-                break
-              default:
-                // Convert to question node for web platform
-                newType = "question"
-                newData.label = "Question"
-                // Ensure question field exists for custom nodes
-                if (!newData.question && newData.text) {
-                  newData.question = newData.text
-                }
-            }
-          }
-
-          return {
-            ...node,
-            type: newType,
-            data: newData,
-          }
-        }),
-      )
-    },
-    [setNodes],
-  )
-
-  const handlePlatformChange = useCallback(
-    (newPlatform: Platform) => {
-      console.log("[v0] Platform changed to:", newPlatform)
-
-      // Track platform change
-      if (!isEditMode) {
-        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-      }
-      changeTracker.trackPlatformChange(platform, newPlatform)
-      updateDraftChanges()
-
-      setPlatform(newPlatform)
-      convertNodesToPlatform(newPlatform)
-    },
-    [convertNodesToPlatform, isEditMode, platform, updateDraftChanges, autoEnterEditMode, setNodes, setEdges, nodes, edges],
-  )
+  const flowAI = useFlowAI({
+    flowId,
+    nodes,
+    edges,
+    platform,
+    setNodes,
+    setEdges,
+    setPlatform,
+    selectedNode: nodeOps.selectedNode,
+    deleteNode: nodeOps.deleteNode,
+    setNodeToFocus: nodeOps.setNodeToFocus,
+    isEditMode,
+    autoEnterEditMode,
+    updateDraftChanges,
+    currentFlow: persistence.currentFlow,
+    setCurrentFlow: persistence.setCurrentFlow,
+  })
+
+  const interactions = useFlowInteractions({
+    nodes,
+    edges,
+    platform,
+    setNodes,
+    setEdges,
+    setPlatform,
+    selectedNode: nodeOps.selectedNode,
+    setSelectedNode: nodeOps.setSelectedNode,
+    selectedNodes: clipboard.selectedNodes,
+    setSelectedNodes: clipboard.setSelectedNodes,
+    setIsPropertiesPanelOpen: nodeOps.setIsPropertiesPanelOpen,
+    setNodeToFocus: nodeOps.setNodeToFocus,
+    deleteNode: nodeOps.deleteNode,
+    updateNodeData: nodeOps.updateNodeData,
+    convertNode: nodeOps.convertNode,
+    isEditMode,
+    autoEnterEditMode,
+    updateDraftChanges,
+    copyNodes: clipboard.copyNodes,
+    pasteNodes: clipboard.pasteNodes,
+    selectAllNodes: clipboard.selectAllNodes,
+  })
+
+  // --- Callbacks that stay in page.tsx ---
 
   const handleModeToggle = useCallback(() => {
-    const publishedVersion = getAllVersions().find(v => v.isPublished)
+    const publishedVersion = getAllVersions().find((v) => v.isPublished)
     if (publishedVersion) {
-      // We have a published version - use view/draft toggle
       toggleViewDraft(setNodes, setEdges, setPlatform)
-      setDraftStateLoaded(false) // Reset flag when toggling modes
     } else {
-      // No published version - use regular edit mode toggle
       toggleEditMode(setNodes, setEdges, setPlatform)
-      setDraftStateLoaded(false) // Reset flag when toggling modes
     }
+    setDraftStateLoaded(false)
   }, [getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
 
-  // Reset auto-entering edit mode flag when edit mode state changes
+  const importFlow = useCallback(
+    (importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
+      if (!isEditMode) {
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+      }
+      changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
+      updateDraftChanges()
+
+      setNodes([])
+      setEdges([])
+      nodeOps.setSelectedNode(null)
+      clipboard.setSelectedNodes([])
+      nodeOps.setIsPropertiesPanelOpen(false)
+
+      setNodes(importedNodes)
+      setEdges(importedEdges)
+      setPlatform(importedPlatform)
+
+      toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
+    },
+    [setNodes, setEdges, setPlatform, isEditMode, updateDraftChanges, autoEnterEditMode, nodes, edges, platform, nodeOps, clipboard]
+  )
+
+  // --- Version initialization effects ---
+
   useEffect(() => {
     if (isAutoEnteringEditMode && editModeState.isEditMode) {
-      console.log('[App] Resetting auto-entering edit mode flag')
       setIsAutoEnteringEditMode(false)
     }
   }, [editModeState.isEditMode, isAutoEnteringEditMode])
 
-  // Update selected node when nodes change (e.g., after platform conversion)
+  // Load published version on startup or draft state
   useEffect(() => {
-    if (selectedNode) {
-      const updatedNode = nodes.find(n => n.id === selectedNode.id)
-      if (updatedNode && updatedNode !== selectedNode) {
-        setSelectedNode(updatedNode)
-      }
-    }
-  }, [nodes, selectedNode])
-
-  // Load published version on startup if in view mode, or draft state if in edit mode (only run once on mount)
-  useEffect(() => {
-    console.log('[App] Initialization effect triggered:', {
-      editModeStateReady: editModeState.isEditMode !== undefined,
-      isEditMode,
-      hasCurrentVersion: !!currentVersion,
-      currentVersionName: currentVersion?.name
-    })
-
-    // Only run this effect once when the component mounts and version manager is ready
     if (editModeState.isEditMode !== undefined) {
       if (!isEditMode && currentVersion) {
-        // In view mode, load the current version
-        console.log('[App] Loading current version in view mode:', currentVersion.name)
-        const formattedNodes = currentVersion.nodes.map(node => ({
+        const formattedNodes = currentVersion.nodes.map((node) => ({
           ...node,
-          data: node.data || {}
+          data: node.data || {},
         }))
-
-        const formattedEdges = currentVersion.edges.map(edge => ({
+        const formattedEdges = currentVersion.edges.map((edge) => ({
           ...edge,
-          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
         }))
-
-        console.log('[App] Setting nodes and edges in view mode:', {
-          nodes: formattedNodes.length,
-          edges: formattedEdges.length,
-          platform: currentVersion.platform
-        })
-
         setNodes(formattedNodes)
         setEdges(formattedEdges)
         setPlatform(currentVersion.platform)
       } else if (isEditMode && !isAutoEnteringEditMode) {
-        // In edit mode, try to load draft state first, otherwise use current version
-        console.log('[App] In edit mode, attempting to load draft state')
         const draftLoaded = loadDraftState(setNodes, setEdges, setPlatform)
         if (!draftLoaded && currentVersion) {
-          console.log('[App] No draft state found, loading current version in edit mode:', currentVersion.name)
-          const formattedNodes = currentVersion.nodes.map(node => ({
+          const formattedNodes = currentVersion.nodes.map((node) => ({
             ...node,
-            data: node.data || {}
+            data: node.data || {},
           }))
-
-          const formattedEdges = currentVersion.edges.map(edge => ({
+          const formattedEdges = currentVersion.edges.map((edge) => ({
             ...edge,
-            style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+            style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
           }))
-
-          console.log('[App] Setting nodes and edges from current version in edit mode:', {
-            nodes: formattedNodes.length,
-            edges: formattedEdges.length,
-            platform: currentVersion.platform
-          })
-
           setNodes(formattedNodes)
           setEdges(formattedEdges)
           setPlatform(currentVersion.platform)
         } else if (draftLoaded) {
-          console.log('[App] Successfully loaded draft state')
           setDraftStateLoaded(true)
-        } else {
-          console.log('[App] No draft state found and no current version')
         }
       }
     }
-  }, [editModeState.isEditMode, isEditMode, currentVersion, loadDraftState]) // Include editModeState.isEditMode to ensure it's initialized
+  }, [editModeState.isEditMode, isEditMode, currentVersion, loadDraftState])
 
-  // Load version when currentVersion changes (e.g., when loading from version history)
-  // BUT only if we're not in edit mode or if we're explicitly loading a version
+  // Load version when currentVersion changes
   useEffect(() => {
     if (currentVersion && (!isEditMode || isLoadingVersion)) {
-      console.log('[App] Current version changed, loading:', currentVersion.name, 'isLoadingVersion:', isLoadingVersion, 'isEditMode:', isEditMode, 'isPublished:', currentVersion.isPublished)
-      const formattedNodes = currentVersion.nodes.map(node => ({
+      const formattedNodes = currentVersion.nodes.map((node) => ({
         ...node,
-        data: node.data || {}
+        data: node.data || {},
       }))
-
-      const formattedEdges = currentVersion.edges.map(edge => ({
+      const formattedEdges = currentVersion.edges.map((edge) => ({
         ...edge,
-        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
       }))
-
       setNodes(formattedNodes)
       setEdges(formattedEdges)
       setPlatform(currentVersion.platform)
-      setDraftStateLoaded(false) // Reset flag when loading published version
-      setIsLoadingVersion(false) // Reset the loading flag
-    } else if (currentVersion && isEditMode && !draftStateLoaded && !isLoadingVersion) {
-      console.log('[App] Current version changed but in edit mode - skipping load to preserve draft state')
+      setDraftStateLoaded(false)
+      setIsLoadingVersion(false)
     }
-  }, [currentVersion, isEditMode, draftStateLoaded, isLoadingVersion]) // Include isLoadingVersion
+  }, [currentVersion, isEditMode, draftStateLoaded, isLoadingVersion])
 
-  // Debug: Log when currentVersion changes
-  useEffect(() => {
-    console.log('[App] Current version changed:', {
-      name: currentVersion?.name,
-      isPublished: currentVersion?.isPublished,
-      nodes: currentVersion?.nodes?.length,
-      edges: currentVersion?.edges?.length,
-      platform: currentVersion?.platform
-    })
-  }, [currentVersion])
-
-  // Debug: Log when edit mode state changes
-  useEffect(() => {
-    console.log('[App] Edit mode state changed:', {
-      isEditMode: editModeState.isEditMode,
-      hasUnsavedChanges: editModeState.hasUnsavedChanges,
-      currentVersion: editModeState.currentVersion?.name,
-      draftChanges: editModeState.draftChanges?.length
-    })
-  }, [editModeState])
-
-  // Save draft state whenever nodes, edges, or platform change in edit mode
+  // Save draft state
   useEffect(() => {
     if (isEditMode && (nodes.length > 0 || edges.length > 0)) {
-      // Add a small delay to avoid saving too frequently during rapid changes
       const timeoutId = setTimeout(() => {
-        console.log('[App] Saving draft state - nodes:', nodes.length, 'edges:', edges.length, 'platform:', platform)
         saveCurrentStateAsDraft(nodes, edges, platform)
       }, 100)
-
       return () => clearTimeout(timeoutId)
     }
   }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
 
-
-  // Sync condition nodes after flow loads - detect existing connections
-  useEffect(() => {
-    if (nodes.length <= 1 || flowLoaded) return // Skip if only start node or already synced
-
-    const conditionNodes = nodes.filter(n => n.type === "condition")
-    if (conditionNodes.length === 0) {
-      setFlowLoaded(true)
-      return
-    }
-
-    let needsSync = false
-    conditionNodes.forEach(conditionNode => {
-      const incomingEdge = edges.find(e => e.target === conditionNode.id && !e.targetHandle)
-      if (incomingEdge && !conditionNode.data?.connectedNode) {
-        needsSync = true
-      }
-    })
-
-    if (needsSync) {
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.type !== "condition") return node
-
-          const incomingEdge = edges.find(e => e.target === node.id && !e.targetHandle)
-          if (incomingEdge && !node.data?.connectedNode) {
-            const sourceNode = nds.find(n => n.id === incomingEdge.source)
-            if (sourceNode) {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  connectedNode: {
-                    id: sourceNode.id,
-                    type: sourceNode.type,
-                    label: sourceNode.data?.label || sourceNode.type
-                  }
-                }
-              }
-            }
-          }
-          return node
-        })
-      )
-    }
-
-    setFlowLoaded(true)
-  }, [nodes, edges, flowLoaded, setNodes])
-
-  // Handle focusing on newly created nodes
-  useEffect(() => {
-    if (nodeToFocus) {
-      const node = nodes.find(n => n.id === nodeToFocus)
-
-      if (node && node.type !== "comment") {
-        // Small delay to ensure the node is fully rendered
-        setTimeout(() => {
-          fitView({
-            nodes: [{ id: nodeToFocus }],
-            duration: 1200,
-            padding: 0.2,
-            minZoom: 0.5,
-            maxZoom: 2.0
-          })
-          setSelectedNode(node)
-          setIsPropertiesPanelOpen(true)
-        }, 100)
-      }
-
-      setNodeToFocus(null)
-    }
-  }, [nodes, nodeToFocus, fitView, setSelectedNode, setIsPropertiesPanelOpen])
-
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Check if we're in an input field or textarea
-      const target = event.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
-        return
-      }
-
-      // Delete key - delete selected nodes
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (selectedNodes.length > 0) {
-          event.preventDefault()
-          console.log('[Keyboard] Delete key pressed - deleting selected nodes')
-
-          // Track deletions and auto-enter edit mode
-          selectedNodes.forEach(node => {
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-            changeTracker.trackNodeDelete(node.id, node.type, node.data?.label as string | undefined)
-          })
-          updateDraftChanges()
-
-          // Delete the nodes
-          const nodeIds = selectedNodes.map(n => n.id)
-          setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)))
-          setEdges((eds) => eds.filter((e) => !nodeIds.includes(e.source) && !nodeIds.includes(e.target)))
-
-          // Clear selection
-          setSelectedNodes([])
-          setSelectedNode(null)
-          setIsPropertiesPanelOpen(false)
-
-          // Show toast
-          toast.success(`${selectedNodes.length} node(s) deleted`)
-        }
-      }
-
-      // Copy key - copy selected nodes
-      if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-        if (selectedNodes.length > 0) {
-          event.preventDefault()
-          console.log('[Keyboard] Copy key pressed - copying selected nodes')
-          copyNodes()
-        }
-      }
-    }
-
-    // Add event listener
-    document.addEventListener('keydown', handleKeyDown)
-
-    // Cleanup
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [selectedNodes, isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, updateDraftChanges, copyNodes, setSelectedNodes, setSelectedNode, setIsPropertiesPanelOpen, nodes, edges, platform])
-
-  // Handle flow setup completion
-  const handleFlowSetupComplete = async (data: { name: string; platform: Platform; triggerId: string; description?: string }) => {
-    if (isNewFlow) {
-      if (loadFromDb) {
-        // Create flow via API
-        try {
-          const response = await fetch('/api/flows', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: data.name,
-              description: data.description,
-              platform: data.platform,
-              triggerId: data.triggerId,
-              triggerIds: data.triggerId ? [data.triggerId] : [],
-              nodes: [
-                {
-                  id: "1",
-                  type: "start",
-                  position: { x: 250, y: 25 },
-                  data: {
-                    label: "Start",
-                    platform: data.platform,
-                    triggerId: data.triggerId,
-                    triggerIds: data.triggerId ? [data.triggerId] : []
-                  },
-                  draggable: false,
-                  selectable: true,
-                },
-              ],
-              edges: [],
-            }),
-          })
-
-          if (!response.ok) {
-            throw new Error(`Failed to create flow: ${response.statusText}`)
-          }
-
-          const newFlow = await response.json()
-
-          setCurrentFlow(newFlow)
-          setNodes(newFlow.nodes)
-          setEdges(newFlow.edges)
-          setPlatform(newFlow.platform)
-          setShowSetupModal(false)
-
-          // Create campaign for web and whatsapp platforms only
-          if (data.platform === "web" || data.platform === "whatsapp") {
-            try {
-              const campaignResponse = await fetch('/api/campaigns/create', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  flow: newFlow,
-                  campaignData: {
-                    campaignName: data.name,
-                    samplingExperience: data.platform === "web" ? "website" : "digital",
-                    flowId: newFlow.id,
-                  },
-                }),
-              })
-
-              if (campaignResponse.ok) {
-                const campaignResult = await campaignResponse.json()
-                if (campaignResult.success) {
-                  console.log('[App] Campaign created successfully:', campaignResult)
-                  toast.success(`Campaign "${data.name}" created!`)
-                } else {
-                  console.warn('[App] Campaign creation returned success:false:', campaignResult.error)
-                  // Don't show error toast, just log it - flow creation succeeded
-                }
-              } else {
-                console.warn('[App] Failed to create campaign (non-blocking):', campaignResponse.statusText)
-                // Don't show error toast, just log it - flow creation succeeded
-              }
-            } catch (campaignError) {
-              // Log error but don't block flow creation
-              console.error('[App] Error creating campaign (non-blocking):', campaignError)
-            }
-          }
-
-          // Navigate to the new flow ID with loadFrom=db
-          router.replace(`/flow/${newFlow.id}?loadFrom=db`)
-          toast.success(`Flow "${data.name}" created!`)
-        } catch (error) {
-          console.error('[App] Error creating flow via API:', error)
-          toast.error("Failed to create flow")
-          throw error // Re-throw so modal can handle it
-        }
-      } else {
-        // Create flow in localStorage (existing behavior)
-        const newFlow = createFlow(
-          data.name,
-          data.description,
-          data.platform,
-          data.triggerId
-        )
-
-        setCurrentFlow(newFlow)
-        setNodes(newFlow.nodes)
-        setEdges(newFlow.edges)
-        setPlatform(newFlow.platform)
-        setShowSetupModal(false)
-
-        // Navigate to the new flow ID
-        router.replace(`/flow/${newFlow.id}`)
-        toast.success(`Flow "${data.name}" created!`)
-      }
-    } else if (flowId) {
-      // Update existing flow
-      const updatedFlow = updateFlow(flowId, {
-        name: data.name,
-        platform: data.platform,
-        triggerId: data.triggerId,
-        triggerIds: [data.triggerId],
-        description: data.description,
-        nodes: [
-          {
-            id: "1",
-            type: "start",
-            position: { x: 250, y: 25 },
-            data: {
-              label: "Start",
-              platform: data.platform,
-              triggerId: data.triggerId,
-              triggerIds: [data.triggerId]
-            },
-            draggable: true,
-            selectable: true,
-          },
-        ],
-      })
-
-      if (updatedFlow) {
-        setCurrentFlow(updatedFlow)
-        setNodes(updatedFlow.nodes)
-        setEdges(updatedFlow.edges)
-        setPlatform(updatedFlow.platform)
-        setShowSetupModal(false)
-        // Remove setup param from URL
-        router.replace(`/flow/${flowId}`)
-        toast.success(`Flow "${data.name}" created!`)
-      }
-    }
-  }
-
-  const handleBackClick = () => {
-    //just check the source url if url contains 'freestand' then go to client/campaigns or url param has scSource=true, otherwise go to flows
-    console.log('[App] Back button clicked, checking source url:', window.location.href)
-
-    console.log('[App] Search params:', searchParams)
-    if (window.location.href.includes('freestand') || searchParams?.get("scSource") === "true") {
-      console.log('[App] Redirecting to client/campaigns')
-      router.push('/client/campaigns')
-    } else {
-      console.log('[App] Redirecting to flows')
-      router.push('/flows')
-    }
-  }
-
-  const handleDeleteSharedFlow = async () => {
-    if (!flowId || !loadFromDb) return
-
-    const success = await deleteSharedFlow(flowId)
-    if (success) {
-      toast.success("Shared flow deleted")
-      // Redirect back to flows page
-      if (window.location.href.includes('freestand') || searchParams?.get("scSource") === "true") {
-        router.push('/client/campaigns')
-      } else {
-        router.push('/flows')
-      }
-    } else {
-      toast.error("Failed to delete shared flow")
-    }
-    setShowDeleteDialog(false)
-  }
+  // --- JSX ---
 
   return (
     <div className="h-screen flex bg-background">
-      {/* Flow Setup Modal */}
       <FlowSetupModal
         open={showSetupModal}
         onClose={() => {
           setShowSetupModal(false)
-          router.push('/flows')
+          router.push("/flows")
         }}
-        onComplete={handleFlowSetupComplete}
+        onComplete={async (data) => {
+          await persistence.handleFlowSetupComplete(data)
+          setShowSetupModal(false)
+        }}
       />
 
-      {/* Loading Screen - AI Themed */}
-      {isLoadingFromDb && (
+      {persistence.isLoadingFromDb && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
@@ -3159,392 +344,99 @@ export default function MagicFlow() {
         </div>
       )}
 
-      {!isLoadingFromDb && (
-        <NodeSidebar onNodeDragStart={onNodeDragStart} platform={platform} />
+      {!persistence.isLoadingFromDb && (
+        <NodeSidebar onNodeDragStart={interactions.onNodeDragStart} platform={platform} />
       )}
 
       <div className="flex-1 relative">
-        <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
-          <div className="flex items-center justify-between px-6 py-3 gap-2">
-            {/* Left Section - Back Button, Flow Name, Version, and State */}
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleBackClick}
-                className="shrink-0 h-8 w-8 p-0"
-                title="Back to flows"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              {currentFlow && (
-                <>
-                  {isEditingFlowName ? (
-                    <Input
-                      value={editingFlowNameValue}
-                      onChange={(e) => setEditingFlowNameValue(e.target.value)}
-                      onBlur={async () => {
-                        if (editingFlowNameValue.trim() && editingFlowNameValue !== currentFlow.name) {
-                          if (loadFromDb) {
-                            // Update shared flow via API
-                            try {
-                              const response = await fetch(`/api/flows/${flowId}`, {
-                                method: 'PUT',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                  name: editingFlowNameValue.trim(),
-                                }),
-                              })
-                              
-                              if (response.ok) {
-                                const updated = await response.json()
-                                setCurrentFlow(updated)
-                                toast.success("Flow name updated")
-                              } else {
-                                toast.error("Failed to update flow name")
-                                setEditingFlowNameValue(currentFlow.name)
-                              }
-                            } catch (error) {
-                              console.error("Error updating shared flow name:", error)
-                              toast.error("Failed to update flow name")
-                              setEditingFlowNameValue(currentFlow.name)
-                            }
-                          } else {
-                            // Update local flow
-                            const updated = updateFlow(flowId, { name: editingFlowNameValue.trim() })
-                            if (updated) {
-                              setCurrentFlow(updated)
-                              toast.success("Flow name updated")
-                            } else {
-                              toast.error("Failed to update flow name")
-                              setEditingFlowNameValue(currentFlow.name)
-                            }
-                          }
-                        }
-                        setIsEditingFlowName(false)
-                        if (!editingFlowNameValue.trim() || editingFlowNameValue === currentFlow.name) {
-                          setEditingFlowNameValue(currentFlow.name)
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.currentTarget.blur()
-                        }
-                        if (e.key === "Escape") {
-                          setEditingFlowNameValue(currentFlow.name)
-                          setIsEditingFlowName(false)
-                        }
-                      }}
-                      className="text-lg font-semibold h-8 px-2 min-w-[200px] max-w-[400px]"
-                      autoFocus
-                    />
-                  ) : (
-                    <div
-                      className="flex items-center gap-2 group cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
-                      onClick={() => {
-                        setEditingFlowNameValue(currentFlow.name)
-                        setIsEditingFlowName(true)
-                      }}
-                    >
-                      <h1 className="text-lg font-semibold text-foreground truncate">
-                        {currentFlow.name}
-                      </h1>
-                      <Edit3 className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </div>
-                  )}
-                  {currentVersion && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
-                      <span className="font-medium">{currentVersion.name}</span>
-                      {currentVersion.isPublished && !isEditMode ? (
-                        <>
-                          <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
-                          {currentVersion.previewUrl && (
-                            <a
-                              href={currentVersion.previewUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              Preview
-                            </a>
-                          )}
-                        </>
-                      ) : (
-                        <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
-                      )}
-                      {!isEditMode && !currentVersion.isPublished && (
-                        <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+        <FlowHeader
+          currentFlow={persistence.currentFlow}
+          isEditingFlowName={persistence.isEditingFlowName}
+          editingFlowNameValue={persistence.editingFlowNameValue}
+          setEditingFlowNameValue={persistence.setEditingFlowNameValue}
+          setIsEditingFlowName={persistence.setIsEditingFlowName}
+          handleFlowNameBlur={persistence.handleFlowNameBlur}
+          currentVersion={currentVersion}
+          isEditMode={isEditMode}
+          editModeState={editModeState}
+          draftChanges={draftChanges}
+          platform={platform}
+          nodes={nodes}
+          edges={edges}
+          loadFromDb={loadFromDb}
+          flowId={flowId}
+          handleBackClick={persistence.handleBackClick}
+          handleModeToggle={handleModeToggle}
+          handlePlatformChange={nodeOps.handlePlatformChange}
+          hasActualChanges={hasActualChanges}
+          getChangesCount={getChangesCount}
+          getChangesSummary={getChangesSummary}
+          getAllVersions={getAllVersions}
+          resetToPublished={resetToPublished}
+          setNodes={setNodes}
+          setEdges={setEdges}
+          setPlatform={setPlatform}
+          setSelectedNode={nodeOps.setSelectedNode}
+          setSelectedNodes={clipboard.setSelectedNodes}
+          setIsPropertiesPanelOpen={nodeOps.setIsPropertiesPanelOpen}
+          setIsChangesModalOpen={setIsChangesModalOpen}
+          setIsExportModalOpen={setIsExportModalOpen}
+          setIsVersionHistoryModalOpen={setIsVersionHistoryModalOpen}
+          setIsScreenshotModalOpen={setIsScreenshotModalOpen}
+          setShowDeleteDialog={persistence.setShowDeleteDialog}
+          onCreateVersion={async (name, description) => {
+            setIsLoadingVersion(true)
+            const published = createAndPublishVersion(nodes, edges, platform, name, description)
+            if (published && loadFromDb && persistence.currentFlow) {
+              try {
+                const response = await fetch(`/api/flows/${flowId}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    nodes, edges, platform,
+                    name: persistence.currentFlow.name,
+                    description: persistence.currentFlow.description,
+                    triggerId: persistence.currentFlow.triggerId,
+                    triggerIds: persistence.currentFlow.triggerIds,
+                  }),
+                })
+                if (response.ok) {
+                  const updatedFlow = await response.json()
+                  persistence.setCurrentFlow(updatedFlow)
+                }
+              } catch (error) {
+                console.error("[App] Error saving flow to database after publishing:", error)
+              }
+            }
+          }}
+          onPublishVersion={async (_versionId, versionName, description) => {
+            setIsLoadingVersion(true)
+            const published = publishCurrentVersion(nodes, edges, platform, versionName, description)
+            if (published && loadFromDb && persistence.currentFlow) {
+              try {
+                const response = await fetch(`/api/flows/${flowId}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    nodes, edges, platform,
+                    name: persistence.currentFlow.name,
+                    description: persistence.currentFlow.description,
+                    triggerId: persistence.currentFlow.triggerId,
+                    triggerIds: persistence.currentFlow.triggerIds,
+                  }),
+                })
+                if (response.ok) {
+                  const updatedFlow = await response.json()
+                  persistence.setCurrentFlow(updatedFlow)
+                }
+              } catch (error) {
+                console.error("[App] Error saving flow to database after publishing:", error)
+              }
+            }
+          }}
+        />
 
-            {/* Center Section - Edit/View Mode and Publish Button */}
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Mode Toggle */}
-              <div className="flex items-center gap-2 bg-muted rounded-md p-1">
-                <button
-                  onClick={handleModeToggle}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${isEditMode
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  <Pencil className="w-4 h-4" />
-                  <span>Edit Mode</span>
-                </button>
-                <button
-                  onClick={handleModeToggle}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${!isEditMode
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  <Eye className="w-4 h-4" />
-                  <span>View Mode</span>
-                </button>
-              </div>
-              <PublishModal
-                changes={draftChanges}
-                hasUnsavedChanges={editModeState.hasUnsavedChanges}
-                onCreateVersion={async (name, description) => {
-                  console.log('[App] Creating and publishing new version:', name)
-                  setIsLoadingVersion(true)
-                  const publishedVersion = await createAndPublishVersion(nodes, edges, platform, name, description)
-                  if (publishedVersion) {
-                    console.log('[App] Successfully created and published version:', publishedVersion.name)
-
-                    // Save to API if loaded from database
-                    if (loadFromDb && currentFlow) {
-                      try {
-                        const response = await fetch(`/api/flows/${flowId}`, {
-                          method: 'PUT',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            nodes,
-                            edges,
-                            platform,
-                            name: currentFlow.name,
-                            description: currentFlow.description,
-                            triggerId: currentFlow.triggerId,
-                            triggerIds: currentFlow.triggerIds,
-                          }),
-                        })
-
-                        if (response.ok) {
-                          const updatedFlow = await response.json()
-                          setCurrentFlow(updatedFlow)
-                          console.log('[App] Flow saved to database after publishing')
-                        }
-                      } catch (error) {
-                        console.error('[App] Error saving flow to database after publishing:', error)
-                      }
-                    }
-                  }
-                }}
-                onPublishVersion={async (versionId, versionName, description) => {
-                  console.log('[App] Publishing version and switching to view mode', {
-                    versionId, versionName, description,
-                    currentNodes: nodes.length, currentEdges: edges.length, currentPlatform: platform,
-                    isEditMode, currentVersion: currentVersion?.name
-                  })
-                  setIsLoadingVersion(true)
-                  const publishedVersion = await publishCurrentVersion(nodes, edges, platform, versionName, description)
-                  if (publishedVersion) {
-                    console.log('[App] Published version successfully:', publishedVersion.name, publishedVersion.isPublished)
-
-                    // Save to API if loaded from database
-                    if (loadFromDb && currentFlow) {
-                      try {
-                        const response = await fetch(`/api/flows/${flowId}`, {
-                          method: 'PUT',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            nodes,
-                            edges,
-                            platform,
-                            name: currentFlow.name,
-                            description: currentFlow.description,
-                            triggerId: currentFlow.triggerId,
-                            triggerIds: currentFlow.triggerIds,
-                          }),
-                        })
-
-                        if (response.ok) {
-                          const updatedFlow = await response.json()
-                          setCurrentFlow(updatedFlow)
-                          console.log('[App] Flow saved to database after publishing')
-                        }
-                      } catch (error) {
-                        console.error('[App] Error saving flow to database after publishing:', error)
-                      }
-                    }
-                  } else {
-                    console.log('[App] Failed to publish version')
-                  }
-                }}
-                currentVersion={currentVersion}
-              >
-                <Button
-                  variant="default"
-                  size="sm"
-                  disabled={(() => {
-                    const hasChanges = hasActualChanges(nodes, edges, platform)
-                    const changesCount = getChangesCount()
-                    const isDisabled = !isEditMode || !hasChanges || changesCount === 0
-                    return isDisabled
-                  })()}
-                  className="h-9 px-4 gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  Publish
-                </Button>
-              </PublishModal>
-            </div>
-
-            {/* Right Section - Platform and Menu */}
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Platform Selector - Highlighted */}
-              <button
-                type="button"
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 transition-all cursor-pointer hover:shadow-md ${platform === "web"
-                    ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50"
-                    : platform === "whatsapp"
-                      ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50"
-                      : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-950/50"
-                  }`}
-                onClick={() => {
-                  const platforms: Platform[] = ["web", "whatsapp", "instagram"]
-                  const currentIndex = platforms.indexOf(platform)
-                  const nextIndex = (currentIndex + 1) % platforms.length
-                  handlePlatformChange(platforms[nextIndex])
-                }}
-                title={`Click to switch platform. Current: ${getPlatformDisplayName(platform)}`}
-              >
-                {platform === "web" && <WebIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-                {platform === "whatsapp" && <WhatsAppIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
-                {platform === "instagram" && <InstagramIcon className="w-4 h-4 text-pink-600 dark:text-pink-400" />}
-                <span className={`text-sm font-semibold ${platform === "web"
-                    ? "text-blue-700 dark:text-blue-300"
-                    : platform === "whatsapp"
-                      ? "text-green-700 dark:text-green-300"
-                      : "text-pink-700 dark:text-pink-300"
-                  }`}>
-                  {getPlatformDisplayName(platform)}
-                </span>
-              </button>
-
-              {/* More Options Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                    <span className="sr-only">More options</span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Flow Options</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-
-                  {/* Changes Indicator */}
-                  {isEditMode && hasActualChanges(nodes, edges, platform) && (
-                    <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
-                      <Clock className="w-4 h-4 mr-2" />
-                      {getChangesSummary()}
-                    </DropdownMenuItem>
-                  )}
-
-                  <DropdownMenuSeparator />
-
-                  {/* Reset */}
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      if (window.confirm(getAllVersions().find(v => v.isPublished)
-                        ? "Reset to last published version? All unsaved changes will be lost."
-                        : "No published version exists. Clear everything?"
-                      )) {
-                        resetToPublished(setNodes, setEdges, setPlatform)
-                        setSelectedNode(null)
-                        setSelectedNodes([])
-                        setIsPropertiesPanelOpen(false)
-                        toast.success(getAllVersions().find(v => v.isPublished)
-                          ? "Reset to published version"
-                          : "Flow cleared"
-                        )
-                      }
-                    }}
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Reset to Published
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-
-                  {/* Export/Import */}
-                  <DropdownMenuItem onSelect={() => setIsExportModalOpen(true)}>
-                    <Eye className="w-4 h-4 mr-2" />
-                    Export/Import Flow
-                  </DropdownMenuItem>
-
-                  {/* Version History */}
-                  <DropdownMenuItem onSelect={() => setIsVersionHistoryModalOpen(true)}>
-                    <History className="w-4 h-4 mr-2" />
-                    Version History
-                  </DropdownMenuItem>
-
-                  {/* Screenshot */}
-                  <DropdownMenuItem onSelect={() => setIsScreenshotModalOpen(true)}>
-                    <Camera className="w-4 h-4 mr-2" />
-                    Take Screenshot
-                  </DropdownMenuItem>
-
-                  {/* Delete Flow (only for shared flows) */}
-                  {loadFromDb && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={() => setShowDeleteDialog(true)}
-                        className="text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Flow
-                      </DropdownMenuItem>
-                    </>
-                  )}
-
-                  <DropdownMenuSeparator />
-
-                  {/* Platform Selector */}
-                  <DropdownMenuLabel>Platform</DropdownMenuLabel>
-                  <div className="px-2 py-1.5">
-                    <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
-                  </div>
-
-                  <DropdownMenuSeparator />
-
-                  {/* Theme Toggle */}
-                  <div className="px-2 py-1.5">
-                    <ThemeToggle />
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
-
-        {/* Modals with controlled state */}
+        {/* Modals */}
         <ExportModal
           flowData={{
             nodes: nodes.map(({ data, ...node }) => ({ ...node, data })),
@@ -3561,21 +453,20 @@ export default function MagicFlow() {
           versions={getAllVersions()}
           currentVersion={currentVersion}
           onLoadVersion={(version) => {
-            console.log('[App] Loading version from history:', version.name)
             setIsLoadingVersion(true)
             loadVersion(version, setNodes, setEdges, setPlatform)
-            setSelectedNode(null)
-            setSelectedNodes([])
-            setIsPropertiesPanelOpen(false)
+            nodeOps.setSelectedNode(null)
+            clipboard.setSelectedNodes([])
+            nodeOps.setIsPropertiesPanelOpen(false)
           }}
           onDeleteVersion={(versionId) => {
             console.log("Delete version:", versionId)
           }}
           onCreateVersion={async (name, description) => {
-            await createNewVersion(nodes, edges, platform, name, description)
+            createNewVersion(nodes, edges, platform, name, description)
           }}
           onPublishVersion={async (versionId) => {
-            await publishVersion(flowId, versionId)
+            publishVersion(flowId, versionId)
           }}
           isEditMode={isEditMode}
           hasChanges={hasActualChanges(nodes, edges, platform)}
@@ -3595,8 +486,7 @@ export default function MagicFlow() {
           onOpenChange={setIsChangesModalOpen}
         />
 
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialog open={persistence.showDeleteDialog} onOpenChange={persistence.setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Are you sure?</AlertDialogTitle>
@@ -3607,7 +497,7 @@ export default function MagicFlow() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={handleDeleteSharedFlow}
+                onClick={persistence.handleDeleteSharedFlow}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete
@@ -3619,66 +509,39 @@ export default function MagicFlow() {
         <div className="h-full pt-20">
           <ReactFlow
             ref={flowElementRef}
-            key={`flow-${currentVersion?.id || 'default'}`}
+            key={`flow-${currentVersion?.id || "default"}`}
             nodes={nodes
-              .filter((node) => {
-                if (!node || !node.id || !node.type || !node.position || !node.data) {
-                  console.warn("[v0] Invalid node filtered out:", node)
-                  return false
-                }
-                return true
-              })
-              .map((node) => {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    id: node.id,
-                    onNodeUpdate: updateNodeData,
-                    onAddButton: () => addButtonToNode(node.id),
-                    onAddOption: () => addButtonToNode(node.id),
-                    onAddConnection: () => addConnectedNode(node.id),
-                    onDelete: () => deleteNode(node.id),
-                    onConvert: convertNode,
-                    ...(node.type === "start" && {
-                      flowDescription: currentFlow?.description || "",
-                      onFlowUpdate: (updates: { description?: string }) => {
-                        if (updates.description !== undefined && flowId) {
-                          updateFlow(flowId, { description: updates.description })
-                          setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
-                        }
-                      },
-                    }),
-                  },
-                }
-              })}
+              .filter((node) => node && node.id && node.type && node.position && node.data)
+              .map((node) =>
+                injectNodeCallbacks(node, {
+                  updateNodeData: nodeOps.updateNodeData,
+                  addButtonToNode: nodeOps.addButtonToNode,
+                  addConnectedNode: nodeOps.addConnectedNode,
+                  deleteNode: nodeOps.deleteNode,
+                  convertNode: nodeOps.convertNode,
+                }, {
+                  flowId,
+                  currentFlow: persistence.currentFlow,
+                  setCurrentFlow: persistence.setCurrentFlow,
+                })
+              )}
             edges={edges
-              .filter((edge) => {
-                if (!edge || !edge.id || !edge.source || !edge.target) {
-                  console.warn("[v0] Invalid edge filtered out:", edge)
-                  return false
-                }
-                return true
-              })
+              .filter((edge) => edge && edge.id && edge.source && edge.target)
               .map((edge) => ({
                 ...edge,
-                style: {
-                  ...edge.style,
-                  strokeWidth: 2,
-                  stroke: "#6366f1",
-                },
+                style: { ...edge.style, strokeWidth: 2, stroke: "#6366f1" },
               }))}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onNodeDoubleClick={onNodeDoubleClick}
-            onNodeContextMenu={onNodeContextMenu}
-            onPaneClick={onPaneClick}
-            onPaneContextMenu={onPaneContextMenu}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            onSelectionChange={onSelectionChange}
+            onNodesChange={nodeOps.onNodesChange}
+            onEdgesChange={nodeOps.onEdgesChange}
+            onConnect={interactions.onConnect}
+            onNodeClick={interactions.onNodeClick}
+            onNodeDoubleClick={interactions.onNodeDoubleClick}
+            onNodeContextMenu={interactions.onNodeContextMenu}
+            onPaneClick={interactions.onPaneClick}
+            onPaneContextMenu={interactions.onPaneContextMenu}
+            onDragOver={interactions.onDragOver}
+            onDrop={interactions.onDrop}
+            onSelectionChange={interactions.onSelectionChange}
             nodeTypes={nodeTypes}
             fitView
             className="bg-background"
@@ -3690,8 +553,8 @@ export default function MagicFlow() {
             onError={(error) => {
               console.error("[v0] React Flow error:", error)
             }}
-            onConnectStart={onConnectStart}
-            onConnectEnd={onConnectEnd}
+            onConnectStart={interactions.onConnectStart}
+            onConnectEnd={interactions.onConnectEnd}
             deleteKeyCode={["Backspace", "Delete"]}
             multiSelectionKeyCode={["Control", "Meta"]}
           >
@@ -3717,298 +580,98 @@ export default function MagicFlow() {
             />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--border))" />
 
-            {/* AI Assistant - Floating on canvas */}
             <Panel position="bottom-center" className="mb-4">
               <AIAssistant
                 platform={platform}
-                flowContext={currentFlow?.description}
+                flowContext={persistence.currentFlow?.description}
                 existingFlow={{ nodes, edges }}
-                onApplyFlow={handleApplyFlow}
-                onUpdateFlow={handleUpdateFlow}
+                onApplyFlow={flowAI.handleApplyFlow}
+                onUpdateFlow={flowAI.handleUpdateFlow}
               />
             </Panel>
           </ReactFlow>
         </div>
 
-        {contextMenu.isOpen && (
-          <div
-            className="fixed bg-card border border-border rounded-md shadow-lg py-2 z-50 min-w-[160px]"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onMouseLeave={closeContextMenu}
-          >
-            {selectedNodes.length > 0 && (
-              <>
-                <button
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    copyNodes()
-                    closeContextMenu()
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Copy {selectedNodes.length > 1 ? `(${selectedNodes.length})` : ''}
-                </button>
-                <div className="border-t border-border my-1" />
-              </>
-            )}
-            {clipboard && (
-              <button
-                className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                onClick={() => {
-                  const flowPosition = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y })
-                  pasteNodes(flowPosition)
-                  closeContextMenu()
-                }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                Paste Here
-              </button>
-            )}
-            {selectedNodes.length > 0 && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    selectAllNodes()
-                    closeContextMenu()
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Select All
-                </button>
-                <div className="border-t border-border my-1" />
-              </>
-            )}
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeAtPosition("comment")}
-            >
-              <MessageSquareText className="w-4 h-4" />
-              Add Comment
-            </button>
-            <div className="border-t border-border my-1" />
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeAtPosition("question")}
-            >
-              <MessageCircle className="w-4 h-4" />
-              {getAddNodeLabel("question", platform)}
-            </button>
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => addNodeAtPosition("quickReply")}
-            >
-              <MessageSquare className="w-4 h-4" />
-              {getAddNodeLabel("quickReply", platform)}
-            </button>
-            {platformSupportsNodeType(platform, "whatsappList") && (
-              <button
-                className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                onClick={() => addNodeAtPosition("whatsappList")}
-              >
-                <List className="w-4 h-4" />
-                {getAddNodeLabel("list", platform)}
-              </button>
-            )}
-          </div>
-        )}
+        <PaneContextMenu
+          contextMenu={interactions.contextMenu}
+          platform={platform}
+          selectedNodes={clipboard.selectedNodes}
+          clipboard={clipboard.clipboard}
+          closeContextMenu={interactions.closeContextMenu}
+          addNodeAtPosition={interactions.addNodeAtPosition}
+          copyNodes={clipboard.copyNodes}
+          pasteNodes={clipboard.pasteNodes}
+          selectAllNodes={clipboard.selectAllNodes}
+          screenToFlowPosition={screenToFlowPosition}
+        />
 
-        {nodeContextMenu.isOpen && (
-          <div
-            className="fixed bg-card border border-border rounded-md shadow-lg py-2 z-50 min-w-[160px]"
-            style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
-            onMouseLeave={closeNodeContextMenu}
-          >
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-              onClick={() => {
-                const node = nodes.find(n => n.id === nodeContextMenu.nodeId)
-                if (node) {
-                  setSelectedNodes([node])
-                  copyNodes()
-                }
-                closeNodeContextMenu()
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              Copy Node
-            </button>
-            {clipboard && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    const flowPosition = screenToFlowPosition({ x: nodeContextMenu.x, y: nodeContextMenu.y })
-                    pasteNodes(flowPosition)
-                    closeNodeContextMenu()
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  Paste Here
-                </button>
-              </>
-            )}
-            <div className="border-t border-border my-1" />
-            <button
-              className="w-full px-4 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-2 text-destructive"
-              onClick={() => {
-                if (nodeContextMenu.nodeId) {
-                  deleteNode(nodeContextMenu.nodeId)
-                }
-                closeNodeContextMenu()
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Delete Node
-            </button>
-          </div>
-        )}
+        <NodeContextMenu
+          nodeContextMenu={interactions.nodeContextMenu}
+          nodes={nodes}
+          clipboard={clipboard.clipboard}
+          closeNodeContextMenu={interactions.closeNodeContextMenu}
+          setSelectedNodes={clipboard.setSelectedNodes}
+          copyNodes={clipboard.copyNodes}
+          pasteNodes={clipboard.pasteNodes}
+          deleteNode={nodeOps.deleteNode}
+          screenToFlowPosition={screenToFlowPosition}
+        />
 
-        {connectionMenu.isOpen && (
+        {interactions.connectionMenu.isOpen && (
           <ConnectionMenu
-            isOpen={connectionMenu.isOpen}
-            position={{ x: connectionMenu.x, y: connectionMenu.y }}
-            onClose={closeConnectionMenu}
-            onSelectNodeType={handleNodeTypeSelection}
+            isOpen={interactions.connectionMenu.isOpen}
+            position={{ x: interactions.connectionMenu.x, y: interactions.connectionMenu.y }}
+            onClose={interactions.closeConnectionMenu}
+            onSelectNodeType={interactions.handleNodeTypeSelection}
             platform={platform}
           />
         )}
       </div>
 
-      {/* AI Suggestions Panel - Right Side (left of Properties Panel) */}
+      {/* AI Suggestions Panel */}
       <div
-        className={`transition-all duration-300 ease-in-out ${isAISuggestionsPanelOpen ? "w-80" : "w-0"
-          } overflow-hidden bg-background border-r border-border`}
+        className={`transition-all duration-300 ease-in-out ${
+          flowAI.isAISuggestionsPanelOpen ? "w-80" : "w-0"
+        } overflow-hidden bg-background border-r border-border`}
       >
         <AISuggestionsPanel
-          selectedNode={selectedNode}
-          suggestions={suggestions}
-          loading={suggestionsLoading}
+          selectedNode={nodeOps.selectedNode}
+          suggestions={flowAI.suggestions}
+          loading={flowAI.suggestionsLoading}
           platform={platform}
-          isOpen={isAISuggestionsPanelOpen}
-          onClose={() => setIsAISuggestionsPanelOpen(false)}
-          onAccept={onAcceptAISuggestion}
+          isOpen={flowAI.isAISuggestionsPanelOpen}
+          onClose={() => flowAI.setIsAISuggestionsPanelOpen(false)}
+          onAccept={flowAI.onAcceptAISuggestion}
           onReject={(suggestion) => {
-            clearSuggestions()
+            flowAI.clearSuggestions()
             toast.info(`Dismissed ${suggestion.label} suggestion`)
           }}
         />
       </div>
 
-      <div
-        className={`transition-all duration-300 ease-in-out ${isPropertiesPanelOpen ? "w-80" : "w-0"
-          } overflow-hidden bg-background border-l border-border`}
-      >
-        {selectedNode && (
-          <div className="w-80 flex flex-col h-full">
-            <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
-              <h2 className="text-lg font-semibold text-foreground">Properties</h2>
-              <Button variant="ghost" size="sm" onClick={() => setIsPropertiesPanelOpen(false)} className="h-8 w-8 p-0">
-                <span className="sr-only">Close properties panel</span>×
-              </Button>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <PropertiesPanel
-                selectedNode={selectedNode}
-                platform={platform}
-                onNodeUpdate={updateNodeData}
-                allNodes={nodes}
-              />
-            </div>
-          </div>
-        )}
-        {!selectedNode && isPropertiesPanelOpen && (
-          <div className="w-80">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Multiple Selection</h2>
-              <Button variant="ghost" size="sm" onClick={() => setIsPropertiesPanelOpen(false)} className="h-8 w-8 p-0">
-                <span className="sr-only">Close properties panel</span>×
-              </Button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div className="text-sm text-muted-foreground">
-                {selectedNodes.length} nodes selected
-              </div>
+      <PropertiesPanelWrapper
+        selectedNode={nodeOps.selectedNode}
+        selectedNodes={clipboard.selectedNodes}
+        isOpen={nodeOps.isPropertiesPanelOpen}
+        platform={platform}
+        nodes={nodes}
+        clipboard={clipboard.clipboard}
+        onClose={() => nodeOps.setIsPropertiesPanelOpen(false)}
+        onNodeUpdate={nodeOps.updateNodeData}
+        copyNodes={clipboard.copyNodes}
+        pasteNodes={clipboard.pasteNodes}
+        selectAllNodes={clipboard.selectAllNodes}
+      />
 
-              <div className="space-y-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={copyNodes}
-                  className="w-full justify-start"
-                  disabled={selectedNodes.length === 0}
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Copy Selected
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const reactFlowElement = document.querySelector('.react-flow')
-                    if (reactFlowElement) {
-                      const rect = reactFlowElement.getBoundingClientRect()
-                      const centerX = rect.left + rect.width / 2
-                      const centerY = rect.top + rect.height / 2
-                      const flowPosition = screenToFlowPosition({ x: centerX, y: centerY })
-                      pasteNodes(flowPosition)
-                    } else {
-                      pasteNodes()
-                    }
-                  }}
-                  className="w-full justify-start"
-                  disabled={!clipboard}
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  Paste at Center
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAllNodes}
-                  className="w-full justify-start"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Select All
-                </Button>
-              </div>
-
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div>Keyboard shortcuts:</div>
-                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+C</kbd> Copy</div>
-                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+V</kbd> Paste</div>
-                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Ctrl+A</kbd> Select All</div>
-                <div><kbd className="px-1 py-0.5 bg-muted rounded text-xs">Delete</kbd> Delete Selected</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Toast notifications */}
       <Toaster position="bottom-right" />
     </div>
+  )
+}
+
+export default function MagicFlow() {
+  return (
+    <ReactFlowProvider>
+      <MagicFlowInner />
+    </ReactFlowProvider>
   )
 }

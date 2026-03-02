@@ -6,7 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, FileEdit, Sparkles, Database, Loader2 } from "lucide-react"
+import { Plus, Trash2, Copy, FileEdit, Database, Loader2 } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { getAllFlows, getSharedFlows, createFlow, deleteFlow, deleteSharedFlow, duplicateFlow, updateFlow, type FlowMetadata } from "@/utils/flow-storage"
@@ -84,6 +84,12 @@ export default function FlowsPage() {
     // The setup modal will appear on the flow editor page
     const tempFlow = createFlow("New Flow", "", "whatsapp")
     router.push(`/flow/${tempFlow.id}?setup=true`)
+  }
+
+  const handleCreateSharedFlow = () => {
+    // Navigate to the flow editor in setup mode with loadFrom=db
+    // The setup modal will appear, and on completion the flow is created via API (Redis)
+    router.push(`/flow/new?loadFrom=db`)
   }
 
   const handleDeleteFlow = (flowId: string) => {
@@ -452,15 +458,25 @@ export default function FlowsPage() {
                   </div>
                 </div>
                 {!loadingShared && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={loadSharedFlows}
-                    className="gap-2"
-                  >
-                    <FileEdit className="w-4 h-4" />
-                    Refresh
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={loadSharedFlows}
+                      className="gap-2"
+                    >
+                      <FileEdit className="w-4 h-4" />
+                      Refresh
+                    </Button>
+                    <Button
+                      onClick={handleCreateSharedFlow}
+                      size="sm"
+                      className="gap-2 bg-[#052762] hover:bg-[#0A49B7] text-white"
+                    >
+                      <Plus className="w-4 h-4" />
+                      New Shared Flow
+                    </Button>
+                  </div>
                 )}
               </div>
               

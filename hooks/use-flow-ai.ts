@@ -36,6 +36,43 @@ interface UseFlowAIParams {
   setCurrentFlow: React.Dispatch<React.SetStateAction<FlowData | null>>
 }
 
+/**
+ * Check if an edge is a duplicate of an existing edge.
+ * Compares source + target + sourceHandle (not just source + target)
+ * so that different buttons on the same node pointing to the same target are allowed.
+ */
+function isEdgeDuplicate(existing: Edge[], candidate: Edge): boolean {
+  const isDup = existing.some(
+    (e) =>
+      e.source === candidate.source &&
+      e.target === candidate.target &&
+      (e.sourceHandle || "") === (candidate.sourceHandle || "")
+  )
+  if (isDup) {
+    console.log(`[EdgeDedup] Skipping duplicate edge: ${candidate.source} → ${candidate.target} (handle: ${candidate.sourceHandle || "default"})`)
+  }
+  return isDup
+}
+
+/**
+ * Remove any existing edge that conflicts with a new edge on source+sourceHandle.
+ * Enforces one outgoing edge per button handle.
+ */
+function removeConflictingEdges(edges: Edge[], newEdge: Edge): Edge[] {
+  if (!newEdge.sourceHandle) return edges
+  const before = edges.length
+  const filtered = edges.filter(
+    (e) =>
+      !(e.source === newEdge.source &&
+        (e.sourceHandle || "") === (newEdge.sourceHandle || "") &&
+        e.target !== newEdge.target)
+  )
+  if (filtered.length < before) {
+    console.log(`[EdgeDedup] Removed ${before - filtered.length} conflicting edge(s) for handle ${newEdge.sourceHandle} on ${newEdge.source} (new target: ${newEdge.target})`)
+  }
+  return filtered
+}
+
 export function useFlowAI({
   flowId,
   nodes,
@@ -284,8 +321,12 @@ export function useFlowAI({
   )
 
   const handleApplyFlow = useCallback(
-    (flowData: { nodes: Node[]; edges: Edge[] }) => {
+    async (flowData: { nodes: Node[]; edges: Edge[]; nodeOrder?: string[] }) => {
       try {
+        // Snapshot current state for undo
+        const preApplyNodes = [...nodes]
+        const preApplyEdges = [...edges]
+
         withEditTracking()
 
         const existingStartNode = nodes.find((n) => n.id === "1" && n.type === "start")
@@ -293,8 +334,42 @@ export function useFlowAI({
         const nodeIds = new Set(processedNodes.map((n) => n.id))
         const processedEdges = processAiEdges(flowData.edges, nodeIds)
 
-        setNodes(processedNodes)
-        setEdges(processedEdges)
+        // If nodeOrder is provided, animate nodes onto the canvas one-by-one
+        if (flowData.nodeOrder && flowData.nodeOrder.length > 0) {
+          const STAGGER_DELAY = 150
+
+          // Start with just the start node
+          setNodes(existingStartNode ? [existingStartNode] : [])
+          setEdges([])
+
+          const placedIds = new Set<string>()
+          if (existingStartNode) placedIds.add(existingStartNode.id)
+
+          for (const nodeId of flowData.nodeOrder) {
+            const node = processedNodes.find((n) => n.id === nodeId)
+            if (node) {
+              setNodes((prev) => [...prev, node])
+
+              // Add edges that connect to already-placed nodes
+              const relevantEdges = processedEdges.filter(
+                (e) => e.target === nodeId && placedIds.has(e.source)
+              )
+              if (relevantEdges.length > 0) {
+                setEdges((prev) => [...prev, ...relevantEdges])
+              }
+              placedIds.add(nodeId)
+
+              await new Promise((r) => setTimeout(r, STAGGER_DELAY))
+            }
+          }
+
+          // Safety net: set final edges state to ensure all edges are placed
+          setEdges(processedEdges)
+        } else {
+          // No nodeOrder — apply all at once (legacy behavior)
+          setNodes(processedNodes)
+          setEdges(processedEdges)
+        }
 
         processedNodes.forEach((node) => {
           if (node.id !== "1") {
@@ -304,25 +379,78 @@ export function useFlowAI({
         processedEdges.forEach((edge) => changeTracker.trackEdgeAdd(edge))
         updateDraftChanges()
 
-        toast.success(
-          `AI-generated flow applied successfully! Added ${processedNodes.length - (existingStartNode ? 1 : 0)} nodes and ${processedEdges.length} connections.`
-        )
+        const addedCount = processedNodes.length - (existingStartNode ? 1 : 0)
+        toast.success(`Flow created! ${addedCount} nodes added`, {
+          action: {
+            label: "Undo",
+            onClick: () => {
+              setNodes(preApplyNodes)
+              setEdges(preApplyEdges)
+              toast.info("Flow generation undone")
+            },
+          },
+          duration: 8000,
+        })
       } catch (error) {
         console.error("[handleApplyFlow] Error:", error)
         toast.error("Failed to apply AI-generated flow. Please try again.")
       }
     },
-    [nodes, platform, setNodes, setEdges, withEditTracking, updateDraftChanges]
+    [nodes, edges, platform, setNodes, setEdges, withEditTracking, updateDraftChanges]
   )
 
   const handleUpdateFlow = useCallback(
-    (updates: { nodes?: Node[]; edges?: Edge[]; description?: string }) => {
+    async (updates: {
+      nodes?: Node[]
+      edges?: Edge[]
+      description?: string
+      removeNodeIds?: string[]
+      removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
+    }) => {
       try {
+        // Snapshot current state for undo
+        const preUpdateNodes = [...nodes]
+        const preUpdateEdges = [...edges]
+
         withEditTracking()
 
-        if (updates.nodes && updates.nodes.length > 0) {
-          const processedNodes: Node[] = []
+        console.log("[handleUpdateFlow] Applying updates:", {
+          removeNodeIds: updates.removeNodeIds?.length || 0,
+          removeEdges: updates.removeEdges?.length || 0,
+          newNodes: updates.nodes?.length || 0,
+          newEdges: updates.edges?.length || 0,
+        })
 
+        // Step 1: Remove nodes and edges first
+        if (updates.removeNodeIds && updates.removeNodeIds.length > 0) {
+          const idsToRemove = new Set(updates.removeNodeIds)
+          console.log("[handleUpdateFlow] Removing nodes:", [...idsToRemove])
+          setNodes((nds) => nds.filter((n) => !idsToRemove.has(n.id)))
+          // Also remove edges connected to removed nodes
+          setEdges((eds) =>
+            eds.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
+          )
+        }
+
+        if (updates.removeEdges && updates.removeEdges.length > 0) {
+          console.log("[handleUpdateFlow] Removing edges:", updates.removeEdges)
+          setEdges((eds) =>
+            eds.filter((e) => {
+              return !updates.removeEdges!.some(
+                (re) =>
+                  re.source === e.source &&
+                  re.target === e.target &&
+                  (!re.sourceHandle || re.sourceHandle === e.sourceHandle)
+              )
+            })
+          )
+        }
+
+        // Step 2: Process node additions and updates
+        const updatedExisting: Node[] = []
+        const brandNewNodes: Node[] = []
+
+        if (updates.nodes && updates.nodes.length > 0) {
           for (const aiNode of updates.nodes) {
             if (!aiNode.id || !aiNode.type) {
               console.warn("[handleUpdateFlow] Skipping node without id or type:", aiNode)
@@ -335,7 +463,7 @@ export function useFlowAI({
             if (existingNode) {
               const transformedAiData = transformAiNodeData(aiNode.data || {}, baseType)
               const updatedData = { ...existingNode.data, ...transformedAiData }
-              processedNodes.push({ ...existingNode, ...aiNode, data: updatedData })
+              updatedExisting.push({ ...existingNode, ...aiNode, data: updatedData })
             } else {
               try {
                 const nodePlatform = (aiNode.data?.platform as Platform) || platform
@@ -346,10 +474,10 @@ export function useFlowAI({
                 const transformedAiData = transformAiNodeData(aiNode.data || {}, baseType)
                 const mergedData = { ...newNode.data, ...transformedAiData }
 
-                processedNodes.push({ ...newNode, ...aiNode, data: mergedData })
+                brandNewNodes.push({ ...newNode, ...aiNode, data: mergedData })
               } catch (error) {
                 console.error(`[handleUpdateFlow] Error creating node ${aiNode.type}:`, error)
-                processedNodes.push({
+                brandNewNodes.push({
                   id: aiNode.id,
                   type: aiNode.type,
                   position: aiNode.position || { x: 250, y: 200 },
@@ -362,77 +490,153 @@ export function useFlowAI({
             }
           }
 
-          setNodes((nds) => {
-            const existingIds = new Set(nds.map((n) => n.id))
-            const newNodes = processedNodes.filter((n) => !existingIds.has(n.id))
-            const updatedNodes = nds.map((node) => {
-              const update = processedNodes.find((n) => n.id === node.id)
-              return update || node
-            })
-            return [...updatedNodes, ...newNodes]
-          })
+          // Apply updates to existing nodes immediately
+          if (updatedExisting.length > 0) {
+            setNodes((nds) =>
+              nds.map((node) => {
+                const update = updatedExisting.find((n) => n.id === node.id)
+                return update || node
+              })
+            )
+          }
 
-          processedNodes.forEach((node) => {
+          // Prepare all new edges
+          const newEdges: Edge[] = []
+          if (updates.edges && updates.edges.length > 0) {
+            const removedIds = new Set(updates.removeNodeIds || [])
+            const allNodeIds = new Set([
+              ...nodes.filter((n) => !removedIds.has(n.id)).map((n) => n.id),
+              ...updatedExisting.map((n) => n.id),
+              ...brandNewNodes.map((n) => n.id),
+            ])
+
+            for (const aiEdge of updates.edges) {
+              const edgeExists = edges.some((e) => e.id === aiEdge.id)
+              if (edgeExists) continue
+
+              if (!allNodeIds.has(aiEdge.source) || !allNodeIds.has(aiEdge.target)) {
+                console.warn(`[handleUpdateFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
+                continue
+              }
+
+              // Reject self-referencing edges (circular loops)
+              if (aiEdge.source === aiEdge.target) {
+                console.warn(`[handleUpdateFlow] Skipping self-loop edge: ${aiEdge.source} → ${aiEdge.target}`)
+                continue
+              }
+
+              newEdges.push({
+                id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
+                source: aiEdge.source,
+                target: aiEdge.target,
+                type: aiEdge.type || "default",
+                sourceHandle: (aiEdge as any).sourceHandle,
+                style: aiEdge.style || { stroke: "#6366f1", strokeWidth: 2 },
+                animated: false,
+              })
+            }
+          }
+
+          // Stagger-animate new nodes one by one
+          if (brandNewNodes.length > 0) {
+            const STAGGER_DELAY = 150
+            const placedIds = new Set(nodes.map((n) => n.id))
+
+            for (const node of brandNewNodes) {
+              setNodes((prev) => [...prev, node])
+              placedIds.add(node.id)
+
+              // Add edges that connect to already-placed nodes
+              const relevantEdges = newEdges.filter(
+                (e) =>
+                  (e.target === node.id && placedIds.has(e.source)) ||
+                  (e.source === node.id && placedIds.has(e.target))
+              )
+              if (relevantEdges.length > 0) {
+                setEdges((prev) => {
+                  let updated = [...prev]
+                  for (const edge of relevantEdges) {
+                    if (!isEdgeDuplicate(updated, edge)) {
+                      updated = removeConflictingEdges(updated, edge)
+                      updated = addEdge(edge, updated)
+                    }
+                  }
+                  return updated
+                })
+              }
+
+              await new Promise((r) => setTimeout(r, STAGGER_DELAY))
+            }
+
+            // Safety net: ensure all new edges are placed
+            if (newEdges.length > 0) {
+              setEdges((prev) => {
+                let updated = [...prev]
+                for (const edge of newEdges) {
+                  if (!isEdgeDuplicate(updated, edge)) {
+                    updated = removeConflictingEdges(updated, edge)
+                    updated = addEdge(edge, updated)
+                  }
+                }
+                return updated
+              })
+            }
+          } else if (newEdges.length > 0) {
+            // No new nodes but new edges — apply edges immediately
+            setEdges((prev) => {
+              let updated = [...prev]
+              for (const edge of newEdges) {
+                if (!isEdgeDuplicate(updated, edge)) {
+                  updated = removeConflictingEdges(updated, edge)
+                  updated = addEdge(edge, updated)
+                }
+              }
+              return updated
+            })
+          }
+
+          const allProcessed = [...updatedExisting, ...brandNewNodes]
+          allProcessed.forEach((node) => {
             if (!nodes.find((n) => n.id === node.id)) {
               changeTracker.trackNodeAdd(node)
             }
           })
+          newEdges.forEach((edge) => {
+            if (!edges.find((e) => e.id === edge.id)) {
+              changeTracker.trackEdgeAdd(edge)
+            }
+          })
 
-          console.log(`[handleUpdateFlow] Processed ${processedNodes.length} nodes`)
-        }
-
-        if (updates.edges && updates.edges.length > 0) {
+          console.log(`[handleUpdateFlow] Updated ${updatedExisting.length}, added ${brandNewNodes.length} nodes`)
+        } else if (updates.edges && updates.edges.length > 0) {
+          // Only edges, no nodes
           setEdges((eds) => {
-            const existingIds = new Set(eds.map((e) => e.id))
-            const newEdges: Edge[] = []
-
+            let updated = [...eds]
+            const removedIds = new Set(updates.removeNodeIds || [])
             for (const aiEdge of updates.edges!) {
-              if (existingIds.has(aiEdge.id)) continue
-
-              const sourceExists =
-                nodes.some((n) => n.id === aiEdge.source) ||
-                updates.nodes?.some((n) => n.id === aiEdge.source)
-              const targetExists =
-                nodes.some((n) => n.id === aiEdge.target) ||
-                updates.nodes?.some((n) => n.id === aiEdge.target)
-
-              if (!sourceExists || !targetExists) {
-                console.warn(`[handleUpdateFlow] Skipping edge ${aiEdge.id}: source or target node not found`)
-                continue
-              }
+              if (updated.some((e) => e.id === aiEdge.id)) continue
+              if (aiEdge.source === aiEdge.target) continue
+              const sourceExists = nodes.some((n) => n.id === aiEdge.source && !removedIds.has(n.id))
+              const targetExists = nodes.some((n) => n.id === aiEdge.target && !removedIds.has(n.id))
+              if (!sourceExists || !targetExists) continue
 
               const newEdge: Edge = {
                 id: aiEdge.id || `e-${aiEdge.source}-${aiEdge.target}`,
                 source: aiEdge.source,
                 target: aiEdge.target,
                 type: aiEdge.type || "default",
+                sourceHandle: (aiEdge as any).sourceHandle,
                 style: aiEdge.style || { stroke: "#6366f1", strokeWidth: 2 },
                 animated: false,
               }
-
-              newEdges.push(newEdge)
-            }
-
-            let updatedEdges = [...eds]
-            for (const newEdge of newEdges) {
-              const existingConnection = updatedEdges.find(
-                (e) => e.source === newEdge.source && e.target === newEdge.target
-              )
-              if (!existingConnection) {
-                updatedEdges = addEdge(newEdge, updatedEdges)
+              if (!isEdgeDuplicate(updated, newEdge)) {
+                updated = removeConflictingEdges(updated, newEdge)
+                updated = addEdge(newEdge, updated)
+                changeTracker.trackEdgeAdd(newEdge)
               }
             }
-
-            return updatedEdges
+            return updated
           })
-
-          updates.edges.forEach((edge) => {
-            if (!edges.find((e) => e.id === edge.id)) {
-              changeTracker.trackEdgeAdd(edge)
-            }
-          })
-
-          console.log(`[handleUpdateFlow] Added ${updates.edges.length} edges`)
         }
 
         if (updates.description && flowId) {
@@ -441,8 +645,22 @@ export function useFlowAI({
         }
 
         updateDraftChanges()
+
+        const addedCount = brandNewNodes.length
+        const updatedCount = updatedExisting.length
         toast.success(
-          `Flow updated successfully! ${updates.nodes?.length || 0} nodes, ${updates.edges?.length || 0} edges`
+          `Flow updated! ${addedCount > 0 ? `${addedCount} nodes added` : ""}${addedCount > 0 && updatedCount > 0 ? ", " : ""}${updatedCount > 0 ? `${updatedCount} nodes updated` : ""}`,
+          {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                setNodes(preUpdateNodes)
+                setEdges(preUpdateEdges)
+                toast.info("Flow update undone")
+              },
+            },
+            duration: 8000,
+          }
         )
       } catch (error) {
         console.error("[handleUpdateFlow] Error:", error)

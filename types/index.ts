@@ -10,6 +10,7 @@ export interface ButtonData {
 
 export interface OptionData {
   text: string
+  id?: string  // stable handle ID
 }
 
 export interface BaseNodeData extends Record<string, unknown> {

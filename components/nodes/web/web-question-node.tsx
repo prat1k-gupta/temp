@@ -259,7 +259,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                 className={`text-sm min-h-[60px] resize-none border-blue-200 focus:border-blue-300 ${
                   isOverLimit(editingQuestionValue) ? "border-red-300" : ""
                 }`}
-                placeholder={nodeLimits.question?.placeholder || "Enter your message..."}
+                placeholder={nodeLimits.question?.placeholder || "Enter your question..."}
                 autoFocus
               />
               
@@ -295,7 +295,7 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/10 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Enter your message..."}
+              {data.question || "Enter your question..."}
             </div>
           )}
 

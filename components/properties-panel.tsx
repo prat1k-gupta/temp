@@ -47,6 +47,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { useSortable } from "@dnd-kit/sortable"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
+import { createButtonData, createOptionData } from "@/utils"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -362,7 +363,7 @@ export function PropertiesPanel({
 
   const addButton = () => {
     console.log("[v0] Adding new button")
-    const next = { text: `Button ${stripIds(localButtons).length + 1}` }
+    const next = createButtonData(`Button ${stripIds(localButtons).length + 1}`, stripIds(localButtons).length)
     setLocalButtons((prev) => [...prev, next])
     const buttons = [...stripIds(localButtons), next]
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, buttons })
@@ -413,7 +414,7 @@ export function PropertiesPanel({
 
   const addOption = () => {
     console.log("[v0] Adding new option")
-    const next = { text: `Option ${stripIds(localOptions).length + 1}` }
+    const next = createOptionData(`Option ${stripIds(localOptions).length + 1}`, stripIds(localOptions).length)
     setLocalOptions((prev) => [...prev, next])
     const options = [...stripIds(localOptions), next]
     onNodeUpdate(selectedNode.id, { ...selectedNode.data, options })

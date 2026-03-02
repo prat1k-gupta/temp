@@ -23,13 +23,13 @@ export const NODE_TYPE_MAPPINGS: Record<string, Record<Platform, string>> = {
 export const NODE_LABELS: Record<string, Record<Platform, string>> = {
   question: {
     web: "Question",
-    whatsapp: "WhatsApp Message",
-    instagram: "Instagram Message"
+    whatsapp: "WhatsApp Question",
+    instagram: "Instagram Question"
   },
   quickReply: {
     web: "Quick Reply",
-    whatsapp: "WhatsApp Actions",
-    instagram: "Instagram Actions"
+    whatsapp: "WhatsApp Quick Reply",
+    instagram: "Instagram Quick Reply"
   },
   interactiveList: {
     web: "Interactive List",
@@ -42,13 +42,13 @@ export const NODE_LABELS: Record<string, Record<Platform, string>> = {
 export const NODE_CONTENT: Record<string, Record<Platform, string>> = {
   question: {
     web: "What would you like to know?",
-    whatsapp: "Send a WhatsApp message",
-    instagram: "Send an Instagram message"
+    whatsapp: "What would you like to know?",
+    instagram: "What would you like to know?"
   },
   quickReply: {
-    web: "Choose an action:",
-    whatsapp: "Choose an action:",
-    instagram: "Choose an action:"
+    web: "What would you like to do?",
+    whatsapp: "What would you like to do?",
+    instagram: "What would you like to do?"
   },
   interactiveList: {
     web: "Select from the list:",

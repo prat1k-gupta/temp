@@ -1,4 +1,5 @@
-import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines, getNodeDocumentationForPrompt } from "../core/ai-context"
+import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines } from "../core/ai-context"
+import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
 import { getAIClient } from "../core/ai-client"
 import type { Platform } from "@/types"
 import { z } from "zod"
@@ -151,8 +152,8 @@ function buildSystemPrompt(
   const platformGuidelines = getPlatformGuidelines(platform)
   const nodeTypeGuidelines = getNodeTypeGuidelines(currentNodeType, platform)
   
-  // Get comprehensive node documentation
-  const nodeDocs = getNodeDocumentationForPrompt(platform)
+  // Get compact node documentation (types + categories + content hints)
+  const nodeDocs = getSimplifiedNodeDocumentation(platform)
 
   // Analyze existing nodes to determine flow pattern
   const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
@@ -177,7 +178,7 @@ ${flowPattern.description}
 **Flow Pattern Guidelines:**
 ${flowPattern.guidelines}
 
-**COMPREHENSIVE NODE DOCUMENTATION:**
+**AVAILABLE NODE TYPES:**
 ${nodeDocs}
 
 **Guidelines:**

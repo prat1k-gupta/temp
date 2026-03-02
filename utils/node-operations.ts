@@ -7,14 +7,16 @@ import { isValidNodeId } from "./validation"
  * Create button data with proper structure
  */
 export const createButtonData = (text: string, index?: number): ButtonData => ({
-  text: text || `Option ${(index || 0) + 1}`
+  text: text || `Option ${(index || 0) + 1}`,
+  id: `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 })
 
 /**
  * Create option data with proper structure
  */
 export const createOptionData = (text: string, index?: number): OptionData => ({
-  text: text || `Option ${(index || 0) + 1}`
+  text: text || `Option ${(index || 0) + 1}`,
+  id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 })
 
 /**

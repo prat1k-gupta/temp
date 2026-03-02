@@ -7,6 +7,7 @@
 import type { Platform } from "@/types"
 import { getNodeLimits } from "@/constants"
 import { CHARACTER_LIMITS, BUTTON_LIMITS } from "@/constants/platform-limits"
+import { NODE_TEMPLATES } from "@/constants/node-categories"
 
 export interface NodeDocumentation {
   type: string
@@ -153,7 +154,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
       type: nodeType,
       category: "interaction",
       platforms: [p],
-      description: "Ask users a question. Use for general questions, not for collecting specific data fields (use super nodes for that).",
+      description: "Ask users a question and wait for their text response. ONLY for truly open-ended text input. Do NOT use whatsappMessage/instagramDM for questions — use this node type instead.",
       properties: {
         required: ["label", "question", "platform"],
         optional: []
@@ -164,7 +165,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
         allowMultipleOutputs: limits.allowMultipleOutputs
       },
       usage: {
-        whenToUse: "When you need to ask a general question or gather open-ended feedback. NOT for collecting email, name, DOB, or address (use super nodes instead).",
+        whenToUse: "ONLY for truly open-ended text input (comments, descriptions, freeform feedback). Do NOT use for questions with finite/known answer options — use quickReply instead. NOT for collecting email, name, DOB, or address (use super nodes instead).",
         bestPractices: [
           "Write clear, specific questions",
           "Encourage a response",
@@ -210,7 +211,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
         allowMultipleOutputs: limits.allowMultipleOutputs
       },
       usage: {
-        whenToUse: "When you need to offer choices or options to users. Perfect for branching flows where different buttons lead to different paths.",
+        whenToUse: "When the answer has finite/known options. Prefer this over question whenever possible — selections, ratings, yes/no, categories, sizes, types, etc. Perfect for branching flows where different buttons lead to different paths.",
         bestPractices: [
           "Use action-oriented button text (Yes, No, Continue, etc.)",
           "Keep button text short and scannable (max 20 chars for WhatsApp)",
@@ -294,7 +295,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
       type: "whatsappMessage",
       category: "interaction",
       platforms: ["whatsapp"],
-      description: "Send a WhatsApp message to users.",
+      description: "Send a one-way WhatsApp message (no user response expected). Do NOT use this for asking questions — use question type instead.",
       properties: {
         required: ["label", "text", "platform"],
         optional: []
@@ -305,7 +306,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
         allowMultipleOutputs: false
       },
       usage: {
-        whenToUse: "When you need to send informational messages or notifications via WhatsApp.",
+        whenToUse: "ONLY for one-way informational messages or notifications (e.g., 'Thank you!', confirmations). Do NOT use this to ask questions — use the question node type when you expect a user response.",
         bestPractices: [
           "Keep messages conversational",
           "Break long text into smaller messages",
@@ -331,7 +332,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
       type: "instagramDM",
       category: "interaction",
       platforms: ["instagram"],
-      description: "Send an Instagram direct message to users.",
+      description: "Send a one-way Instagram DM (no user response expected). Do NOT use this for asking questions — use question type instead.",
       properties: {
         required: ["label", "text", "platform"],
         optional: []
@@ -342,7 +343,7 @@ function getInteractionNodeDocs(platform?: Platform): NodeDocumentation[] {
         allowMultipleOutputs: false
       },
       usage: {
-        whenToUse: "When you need to send messages via Instagram DMs.",
+        whenToUse: "ONLY for one-way informational messages or notifications via Instagram DMs (e.g., 'Thanks for reaching out!'). Do NOT use this to ask questions — use the question node type when you expect a user response.",
         bestPractices: [
           "Keep messages engaging and visual",
           "Use modern, casual tone",
@@ -1009,5 +1010,72 @@ function getIntegrationNodeDocs(platform?: Platform): NodeDocumentation[] {
   })
 
   return docs
+}
+
+/**
+ * Compact node documentation for the plan-based create prompt.
+ * ~300 tokens vs ~2000 for the full docs. Lists each node type with
+ * its category, what content fields it accepts, and platform restrictions.
+ */
+export function getSimplifiedNodeDocumentation(platform: Platform): string {
+  const lines: string[] = [
+    `Available node types for ${platform}:`,
+    "",
+  ]
+
+  // Group templates by category
+  const byCategory = new Map<string, typeof NODE_TEMPLATES>()
+  for (const t of NODE_TEMPLATES) {
+    if (!t.platforms.includes(platform)) continue
+    const list = byCategory.get(t.category) || []
+    list.push(t)
+    byCategory.set(t.category, list)
+  }
+
+  const categoryOrder = ["information", "interaction", "logic", "fulfillment", "integration"]
+
+  for (const cat of categoryOrder) {
+    const items = byCategory.get(cat)
+    if (!items || items.length === 0) continue
+
+    lines.push(`[${cat.toUpperCase()}]`)
+    for (const t of items) {
+      const contentHints = getContentHints(t.type, platform)
+      const platformNote = t.platforms.length < 3
+        ? ` (${t.platforms.join("/")} only)`
+        : ""
+      lines.push(`  ${t.type} — ${t.description}${platformNote}${contentHints ? ` | content: ${contentHints}` : ""}`)
+    }
+    lines.push("")
+  }
+
+  lines.push(`Button limits: web=${BUTTON_LIMITS.web}, whatsapp=${BUTTON_LIMITS.whatsapp}, instagram=${BUTTON_LIMITS.instagram}`)
+
+  return lines.join("\n")
+}
+
+/** Short content-field hints per node type. */
+function getContentHints(nodeType: string, _platform: Platform): string {
+  switch (nodeType) {
+    case "question":
+      return "question (ONLY for open-ended text — prefer quickReply when answers are finite)"
+    case "quickReply":
+      return "question, buttons[] (prefer over question when answer options are finite)"
+    case "interactiveList":
+      return "question, options[], listTitle"
+    case "whatsappMessage":
+    case "instagramDM":
+    case "instagramStory":
+      return "text (one-way message only, NOT for questions)"
+    case "name":
+    case "email":
+    case "dob":
+    case "address":
+      return "question (optional override)"
+    case "condition":
+      return "(auto-configured)"
+    default:
+      return "" // integration/fulfillment nodes use factory defaults
+  }
 }
 

@@ -1,5 +1,6 @@
 import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
+import type { ButtonData, OptionData } from "@/types"
 import { updateFlow } from "@/utils/flow-storage"
 
 interface NodeCallbacks {
@@ -25,10 +26,31 @@ export function injectNodeCallbacks(
   callbacks: NodeCallbacks,
   flowContext?: FlowContext
 ): Node {
+  // Ensure stable IDs exist for buttons/options (migration for legacy data)
+  const data = { ...node.data }
+  if (Array.isArray(data.buttons)) {
+    let needsUpdate = false
+    data.buttons = (data.buttons as ButtonData[]).map((btn, i) => {
+      if (btn.id) return btn
+      needsUpdate = true
+      return { ...btn, id: `btn-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
+    })
+    if (needsUpdate) node = { ...node, data }
+  }
+  if (Array.isArray(data.options)) {
+    let needsUpdate = false
+    data.options = (data.options as OptionData[]).map((opt, i) => {
+      if (opt.id) return opt
+      needsUpdate = true
+      return { ...opt, id: `opt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
+    })
+    if (needsUpdate) node = { ...node, data }
+  }
+
   return {
     ...node,
     data: {
-      ...node.data,
+      ...data,
       id: node.id,
       onNodeUpdate: callbacks.updateNodeData,
       onAddButton: () => callbacks.addButtonToNode(node.id),

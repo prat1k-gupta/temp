@@ -247,7 +247,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                 <Handle
                   type="source"
                   position={Position.Right}
-                  id={`option-${index}`}
+                  id={option.id || `option-${index}`}
                   className="w-2.5 h-2.5 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />

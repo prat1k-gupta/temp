@@ -41,8 +41,8 @@ describe("getPlatformSpecificNodeType", () => {
 describe("getPlatformSpecificLabel", () => {
   it("returns correct label for question type per platform", () => {
     expect(getPlatformSpecificLabel("question", "web")).toBe("Question")
-    expect(getPlatformSpecificLabel("question", "whatsapp")).toBe("WhatsApp Message")
-    expect(getPlatformSpecificLabel("question", "instagram")).toBe("Instagram Message")
+    expect(getPlatformSpecificLabel("question", "whatsapp")).toBe("WhatsApp Question")
+    expect(getPlatformSpecificLabel("question", "instagram")).toBe("Instagram Question")
   })
 
   it("returns fallback label for unknown types", () => {
@@ -53,7 +53,7 @@ describe("getPlatformSpecificLabel", () => {
 describe("getPlatformSpecificContent", () => {
   it("returns correct content for question type", () => {
     expect(getPlatformSpecificContent("question", "web")).toBe("What would you like to know?")
-    expect(getPlatformSpecificContent("question", "whatsapp")).toBe("Send a WhatsApp message")
+    expect(getPlatformSpecificContent("question", "whatsapp")).toBe("What would you like to know?")
   })
 
   it("returns empty string for unknown types", () => {

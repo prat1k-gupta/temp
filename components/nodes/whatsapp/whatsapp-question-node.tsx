@@ -235,7 +235,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                 className="font-medium text-card-foreground text-sm cursor-pointer hover:bg-green-50/50 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors"
                 onClick={startEditingLabel}
               >
-                {data.label || "WhatsApp Message"}
+                {data.label || "WhatsApp Question"}
                 <Edit3 className="w-3 h-3 opacity-40" />
               </div>
             )}
@@ -257,7 +257,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
                 }}
                 className={`text-sm min-h-[60px] resize-none border-green-200 focus:border-green-300 ${isOverLimit(editingQuestionValue) ? "border-red-300" : ""
                   }`}
-                placeholder={nodeLimits.question?.placeholder || "Enter your message..."}
+                placeholder={nodeLimits.question?.placeholder || "Enter your question..."}
                 autoFocus
               />
 
@@ -292,7 +292,7 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
               className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-green-50/30 px-2 py-1.5 rounded border border-transparent hover:border-green-100 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Enter your message..."}
+              {data.question || "Enter your question..."}
             </div>
           )}
 

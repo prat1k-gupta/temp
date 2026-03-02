@@ -267,7 +267,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                 className={`text-sm min-h-[60px] resize-none border-blue-200 focus:border-blue-300 ${
                   isOverLimit(editingQuestionValue, "question") ? "border-red-300" : ""
                 }`}
-                placeholder="Enter your message..."
+                placeholder="Enter your question..."
                 autoFocus
               />
               <div className="flex justify-between items-center">
@@ -420,7 +420,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                 <Handle
                   type="source"
                   position={Position.Right}
-                  id={`button-${index}`}
+                  id={button.id || `button-${index}`}
                   className="w-2.5 h-2.5 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-all duration-200 rounded-full shadow-sm"
                   style={{ right: "-5px", top: "50%", transform: "translateY(-50%)" }}
                 />

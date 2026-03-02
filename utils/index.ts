@@ -5,6 +5,8 @@ export * from "./validation"
 export * from "./node-operations"
 export * from "./node-factory"
 export * from "./platform-labels"
+export * from "./flow-layout"
+export * from "./flow-plan-builder"
 
 // Re-export commonly used utilities with cleaner names
 export { 

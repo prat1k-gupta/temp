@@ -147,7 +147,7 @@ export function useNodeOperations({
           changeTracker.trackNodeUpdate(
             nodeId,
             node.data,
-            { ...node.data, label: "Quick Reply", buttons: [{ text: "Option 1" }] },
+            { ...node.data, label: "Quick Reply", buttons: [createButtonData("Option 1", 0)] },
             node.type,
             newType
           )
@@ -159,7 +159,7 @@ export function useNodeOperations({
                 ? {
                     ...n,
                     type: newType,
-                    data: { ...n.data, label: "Quick Reply", buttons: [{ text: "Option 1" }] },
+                    data: { ...n.data, label: "Quick Reply", buttons: [createButtonData("Option 1", 0)] },
                   }
                 : n
             )
@@ -291,7 +291,10 @@ export function useNodeOperations({
 
           if (newOptions.length <= 3) {
             const newType = getPlatformSpecificNodeType("quickReply", nodePlatform)
-            const buttonsFromOptions = newOptions.map((opt) => ({ text: opt.text || "" }))
+            const buttonsFromOptions = newOptions.map((opt) => ({
+              text: opt.text || "",
+              id: opt.id || `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            }))
 
             withEditTracking()
             changeTracker.trackNodeUpdate(

@@ -64,10 +64,10 @@ function resolveNextStep(
   handleId: string,
   edgeMap: EdgeMap,
   nodeStepNames: Map<string, string>
-): string | undefined {
+): string {
   const targetId = edgeMap.get(`${nodeId}_${handleId}`)
-  if (!targetId) return undefined
-  return nodeStepNames.get(targetId)
+  if (!targetId) return "__complete__"
+  return nodeStepNames.get(targetId) ?? "__complete__"
 }
 
 const SKIP_NODE_TYPES = new Set(["start", "comment"])
@@ -173,6 +173,7 @@ export function convertToFsWhatsApp(
       message: data.question || data.text || data.message || "",
       message_type: "text",
       input_type: inputType,
+      next_step: "__complete__",
     }
 
     // Apply storeAs
@@ -206,13 +207,13 @@ export function convertToFsWhatsApp(
           title: btn.text || btn.label || `Button ${idx + 1}`,
         }))
 
-        // Button handle edges → conditional_next
+        // Button handle edges → conditional_next (keyed by button ID, as fs-whatsapp expects)
         const conditionalNext: Record<string, string> = {}
         for (const btn of buttons) {
-          const btnId = btn.id || ""
+          const btnId = btn.id || `btn-${buttons.indexOf(btn)}`
           const target = resolveNextStep(node.id, btnId, edgeMap, nodeStepNames)
           if (target) {
-            conditionalNext[btn.text || btn.label || btnId] = target
+            conditionalNext[btnId] = target
           }
         }
         if (Object.keys(conditionalNext).length > 0) {
@@ -233,13 +234,13 @@ export function convertToFsWhatsApp(
           title: opt.text || `Option ${idx + 1}`,
         }))
 
-        // Option handle edges → conditional_next
+        // Option handle edges → conditional_next (keyed by option ID, as fs-whatsapp expects)
         const conditionalNext: Record<string, string> = {}
         for (const opt of options) {
-          const optId = opt.id || ""
+          const optId = opt.id || `opt-${options.indexOf(opt)}`
           const target = resolveNextStep(node.id, optId, edgeMap, nodeStepNames)
           if (target) {
-            conditionalNext[opt.text || optId] = target
+            conditionalNext[optId] = target
           }
         }
         if (Object.keys(conditionalNext).length > 0) {
@@ -430,8 +431,8 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
     const sourceId = stepNodeMap.get(step.step_name)
     if (!sourceId) continue
 
-    // next_step → default edge
-    if (step.next_step) {
+    // next_step → default edge (skip __complete__ — it means "end flow")
+    if (step.next_step && step.next_step !== "__complete__") {
       const targetId = stepNodeMap.get(step.next_step)
       if (targetId) {
         edges.push({
@@ -443,14 +444,14 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
       }
     }
 
-    // conditional_next → button/option edges
+    // conditional_next → button/option edges (keys are button IDs)
     if (step.conditional_next) {
       const buttons = step.buttons || []
-      for (const [label, targetStepName] of Object.entries(step.conditional_next)) {
+      for (const [btnId, targetStepName] of Object.entries(step.conditional_next)) {
         const targetId = stepNodeMap.get(targetStepName)
         if (!targetId) continue
-        const btn = buttons.find((b) => b.title === label)
-        const handleId = btn?.id || ""
+        const btn = buttons.find((b) => b.id === btnId)
+        const handleId = btn?.id || btnId
         edges.push({
           id: `edge-${sourceId}-${handleId}-${targetId}`,
           source: sourceId,

@@ -3,19 +3,10 @@
 import { useState, useEffect } from "react"
 import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { GitBranch, Edit3, Plus, Trash2, User, Mail, Calendar, MapPin, Link2 } from "lucide-react"
+import { GitBranch, Edit3 } from "lucide-react"
 import type { Platform } from "@/types"
-
-interface Condition {
-  id: string
-  field: string
-  operator: string
-  value: string
-  label: string
-}
 
 export function ConditionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -23,7 +14,6 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
 
   const platform = (data.platform || "web") as Platform
   const conditionLogic = data.conditionLogic || "AND" // AND or OR
-  const connectedNode = data.connectedNode || null // Info about the connected source node
   const conditionGroups = (data.conditionGroups || [
     { id: "group-1", label: "Group 1", logic: "AND", rules: [] }
   ]).map((group: any) => ({
@@ -66,23 +56,6 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
         return "ring-pink-300/50 dark:ring-pink-600/50"
     }
   }
-
-  const getNodeIcon = (nodeType: string) => {
-    switch (nodeType) {
-      case "name":
-        return User
-      case "email":
-        return Mail
-      case "dob":
-        return Calendar
-      case "address":
-        return MapPin
-      default:
-        return Link2
-    }
-  }
-
-  const NodeIcon = connectedNode ? getNodeIcon(connectedNode.type) : Link2
 
   return (
     <div className="relative">
@@ -130,32 +103,6 @@ export function ConditionNode({ data, selected }: { data: any; selected?: boolea
         </CardHeader>
 
         <CardContent className="pt-0 space-y-0 pb-3 px-4">
-          {/* Connected Node Info */}
-          {connectedNode ? (
-            <div className="mb-3 p-2 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/50 rounded-md">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-purple-500 rounded flex items-center justify-center flex-shrink-0">
-                  <NodeIcon className="w-3.5 h-3.5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground">Based on</p>
-                  <p className="text-sm font-medium text-card-foreground truncate">
-                    {connectedNode.label}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-3 p-2 bg-muted/20 border border-dashed border-border rounded-md">
-              <div className="flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <p className="text-xs text-muted-foreground">
-                  Connect a node to enable conditions
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Condition Groups */}
           <div className="space-y-0">
             {conditionGroups.map((group: any, groupIndex: number) => {

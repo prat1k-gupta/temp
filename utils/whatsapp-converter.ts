@@ -8,7 +8,7 @@ export interface FsWhatsAppFlowStep {
   step_name: string
   step_order: number
   message: string
-  message_type: "text" | "buttons" | "conditional_routing"
+  message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer"
   input_type: WhatsAppInputType
   buttons?: Array<{ id: string; title: string }>
   store_as?: string
@@ -18,7 +18,27 @@ export interface FsWhatsAppFlowStep {
   max_retries?: number
   next_step?: string
   conditional_next?: Record<string, string>
-  conditional_routes?: Array<{ operator: string; value: string; target: string }>
+  conditional_routes?: Array<{
+    operator?: string
+    value?: string
+    target: string
+    variable?: string
+    default?: boolean
+  }>
+  api_config?: {
+    url: string
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+    response_mapping?: Record<string, string>
+    fallback_message?: string
+  }
+  transfer_config?: {
+    team_id?: string
+    notes?: string
+  }
+  input_config?: Record<string, unknown>
+  skip_condition?: string
 }
 
 export interface FsWhatsAppFlow {
@@ -71,6 +91,42 @@ function resolveNextStep(
 }
 
 const SKIP_NODE_TYPES = new Set(["start", "comment"])
+
+const WEB_ONLY_TYPES = new Set(["webQuestion", "webQuickReply"])
+
+const OPERATOR_MAP: Record<string, string> = {
+  equals: "==",
+  notEquals: "!=",
+  greaterThan: ">",
+  lessThan: "<",
+  greaterThanOrEqual: ">=",
+  lessThanOrEqual: "<=",
+  contains: "contains",
+  notContains: "not_contains",
+  startsWith: "starts_with",
+  endsWith: "ends_with",
+  isEmpty: "empty",
+  isNotEmpty: "not_empty",
+  isTrue: "==",
+  isFalse: "==",
+}
+
+type ConditionalRoute = { operator?: string; value?: string; target: string; variable?: string; default?: boolean }
+type ConditionRule = { id?: string; field?: string; operator?: string; value?: string }
+type ConditionGroup = {
+  id: string
+  label: string
+  logic: string
+  rules: ConditionRule[]
+}
+
+function makeRoute(rule: ConditionRule, target: string): ConditionalRoute {
+  const goOperator = OPERATOR_MAP[rule.operator || "equals"] || "=="
+  let value = rule.value || ""
+  if (rule.operator === "isTrue") value = "true"
+  if (rule.operator === "isFalse") value = "false"
+  return { operator: goOperator, value, target, variable: rule.field || "" }
+}
 
 // --- Forward Conversion: magicflow → fs-whatsapp ---
 
@@ -163,6 +219,13 @@ export function convertToFsWhatsApp(
     const node = ordered[i]
     const data = node.data as Record<string, any>
     const nodeType = node.type || ""
+
+    // Skip web-only nodes in WhatsApp conversion
+    if (WEB_ONLY_TYPES.has(nodeType)) {
+      console.warn(`Skipping web-only node "${node.id}" (type: ${nodeType}) in WhatsApp conversion`)
+      continue
+    }
+
     const stepName = nodeStepNames.get(node.id)!
     const inputType = getImplicitInputType(nodeType)
     const validation = VALIDATION_PRESETS[inputType]
@@ -274,32 +337,152 @@ export function convertToFsWhatsApp(
         step.input_type = "none"
         step.message = data.label || "Condition"
 
-        // Group handle edges → conditional_routes
-        const groups = (data.conditionGroups || []) as Array<{
-          id: string
-          label: string
-          logic: string
-          rules: Array<{ field?: string; operator?: string; value?: string }>
-        }>
+        const groups = (data.conditionGroups || []) as ConditionGroup[]
+        const conditionalRoutes: ConditionalRoute[] = []
+        const elseTarget = resolveNextStep(node.id, "else", edgeMap, nodeStepNames)
 
-        const conditionalRoutes: Array<{ operator: string; value: string; target: string }> = []
+        // Synthetic AND-chain steps to append after the main step
+        const andChainSteps: FsWhatsAppFlowStep[] = []
+
         for (const group of groups) {
-          const target = resolveNextStep(node.id, group.id, edgeMap, nodeStepNames)
-          if (target) {
-            // Flatten group rules into a single operator/value representation
-            const operator = group.logic || "AND"
-            const value = group.rules
-              .map((r) => `${r.field || ""} ${r.operator || "=="} ${r.value || ""}`)
-              .join(` ${operator} `)
-            conditionalRoutes.push({ operator, value: value || group.label, target })
+          const groupTarget = resolveNextStep(node.id, group.id, edgeMap, nodeStepNames)
+          if (!groupTarget) continue
+
+          if (!group.rules || group.rules.length === 0) {
+            conditionalRoutes.push({ operator: "not_empty", value: "", target: groupTarget, variable: "_flow_id" })
+            continue
+          }
+
+          const isAndGroup = (group.logic || "AND") === "AND" && group.rules.length > 1
+
+          if (!isAndGroup) {
+            // OR group or single rule → flat routes, all pointing to same target
+            for (const rule of group.rules) {
+              conditionalRoutes.push(makeRoute(rule, groupTarget))
+            }
+          } else {
+            // AND group with multiple rules → chain of conditional_routing steps
+            // Main step checks rule[0] → routes to chain_1
+            // chain_1 checks rule[1] → routes to chain_2
+            // ...
+            // chain_N checks rule[N] → routes to groupTarget
+            // All else paths → elseTarget
+
+            const chainBaseName = `${stepName}__and_${group.id}`
+
+            for (let r = 0; r < group.rules.length; r++) {
+              const rule = group.rules[r]
+              const isLast = r === group.rules.length - 1
+              const chainStepName = `${chainBaseName}_${r + 1}`
+              const routeTarget = isLast ? groupTarget : `${chainBaseName}_${r + 2}`
+
+              if (r === 0) {
+                // First rule lives on the main condition step
+                conditionalRoutes.push(makeRoute(rule, routeTarget))
+              } else {
+                // Subsequent rules become synthetic chained steps
+                andChainSteps.push({
+                  step_name: chainStepName,
+                  step_order: 0, // will be renumbered
+                  message: `${data.label || "Condition"} (${group.id} rule ${r + 1})`,
+                  message_type: "conditional_routing",
+                  input_type: "none",
+                  conditional_routes: [
+                    makeRoute(rule, routeTarget),
+                    { default: true, target: elseTarget }, // catch-all → else
+                  ],
+                  next_step: elseTarget,
+                })
+              }
+            }
           }
         }
-        if (conditionalRoutes.length > 0) {
-          step.conditional_routes = conditionalRoutes
+
+        // Add default route as catch-all → else path (Go checks "default": true)
+        conditionalRoutes.push({ default: true, target: elseTarget })
+
+        step.conditional_routes = conditionalRoutes
+        step.next_step = elseTarget
+        steps.push(step)
+
+        // Append AND-chain steps immediately after
+        for (const chainStep of andChainSteps) {
+          steps.push(chainStep)
+        }
+        continue // skip the steps.push(step) at the bottom of the loop
+      }
+
+      case "instagramQuestion": {
+        step.message_type = "text"
+        step.input_type = "text"
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
+      case "instagramQuickReply": {
+        step.message_type = "buttons"
+        step.input_type = "button"
+        const igButtons = (data.buttons || []) as Array<{ id?: string; text?: string; label?: string }>
+        step.buttons = igButtons.map((btn, idx) => ({
+          id: btn.id || `btn-${idx}`,
+          title: btn.text || btn.label || `Button ${idx + 1}`,
+        }))
+
+        const igConditionalNext: Record<string, string> = {}
+        for (const btn of igButtons) {
+          const btnId = btn.id || `btn-${igButtons.indexOf(btn)}`
+          const target = resolveNextStep(node.id, btnId, edgeMap, nodeStepNames)
+          if (target) {
+            igConditionalNext[btnId] = target
+          }
+        }
+        if (Object.keys(igConditionalNext).length > 0) {
+          step.conditional_next = igConditionalNext
         }
 
-        // else handle → next_step
-        step.next_step = resolveNextStep(node.id, "else", edgeMap, nodeStepNames)
+        step.next_step = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        break
+      }
+
+      case "instagramDM": {
+        step.message_type = "text"
+        step.input_type = "none"
+        step.message = data.text || ""
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
+      case "instagramStory": {
+        step.message_type = "text"
+        step.input_type = "none"
+        step.message = data.text || ""
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
+      case "apiFetch": {
+        step.message_type = "api_fetch"
+        step.input_type = "none"
+        step.api_config = {
+          url: data.url || "",
+          method: data.method || "GET",
+          headers: data.headers || {},
+          body: data.body || "",
+          response_mapping: data.responseMapping || {},
+          fallback_message: data.fallbackMessage || "",
+        }
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
+      case "transfer": {
+        step.message_type = "transfer"
+        step.input_type = "none"
+        step.transfer_config = {
+          team_id: data.teamId || "_general",
+          notes: data.notes || "",
+        }
+        step.next_step = "__complete__"
         break
       }
 
@@ -312,6 +495,11 @@ export function convertToFsWhatsApp(
     }
 
     steps.push(step)
+  }
+
+  // Renumber step_order (AND-chain steps may have been inserted with order 0)
+  for (let s = 0; s < steps.length; s++) {
+    steps[s].step_order = s + 1
   }
 
   // Only use user-defined custom trigger keywords
@@ -403,10 +591,28 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         data.conditionLogic = "AND"
         data.conditionGroups = (step.conditional_routes || []).map((route, idx) => ({
           id: `group-${idx + 1}`,
-          label: route.value,
-          logic: route.operator,
-          rules: [],
+          label: `${route.variable || ""} ${route.operator} ${route.value}`,
+          logic: "AND",
+          rules: [{
+            id: `rule-${idx + 1}`,
+            field: route.variable || "",
+            operator: route.operator,
+            value: route.value,
+          }],
         }))
+        break
+      case "apiFetch":
+        data.url = step.api_config?.url || ""
+        data.method = step.api_config?.method || "GET"
+        data.headers = step.api_config?.headers || {}
+        data.body = step.api_config?.body || ""
+        data.responseMapping = step.api_config?.response_mapping || {}
+        data.fallbackMessage = step.api_config?.fallback_message || ""
+        break
+      case "transfer":
+        data.teamId = step.transfer_config?.team_id || "_general"
+        data.notes = step.transfer_config?.notes || ""
+        data.teamName = step.transfer_config?.team_id === "_general" ? "General Queue" : step.transfer_config?.team_id || ""
         break
     }
 
@@ -483,6 +689,8 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
 
 function inferNodeType(step: FsWhatsAppFlowStep): string {
   if (step.message_type === "conditional_routing") return "condition"
+  if (step.message_type === "api_fetch") return "apiFetch"
+  if (step.message_type === "transfer") return "transfer"
   if (step.message_type === "buttons") {
     if (step.input_type === "select") return "whatsappInteractiveList"
     return "whatsappQuickReply"

@@ -20,7 +20,7 @@ interface UseFlowInteractionsParams {
   setEdges: (edges: Edge[] | ((eds: Edge[]) => Edge[])) => void
   setPlatform: (platform: Platform) => void
   selectedNode: Node | null
-  setSelectedNode: (node: Node | null) => void
+  setSelectedNode: (node: Node | null | ((prev: Node | null) => Node | null)) => void
   selectedNodes: Node[]
   setSelectedNodes: (nodes: Node[]) => void
   setIsPropertiesPanelOpen: (open: boolean) => void

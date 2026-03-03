@@ -23,6 +23,8 @@ import { TrackingNotificationNode } from "@/components/nodes/fulfillment/trackin
 import { EventNode } from "@/components/nodes/fulfillment/event-node"
 import { RetailStoreNode } from "@/components/nodes/fulfillment/retail-store-node"
 import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
+import { ApiFetchNode } from "@/components/nodes/action/api-fetch-node"
+import { TransferNode } from "@/components/nodes/action/transfer-node"
 
 export const nodeTypes = {
   start: StartNode,
@@ -57,6 +59,9 @@ export const nodeTypes = {
   trackingNotification: TrackingNotificationNode,
   event: EventNode,
   retailStore: RetailStoreNode,
+  // Action nodes
+  apiFetch: ApiFetchNode,
+  transfer: TransferNode,
   // Integration nodes
   shopify: GenericIntegrationNode,
   metaAudience: GenericIntegrationNode,

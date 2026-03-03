@@ -399,6 +399,57 @@ export const createMessageNode = (
 }
 
 /**
+ * Create an API Fetch node
+ */
+export const createApiFetchNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("apiFetch")
+  return {
+    id: nodeId,
+    type: "apiFetch",
+    position,
+    data: {
+      platform,
+      label: "API Call",
+      url: "",
+      method: "GET",
+      headers: {},
+      body: "",
+      responseMapping: {},
+      fallbackMessage: "Sorry, there was an error processing your request.",
+      message: "",
+    } as NodeData,
+  }
+}
+
+/**
+ * Create a Transfer node
+ */
+export const createTransferNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("transfer")
+  return {
+    id: nodeId,
+    type: "transfer",
+    position,
+    data: {
+      platform,
+      label: "Transfer to Agent",
+      teamId: "_general",
+      teamName: "General Queue",
+      notes: "",
+      message: "",
+    } as NodeData,
+  }
+}
+
+/**
  * Factory function to create any node type
  */
 export const createNode = (
@@ -410,8 +461,15 @@ export const createNode = (
 ): Node => {
   let node: Node
 
+  // Action nodes
+  if (nodeType === "apiFetch") {
+    node = createApiFetchNode(platform, position, customId)
+  }
+  else if (nodeType === "transfer") {
+    node = createTransferNode(platform, position, customId)
+  }
   // Logic nodes
-  if (nodeType === "condition") {
+  else if (nodeType === "condition") {
     node = createConditionNode(platform, position, customId)
   }
   // Super nodes

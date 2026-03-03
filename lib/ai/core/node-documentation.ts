@@ -11,7 +11,7 @@ import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 
 export interface NodeDocumentation {
   type: string
-  category: "interaction" | "information" | "fulfillment" | "integration" | "logic"
+  category: "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
   platforms: Platform[]
   description: string
   isSuperNode?: boolean

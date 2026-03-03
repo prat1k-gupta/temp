@@ -30,6 +30,8 @@ import {
   Store,
   Truck,
   Users,
+  Globe,
+  PhoneForwarded,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -48,6 +50,7 @@ import { useSortable } from "@dnd-kit/sortable"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
 import { createButtonData, createOptionData } from "@/utils"
+import { collectFlowVariables } from "@/utils/flow-variables"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 
 interface PropertiesPanelProps {
@@ -105,6 +108,9 @@ const NODE_ICONS = {
   trackingNotification: PackageSearch,
   event: Calendar,
   retailStore: Store,
+  // Action nodes
+  apiFetch: Globe,
+  transfer: PhoneForwarded,
 }
 
 const NODE_COLORS = {
@@ -136,6 +142,9 @@ const NODE_COLORS = {
   trackingNotification: "bg-[#052762] text-white",
   event: "bg-[#052762] text-white",
   retailStore: "bg-[#052762] text-white",
+  // Action nodes
+  apiFetch: "bg-[#1a365d] text-white",
+  transfer: "bg-[#7c2d12] text-white",
 }
 
 function SortableButtonItem({
@@ -518,6 +527,10 @@ export function PropertiesPanel({
         return "Event Node"
       case "retailStore":
         return "Retail Store Node"
+      case "apiFetch":
+        return "API Call Node"
+      case "transfer":
+        return "Transfer Node"
       default:
         return "Node Properties"
     }
@@ -526,77 +539,46 @@ export function PropertiesPanel({
   const isSuperNode = ["name", "email", "dob", "address"].includes(selectedNode.type || "")
   const isConditionNode = selectedNode.type === "condition"
   const isFulfillmentNode = ["homeDelivery", "trackingNotification", "event", "retailStore"].includes(selectedNode.type || "")
+  const isApiFetchNode = selectedNode.type === "apiFetch"
+  const isTransferNode = selectedNode.type === "transfer"
 
-  // Get available fields based on connected node type
-  const getAvailableFields = (nodeType: string) => {
-    switch (nodeType) {
-      case "name":
-        return [
-          { value: "fullName", label: "Full Name" },
-          { value: "firstName", label: "First Name" },
-          { value: "lastName", label: "Last Name" },
-          { value: "length", label: "Name Length" }
-        ]
-      case "email":
-        return [
-          { value: "email", label: "Email Address" },
-          { value: "domain", label: "Email Domain" },
-          { value: "isValid", label: "Is Valid Email" },
-          { value: "isDisposable", label: "Is Disposable Email" }
-        ]
-      case "dob":
-        return [
-          { value: "age", label: "Age" },
-          { value: "date", label: "Date of Birth" },
-          { value: "year", label: "Birth Year" },
-          { value: "isAdult", label: "Is Adult (18+)" }
-        ]
-      case "address":
-        return [
-          { value: "street", label: "Street" },
-          { value: "city", label: "City" },
-          { value: "state", label: "State" },
-          { value: "zip", label: "ZIP Code" },
-          { value: "country", label: "Country" },
-          { value: "isComplete", label: "Is Complete" }
-        ]
-      default:
-        return [{ value: "value", label: "Value" }]
+  // Get available fields purely from flow session variables
+  const getAvailableFields = () => {
+    const fields: Array<{ value: string; label: string }> = []
+    const seen = new Set<string>()
+
+    const flowVars = collectFlowVariables(allNodes)
+    for (const varName of flowVars) {
+      if (!seen.has(varName)) {
+        seen.add(varName)
+        fields.push({ value: varName, label: varName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) })
+      }
     }
+
+    if (fields.length === 0) {
+      fields.push({ value: "value", label: "Value" })
+    }
+
+    return fields
   }
 
-  // Get available operators based on field type
-  const getAvailableOperators = (nodeType: string, field: string) => {
-    // Age and numeric fields
-    if (field === "age" || field === "length" || field === "year") {
-      return [
-        { value: "equals", label: "Equals (=)" },
-        { value: "notEquals", label: "Not Equals (≠)" },
-        { value: "greaterThan", label: "Greater Than (>)" },
-        { value: "lessThan", label: "Less Than (<)" },
-        { value: "greaterThanOrEqual", label: "Greater or Equal (≥)" },
-        { value: "lessThanOrEqual", label: "Less or Equal (≤)" }
-      ]
-    }
-    
-    // Boolean fields
-    if (field === "isValid" || field === "isDisposable" || field === "isAdult" || field === "isComplete") {
-      return [
-        { value: "isTrue", label: "Is True" },
-        { value: "isFalse", label: "Is False" }
-      ]
-    }
-    
-    // String fields
+  // Get all available operators for any variable
+  const getAvailableOperators = () => {
     return [
-      { value: "equals", label: "Equals" },
-      { value: "notEquals", label: "Not Equals" },
+      { value: "equals", label: "Equals (=)" },
+      { value: "notEquals", label: "Not Equals (≠)" },
+      { value: "greaterThan", label: "Greater Than (>)" },
+      { value: "lessThan", label: "Less Than (<)" },
+      { value: "greaterThanOrEqual", label: "Greater or Equal (≥)" },
+      { value: "lessThanOrEqual", label: "Less or Equal (≤)" },
       { value: "contains", label: "Contains" },
       { value: "notContains", label: "Does Not Contain" },
       { value: "startsWith", label: "Starts With" },
       { value: "endsWith", label: "Ends With" },
       { value: "isEmpty", label: "Is Empty" },
-      { value: "isNotEmpty", label: "Is Not Empty" }
+      { value: "isNotEmpty", label: "Is Not Empty" },
+      { value: "isTrue", label: "Is True" },
+      { value: "isFalse", label: "Is False" },
     ]
   }
 
@@ -996,20 +978,18 @@ export function PropertiesPanel({
                       </div>
 
                       {/* Add Condition to Group */}
-                      {selectedNode.data.connectedNode && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditingRule({ groupId: group.id })
-                            setIsConditionDialogOpen(true)
-                          }}
-                          className="w-full text-teal-600 dark:text-teal-400 border-dashed cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Condition
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingRule({ groupId: group.id })
+                          setIsConditionDialogOpen(true)
+                        }}
+                        className="w-full text-teal-600 dark:text-teal-400 border-dashed cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Condition
+                      </Button>
                     </div>
                   )
                 })}
@@ -1536,7 +1516,7 @@ export function PropertiesPanel({
           )}
 
           {/* Condition Rule Dialog */}
-          {isConditionNode && selectedNode.data.connectedNode && (
+          {isConditionNode && (
             <ConditionRuleDialog
               isOpen={isConditionDialogOpen}
               onClose={() => {
@@ -1547,10 +1527,10 @@ export function PropertiesPanel({
                 const updatedGroups = [...(selectedNode.data.conditionGroups || [])]
                 const groupId = editingRule?.groupId || updatedGroups[0]?.id || "group-1"
                 const groupIndex = editingRule?.groupIndex ?? updatedGroups.findIndex((g: any) => g.id === groupId)
-                
+
                 if (groupIndex !== -1 && updatedGroups[groupIndex]) {
                   const groupRules = updatedGroups[groupIndex].rules || []
-                  
+
                   if (editingRule && editingRule.id) {
                     // Update existing rule
                     const ruleIndex = editingRule.ruleIndex ?? groupRules.findIndex((r: any) => r.id === editingRule.id)
@@ -1561,22 +1541,22 @@ export function PropertiesPanel({
                     // Add new rule
                     groupRules.push(rule)
                   }
-                  
+
                   updatedGroups[groupIndex] = {
                     ...updatedGroups[groupIndex],
                     rules: groupRules
                   }
-                  
+
                   onNodeUpdate(selectedNode.id, { ...selectedNode.data, conditionGroups: updatedGroups })
                 }
-                
+
                 setIsConditionDialogOpen(false)
                 setEditingRule(null)
               }}
               existingRule={editingRule}
               connectedNodeType={selectedNode.data.connectedNode?.type}
-              availableFields={selectedNode.data.connectedNode ? getAvailableFields(selectedNode.data.connectedNode.type) : []}
-              getOperators={(field: string) => getAvailableOperators(selectedNode.data.connectedNode?.type, field)}
+              availableFields={getAvailableFields()}
+              getOperators={() => getAvailableOperators()}
             />
           )}
 
@@ -2097,6 +2077,345 @@ export function PropertiesPanel({
                     <h4 className="text-sm font-medium text-[#052762] dark:text-blue-100 mb-1">Fulfillment Node</h4>
                     <p className="text-xs text-[#052762] dark:text-blue-300">
                       Configure your fulfillment service settings below. The system will automatically select the most optimized vendor based on your configuration. Changes are applied in real-time and reflected in the node on the canvas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* API Fetch Node Configuration */}
+          {isApiFetchNode && (
+            <>
+              {/* Node Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter node label..."
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* URL */}
+              <div>
+                <Label htmlFor="api-url" className="text-sm font-medium">
+                  URL
+                </Label>
+                <Input
+                  id="api-url"
+                  value={selectedNode.data.url || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, url: e.target.value })}
+                  placeholder="https://api.example.com/endpoint"
+                  className="mt-2 font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values
+                </p>
+              </div>
+
+              {/* Method */}
+              <div>
+                <Label htmlFor="api-method" className="text-sm font-medium">
+                  Method
+                </Label>
+                <Select
+                  value={selectedNode.data.method || "GET"}
+                  onValueChange={(value) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, method: value })}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value="PUT">PUT</SelectItem>
+                    <SelectItem value="DELETE">DELETE</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
+              {/* Headers */}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Headers</Label>
+                <div className="space-y-2">
+                  {Object.entries(selectedNode.data.headers || {}).map(([key, value], idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={key}
+                        onChange={(e) => {
+                          const headers = { ...(selectedNode.data.headers || {}) }
+                          const oldValue = headers[key]
+                          delete headers[key]
+                          headers[e.target.value] = oldValue
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, headers })
+                        }}
+                        placeholder="Header name"
+                        className="flex-1 text-xs font-mono"
+                      />
+                      <Input
+                        value={value as string}
+                        onChange={(e) => {
+                          const headers = { ...(selectedNode.data.headers || {}) }
+                          headers[key] = e.target.value
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, headers })
+                        }}
+                        placeholder="Value"
+                        className="flex-1 text-xs font-mono"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const headers = { ...(selectedNode.data.headers || {}) }
+                          delete headers[key]
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, headers })
+                        }}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const headers = { ...(selectedNode.data.headers || {}), "": "" }
+                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, headers })
+                    }}
+                    className="w-full cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Header
+                  </Button>
+                </div>
+              </div>
+
+              {/* Body (for POST/PUT) */}
+              {(selectedNode.data.method === "POST" || selectedNode.data.method === "PUT") && (
+                <>
+                  <Separator />
+                  <div>
+                    <Label htmlFor="api-body" className="text-sm font-medium">
+                      Request Body
+                    </Label>
+                    <Textarea
+                      id="api-body"
+                      value={selectedNode.data.body || ""}
+                      onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, body: e.target.value })}
+                      placeholder='{"key": "{{variable}}"}'
+                      className="mt-2 min-h-[80px] font-mono text-xs"
+                      rows={4}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
+              {/* Response Mapping */}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Response Mapping</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Map JSON response paths to session variables
+                </p>
+                <div className="space-y-2">
+                  {Object.entries(selectedNode.data.responseMapping || {}).map(([varName, jsonPath], idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={varName}
+                        onChange={(e) => {
+                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
+                          const oldPath = mapping[varName]
+                          delete mapping[varName]
+                          mapping[e.target.value] = oldPath
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
+                        }}
+                        placeholder="variable_name"
+                        className="flex-1 text-xs font-mono"
+                      />
+                      <span className="text-xs text-muted-foreground">&larr;</span>
+                      <Input
+                        value={jsonPath as string}
+                        onChange={(e) => {
+                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
+                          mapping[varName] = e.target.value
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
+                        }}
+                        placeholder="data.field"
+                        className="flex-1 text-xs font-mono"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
+                          delete mapping[varName]
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
+                        }}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const mapping = { ...(selectedNode.data.responseMapping || {}), "": "" }
+                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
+                    }}
+                    className="w-full cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Mapping
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Fallback Message */}
+              <div>
+                <Label htmlFor="api-fallback" className="text-sm font-medium">
+                  Fallback Message
+                </Label>
+                <Textarea
+                  id="api-fallback"
+                  value={selectedNode.data.fallbackMessage || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, fallbackMessage: e.target.value })}
+                  placeholder="Message to send if API call fails..."
+                  className="mt-2 min-h-[60px]"
+                  rows={2}
+                />
+              </div>
+
+              {/* Message Template */}
+              <div>
+                <Label htmlFor="api-message" className="text-sm font-medium">
+                  Response Message
+                </Label>
+                <Textarea
+                  id="api-message"
+                  value={selectedNode.data.message || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, message: e.target.value })}
+                  placeholder="Message with {{mapped_variable}} to send after API call..."
+                  className="mt-2 min-h-[60px]"
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use mapped variables with <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> syntax
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Transfer Node Configuration */}
+          {isTransferNode && (
+            <>
+              {/* Node Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter node label..."
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Team ID */}
+              <div>
+                <Label htmlFor="transfer-team" className="text-sm font-medium">
+                  Team ID
+                </Label>
+                <Input
+                  id="transfer-team"
+                  value={selectedNode.data.teamId || "_general"}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, teamId: e.target.value })}
+                  placeholder="Team UUID or _general"
+                  className="mt-2 font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Enter team UUID or use <code className="text-[10px] bg-muted px-1 rounded">_general</code> for general queue
+                </p>
+              </div>
+
+              {/* Team Name */}
+              <div>
+                <Label htmlFor="transfer-team-name" className="text-sm font-medium">
+                  Team Name
+                </Label>
+                <Input
+                  id="transfer-team-name"
+                  value={selectedNode.data.teamName || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, teamName: e.target.value })}
+                  placeholder="Display name for the team"
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Notes */}
+              <div>
+                <Label htmlFor="transfer-notes" className="text-sm font-medium">
+                  Agent Notes
+                </Label>
+                <Textarea
+                  id="transfer-notes"
+                  value={selectedNode.data.notes || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, notes: e.target.value })}
+                  placeholder="Notes for the receiving agent... Use {{variable}} for context."
+                  className="mt-2 min-h-[80px]"
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic context
+                </p>
+              </div>
+
+              {/* Pre-transfer Message */}
+              <div>
+                <Label htmlFor="transfer-message" className="text-sm font-medium">
+                  Pre-transfer Message
+                </Label>
+                <Textarea
+                  id="transfer-message"
+                  value={selectedNode.data.message || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, message: e.target.value })}
+                  placeholder="Message to send before transferring..."
+                  className="mt-2 min-h-[60px]"
+                  rows={2}
+                />
+              </div>
+
+              {/* Info Box */}
+              <div className="p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <PhoneForwarded className="w-5 h-5 text-orange-600 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-1">Transfer Node</h4>
+                    <p className="text-xs text-orange-800 dark:text-orange-300">
+                      This node transfers the conversation to a human agent or team. The flow will end after transfer.
                     </p>
                   </div>
                 </div>

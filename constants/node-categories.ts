@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -47,7 +47,7 @@ export interface NodeTemplate {
   icon: any
   label: string
   description: string
-  category: "interaction" | "information" | "fulfillment" | "integration" | "logic"
+  category: "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
   isSuperNode?: boolean // Can be double-clicked to see sub-nodes
   platforms: Platform[] // Which platforms support this node
   badge?: string // Optional badge text
@@ -89,6 +89,11 @@ export const NODE_CATEGORIES = {
   integration: {
     label: "Integration",
     description: "External platforms",
+    icon: Zap,
+  },
+  action: {
+    label: "Action",
+    description: "API calls & agent handoff",
     icon: Zap,
   },
 }
@@ -268,6 +273,55 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       contentFields: "(auto-configured)",
       requiredProperties: ["label", "platform", "conditionLogic", "conditionGroups"],
       optionalProperties: ["connectedNode"],
+    },
+  },
+
+  // ACTION NODES
+  {
+    type: "apiFetch",
+    icon: Globe,
+    label: "API Call",
+    description: "Make HTTP request and map response to variables",
+    category: "action",
+    platforms: ["whatsapp"],
+    limits: { maxConnections: 1 },
+    ai: {
+      whenToUse: "When you need to make an HTTP request to an external API and map the response data to session variables.",
+      bestPractices: [
+        "Configure the URL with proper template variables",
+        "Set up response mapping to capture relevant data",
+        "Always provide a fallback message for errors",
+      ],
+      examples: [
+        "Fetch user profile from CRM",
+        "Check inventory availability",
+        "Validate a coupon code",
+      ],
+      requiredProperties: ["label", "platform", "url", "method"],
+      optionalProperties: ["headers", "body", "responseMapping", "fallbackMessage"],
+    },
+  },
+  {
+    type: "transfer",
+    icon: PhoneForwarded,
+    label: "Transfer",
+    description: "Transfer conversation to an agent or team",
+    category: "action",
+    platforms: ["whatsapp"],
+    limits: { maxConnections: 0 },
+    ai: {
+      whenToUse: "When the conversation needs to be handed off to a human agent or a specific team.",
+      bestPractices: [
+        "Send a pre-transfer message to set expectations",
+        "Include relevant notes for the receiving agent",
+        "Use template variables in notes for context",
+      ],
+      examples: [
+        "Transfer to support team",
+        "Hand off to sales agent",
+      ],
+      requiredProperties: ["label", "platform"],
+      optionalProperties: ["teamId", "teamName", "notes", "message"],
     },
   },
 

@@ -67,5 +67,9 @@ export const getBaseNodeType = (platformType: string): string => {
   // Tracking notification
   if (platformType === "trackingNotification") return "trackingNotification"
 
+  // Action nodes
+  if (platformType === "apiFetch") return "apiFetch"
+  if (platformType === "transfer") return "transfer"
+
   return platformType
 }

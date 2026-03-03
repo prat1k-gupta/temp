@@ -18,6 +18,7 @@ const STORABLE_NODE_TYPES = new Set([
   "email",
   "dob",
   "address",
+  "apiFetch",
 ])
 
 /**
@@ -65,6 +66,15 @@ export function collectFlowVariables(nodes: Node[]): string[] {
     const data = node.data as Record<string, any>
     if (data.storeAs && typeof data.storeAs === "string" && data.storeAs.trim()) {
       variables.push(data.storeAs.trim())
+    }
+
+    // apiFetch nodes expose response mapping keys as variables
+    if (node.type === "apiFetch" && data.responseMapping) {
+      for (const varName of Object.keys(data.responseMapping)) {
+        if (varName.trim()) {
+          variables.push(varName.trim())
+        }
+      }
     }
   }
 

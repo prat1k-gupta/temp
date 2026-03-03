@@ -77,6 +77,18 @@ export function getImplicitInputType(nodeType: string): WhatsAppInputType {
       return "text"
     case "condition":
       return "none"
+    case "apiFetch":
+      return "none"
+    case "transfer":
+      return "none"
+    case "instagramQuestion":
+      return "text"
+    case "instagramQuickReply":
+      return "button"
+    case "instagramDM":
+      return "none"
+    case "instagramStory":
+      return "none"
     default:
       return "none"
   }

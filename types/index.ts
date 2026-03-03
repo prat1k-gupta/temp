@@ -91,6 +91,24 @@ export interface ConditionNodeData extends BaseNodeData {
   }>
 }
 
+export interface ApiFetchNodeData extends BaseNodeData {
+  url?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  responseMapping?: Record<string, string>
+  fallbackMessage?: string
+  message?: string
+  storeAs?: string
+}
+
+export interface TransferNodeData extends BaseNodeData {
+  teamId?: string
+  teamName?: string
+  notes?: string
+  message?: string
+}
+
 export type NodeData =
   | QuestionNodeData
   | QuickReplyNodeData
@@ -101,6 +119,8 @@ export type NodeData =
   | FulfillmentNodeData
   | IntegrationNodeData
   | ConditionNodeData
+  | ApiFetchNodeData
+  | TransferNodeData
 
 // Context menu types
 export interface ContextMenuState {

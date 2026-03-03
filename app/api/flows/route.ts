@@ -82,7 +82,8 @@ export async function POST(request: NextRequest) {
             label: "Start",
             platform: flowData.platform,
             triggerId: flowData.triggerId,
-            triggerIds: flowData.triggerId ? [flowData.triggerId] : []
+            triggerIds: flowData.triggerId ? [flowData.triggerId] : [],
+            triggerKeywords: flowData.triggerKeywords || [],
           },
           draggable: false,
           selectable: true,
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       edges: flowData.edges || [],
       triggerId: flowData.triggerId,
       triggerIds: flowData.triggerId ? [flowData.triggerId] : [],
+      triggerKeywords: flowData.triggerKeywords || [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

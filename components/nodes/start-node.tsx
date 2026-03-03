@@ -23,23 +23,28 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   const [flowDescription, setFlowDescription] = useState(data.flowDescription || "")
   const [triggerKeywords, setTriggerKeywords] = useState<string[]>(data.triggerKeywords || [])
   const [keywordInput, setKeywordInput] = useState("")
-  
+
   const platform = (data.platform || "web") as Platform
   const allTriggers = getTriggersByPlatform(platform)
   
-  // Sync state when data changes from outside
+  // Sync state when data changes from outside (use serialized comparison to avoid loops from new array references)
+  const triggerIdsKey = JSON.stringify(data.triggerIds || data.triggerId || "")
   useEffect(() => {
     const newTriggers = data.triggerIds || (data.triggerId ? [data.triggerId] : [])
     setSelectedTriggers(newTriggers)
-  }, [data.triggerIds, data.triggerId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerIdsKey])
 
+  const flowDescKey = data.flowDescription || ""
   useEffect(() => {
-    setFlowDescription(data.flowDescription || "")
-  }, [data.flowDescription])
+    setFlowDescription(flowDescKey)
+  }, [flowDescKey])
 
+  const triggerKeywordsKey = JSON.stringify(data.triggerKeywords || [])
   useEffect(() => {
     setTriggerKeywords(data.triggerKeywords || [])
-  }, [data.triggerKeywords])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerKeywordsKey])
   
   const activeTriggers = selectedTriggers
     .map(id => allTriggers.find(t => t.id === id))
@@ -170,22 +175,24 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   }
 
   const handleSaveTriggers = () => {
+    // Save trigger keywords + description to the flow (persisted to DB)
+    if (data.onFlowUpdate) {
+      const flowUpdates: Record<string, any> = {
+        triggerKeywords,
+      }
+      if (flowDescription !== (data.flowDescription || "")) {
+        flowUpdates.description = flowDescription
+      }
+      data.onFlowUpdate(flowUpdates)
+    }
+    // Save trigger IDs + keywords to the node (persisted via auto-save with nodes)
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, {
         ...data,
         triggerIds: selectedTriggers,
-        triggerId: selectedTriggers[0], // Keep backwards compatibility
+        triggerId: selectedTriggers[0],
         triggerKeywords,
       })
-    }
-    // Update flow description and trigger keywords on the flow
-    if (data.onFlowUpdate) {
-      const flowUpdates: Record<string, any> = {}
-      if (flowDescription !== (data.flowDescription || "")) {
-        flowUpdates.description = flowDescription
-      }
-      flowUpdates.triggerKeywords = triggerKeywords
-      data.onFlowUpdate(flowUpdates)
     }
     setIsEditingTriggers(false)
   }

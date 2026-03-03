@@ -450,7 +450,12 @@ function MagicFlowInner() {
           flowName={persistence.currentFlow?.name}
           flowDescription={persistence.currentFlow?.description}
           triggerIds={persistence.currentFlow?.triggerIds}
-          triggerKeywords={persistence.currentFlow?.triggerKeywords}
+          triggerKeywords={
+            (() => {
+              const nodeKw = nodes.find(n => n.type === "start")?.data?.triggerKeywords as string[] | undefined
+              return nodeKw?.length ? nodeKw : persistence.currentFlow?.triggerKeywords
+            })()
+          }
           publishedFlowId={persistence.currentFlow?.publishedFlowId}
           onPublished={(flowId) => {
             persistence.setCurrentFlow((prev) =>

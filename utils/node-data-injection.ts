@@ -19,6 +19,10 @@ interface FlowContext {
   saveFlowFields?: (updates: Record<string, any>) => void
 }
 
+// Stable empty arrays to avoid creating new references on every render
+const EMPTY_STRINGS: string[] = []
+const EMPTY_KEYWORDS: string[] = []
+
 /**
  * Injects callback functions into a node's data for use by node components.
  * Handles the start node special case (flowDescription + onFlowUpdate).
@@ -32,25 +36,27 @@ export function injectNodeCallbacks(
   // Ensure stable IDs exist for buttons/options (migration for legacy data)
   const data = { ...node.data }
   if (Array.isArray(data.buttons)) {
-    let needsUpdate = false
-    data.buttons = (data.buttons as ButtonData[]).map((btn, i) => {
-      if (btn.id) return btn
-      needsUpdate = true
-      return { ...btn, id: `btn-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
-    })
-    if (needsUpdate) node = { ...node, data }
+    const allHaveIds = (data.buttons as ButtonData[]).every((btn) => !!btn.id)
+    if (!allHaveIds) {
+      data.buttons = (data.buttons as ButtonData[]).map((btn, i) => {
+        if (btn.id) return btn
+        return { ...btn, id: `btn-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
+      })
+      node = { ...node, data }
+    }
   }
   if (Array.isArray(data.options)) {
-    let needsUpdate = false
-    data.options = (data.options as OptionData[]).map((opt, i) => {
-      if (opt.id) return opt
-      needsUpdate = true
-      return { ...opt, id: `opt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
-    })
-    if (needsUpdate) node = { ...node, data }
+    const allHaveIds = (data.options as OptionData[]).every((opt) => !!opt.id)
+    if (!allHaveIds) {
+      data.options = (data.options as OptionData[]).map((opt, i) => {
+        if (opt.id) return opt
+        return { ...opt, id: `opt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
+      })
+      node = { ...node, data }
+    }
   }
 
-  const flowVariables = allNodes ? collectFlowVariables(allNodes) : []
+  const flowVariables = allNodes ? collectFlowVariables(allNodes) : EMPTY_STRINGS
 
   return {
     ...node,
@@ -66,7 +72,7 @@ export function injectNodeCallbacks(
       onConvert: callbacks.convertNode,
       ...(node.type === "start" && flowContext && {
         flowDescription: flowContext.currentFlow?.description || "",
-        triggerKeywords: flowContext.currentFlow?.triggerKeywords || [],
+        triggerKeywords: ((data.triggerKeywords as string[])?.length ? data.triggerKeywords as string[] : undefined) ?? flowContext.currentFlow?.triggerKeywords ?? EMPTY_KEYWORDS,
         onFlowUpdate: (updates: { description?: string; triggerKeywords?: string[] }) => {
           if (flowContext.flowId) {
             const flowUpdates: Record<string, any> = {}

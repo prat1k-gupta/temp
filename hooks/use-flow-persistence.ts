@@ -42,6 +42,8 @@ export function useFlowPersistence({
 
   const isSavingRef = useRef(false)
   const lastSavedDataRef = useRef<string>("")
+  const currentFlowRef = useRef<FlowData | null>(null)
+  currentFlowRef.current = currentFlow
 
   // Sync editing value when flow changes
   useEffect(() => {
@@ -139,6 +141,7 @@ export function useFlowPersistence({
 
         if (loadFromDb) {
           try {
+            const latestFlow = currentFlowRef.current
             const response = await fetch(`/api/flows/${flowId}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
@@ -146,12 +149,12 @@ export function useFlowPersistence({
                 nodes,
                 edges,
                 platform,
-                name: currentFlow.name,
-                description: currentFlow.description,
-                triggerId: currentFlow.triggerId,
-                triggerIds: currentFlow.triggerIds,
-                triggerKeywords: currentFlow.triggerKeywords,
-                publishedFlowId: currentFlow.publishedFlowId,
+                name: latestFlow?.name ?? currentFlow?.name,
+                description: latestFlow?.description ?? currentFlow?.description,
+                triggerId: latestFlow?.triggerId ?? currentFlow?.triggerId,
+                triggerIds: latestFlow?.triggerIds ?? currentFlow?.triggerIds,
+                triggerKeywords: latestFlow?.triggerKeywords ?? currentFlow?.triggerKeywords,
+                publishedFlowId: latestFlow?.publishedFlowId ?? currentFlow?.publishedFlowId,
               }),
             })
 

@@ -313,15 +313,15 @@ export function convertToFsWhatsApp(
     steps.push(step)
   }
 
-  // Merge mapped trigger type keywords with custom trigger keywords
-  const mappedKeywords = mapTriggerKeywords(triggerIds) || []
-  const customKeywords = (triggerKeywords || []).filter(k => !mappedKeywords.includes(k))
-  const allKeywords = [...mappedKeywords, ...customKeywords]
+  // Only use user-defined custom trigger keywords
+  // Trigger type (whatsapp-message, whatsapp-ctwa, etc.) determines HOW the flow
+  // is activated, not WHAT keywords to match — so we don't map trigger IDs to keywords
+  const customKeywords = triggerKeywords && triggerKeywords.length > 0 ? triggerKeywords : undefined
 
   const flow: FsWhatsAppFlow = {
     name: flowName,
     description: flowDescription,
-    trigger_keywords: allKeywords.length > 0 ? allKeywords : undefined,
+    trigger_keywords: customKeywords,
     enabled: true,
     steps,
   }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, NodeData, ButtonData, OptionData } from "@/types"
 import {
@@ -72,6 +72,10 @@ export function useNodeOperations({
 
   const { fitView } = useReactFlow()
 
+  // Use ref for nodes to avoid recreating onNodesChange on every drag frame
+  const nodesRef = useRef(nodes)
+  nodesRef.current = nodes
+
   /** Helper: auto-enter edit mode if not already in it */
   const withEditTracking = useCallback(() => {
     if (!isEditMode) {
@@ -80,11 +84,12 @@ export function useNodeOperations({
   }, [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform])
 
   // Custom onNodesChange to prevent deletion of start nodes
+  // Uses nodesRef to avoid recreating callback on every drag frame
   const onNodesChange = useCallback(
     (changes: any[]) => {
       const filteredChanges = changes.filter((change) => {
         if (change.type === "remove") {
-          const nodeToRemove = nodes.find((n) => n.id === change.id)
+          const nodeToRemove = nodesRef.current.find((n) => n.id === change.id)
           if (nodeToRemove?.type === "start") {
             toast.error("Start node cannot be deleted")
             return false
@@ -94,7 +99,7 @@ export function useNodeOperations({
       })
       onNodesChangeOriginal(filteredChanges)
     },
-    [nodes, onNodesChangeOriginal]
+    [onNodesChangeOriginal]
   )
 
   const deleteNode = useCallback(

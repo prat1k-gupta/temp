@@ -450,6 +450,7 @@ function MagicFlowInner() {
           flowName={persistence.currentFlow?.name}
           flowDescription={persistence.currentFlow?.description}
           triggerIds={persistence.currentFlow?.triggerIds}
+          triggerKeywords={persistence.currentFlow?.triggerKeywords}
         />
 
         <VersionHistoryModal

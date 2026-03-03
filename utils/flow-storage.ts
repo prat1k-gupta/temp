@@ -22,6 +22,7 @@ export interface FlowData {
   platform: Platform
   triggerId?: string // Backwards compatibility
   triggerIds?: string[] // Multiple triggers support
+  triggerKeywords?: string[] // Custom keywords that trigger this flow (WhatsApp)
   nodes: Node[]
   edges: Edge[]
   thumbnail?: string

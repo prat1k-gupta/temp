@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Handle, Position } from "@xyflow/react"
-import { Play, Plus, Edit3, Layout, Globe } from "lucide-react"
+import { Play, Plus, Edit3, Layout, Globe, X } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,8 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   const initialTriggers = data.triggerIds || (data.triggerId ? [data.triggerId] : [])
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>(initialTriggers)
   const [flowDescription, setFlowDescription] = useState(data.flowDescription || "")
+  const [triggerKeywords, setTriggerKeywords] = useState<string[]>(data.triggerKeywords || [])
+  const [keywordInput, setKeywordInput] = useState("")
   
   const platform = (data.platform || "web") as Platform
   const allTriggers = getTriggersByPlatform(platform)
@@ -34,6 +36,10 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   useEffect(() => {
     setFlowDescription(data.flowDescription || "")
   }, [data.flowDescription])
+
+  useEffect(() => {
+    setTriggerKeywords(data.triggerKeywords || [])
+  }, [data.triggerKeywords])
   
   const activeTriggers = selectedTriggers
     .map(id => allTriggers.find(t => t.id === id))
@@ -151,17 +157,35 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
     })
   }
 
+  const addKeyword = () => {
+    const keyword = keywordInput.trim().toLowerCase()
+    if (keyword && !triggerKeywords.includes(keyword)) {
+      setTriggerKeywords([...triggerKeywords, keyword])
+    }
+    setKeywordInput("")
+  }
+
+  const removeKeyword = (keyword: string) => {
+    setTriggerKeywords(triggerKeywords.filter(k => k !== keyword))
+  }
+
   const handleSaveTriggers = () => {
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, {
         ...data,
         triggerIds: selectedTriggers,
-        triggerId: selectedTriggers[0] // Keep backwards compatibility
+        triggerId: selectedTriggers[0], // Keep backwards compatibility
+        triggerKeywords,
       })
     }
-    // Update flow description if callback is available
-    if (data.onFlowUpdate && flowDescription !== (data.flowDescription || "")) {
-      data.onFlowUpdate({ description: flowDescription })
+    // Update flow description and trigger keywords on the flow
+    if (data.onFlowUpdate) {
+      const flowUpdates: Record<string, any> = {}
+      if (flowDescription !== (data.flowDescription || "")) {
+        flowUpdates.description = flowDescription
+      }
+      flowUpdates.triggerKeywords = triggerKeywords
+      data.onFlowUpdate(flowUpdates)
     }
     setIsEditingTriggers(false)
   }
@@ -311,6 +335,56 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                 })}
               </div>
             </div>
+
+            {/* Trigger Keywords Section (WhatsApp only) */}
+            {platform === "whatsapp" && (
+              <div className="space-y-2 px-1">
+                <Label className="text-sm text-muted-foreground">
+                  Trigger Keywords
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Words that start this flow when a user sends a message (e.g. "hi", "menu", "help")
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        addKeyword()
+                      }
+                    }}
+                    placeholder="Type a keyword and press Enter"
+                    className="flex-1 h-8 text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addKeyword}
+                    disabled={!keywordInput.trim()}
+                    className="h-8 px-3"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                </div>
+                {triggerKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {triggerKeywords.map((keyword) => (
+                      <Badge
+                        key={keyword}
+                        variant="secondary"
+                        className="flex items-center gap-1 px-2 py-0.5 text-xs cursor-pointer hover:bg-destructive/10"
+                        onClick={() => removeKeyword(keyword)}
+                      >
+                        {keyword}
+                        <X className="w-3 h-3" />
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="pt-4 border-t">

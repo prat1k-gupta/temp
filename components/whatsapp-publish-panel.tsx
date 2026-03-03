@@ -16,18 +16,19 @@ interface WhatsAppPublishPanelProps {
   flowName: string
   flowDescription?: string
   triggerIds?: string[]
+  triggerKeywords?: string[]
 }
 
 type PublishStatus = "idle" | "publishing" | "success" | "error"
 
-export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds }: WhatsAppPublishPanelProps) {
+export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords }: WhatsAppPublishPanelProps) {
   const [showJson, setShowJson] = useState(false)
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
 
   const converted = useMemo(
-    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds),
-    [nodes, edges, flowName, flowDescription, triggerIds]
+    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords),
+    [nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords]
   )
 
   const jsonString = useMemo(() => JSON.stringify(converted, null, 2), [converted])

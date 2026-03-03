@@ -251,7 +251,7 @@ describe("convertToFsWhatsApp", () => {
     expect(result.trigger_keywords).toEqual(["message", "ctwa"])
   })
 
-  it("omits trigger_keywords when no triggerIds", () => {
+  it("omits trigger_keywords when no triggerIds and no custom keywords", () => {
     const nodes = [
       node("start-1", "start"),
       node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
@@ -260,6 +260,50 @@ describe("convertToFsWhatsApp", () => {
 
     const result = convertToFsWhatsApp(nodes, edges, "No Trigger Test")
     expect(result.trigger_keywords).toBeUndefined()
+  })
+
+  it("merges custom triggerKeywords with mapped triggerIds", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Merge Test", undefined, ["whatsapp-message"], ["hi", "hello", "menu"])
+    expect(result.trigger_keywords).toEqual(["message", "hi", "hello", "menu"])
+  })
+
+  it("includes only custom triggerKeywords when no triggerIds", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Custom Only", undefined, undefined, ["start", "begin"])
+    expect(result.trigger_keywords).toEqual(["start", "begin"])
+  })
+
+  it("deduplicates custom keywords that overlap with mapped ones", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Dedup Test", undefined, ["whatsapp-message"], ["message", "hi"])
+    expect(result.trigger_keywords).toEqual(["message", "hi"])
+  })
+
+  it("uses question text for step names instead of label", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1-abc123", "whatsappQuestion", { label: "Ask Name", question: "What is your name?" }),
+    ]
+    const edges = [edge("start-1", "q1-abc123")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Step Name Test")
+    expect(result.steps[0].step_name).toContain("what_is_your_name")
   })
 
   it("handles quick reply next-step fallthrough", () => {

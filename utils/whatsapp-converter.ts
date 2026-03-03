@@ -95,7 +95,8 @@ export function convertToFsWhatsApp(
   edges: Edge[],
   flowName: string,
   flowDescription?: string,
-  triggerIds?: string[]
+  triggerIds?: string[],
+  triggerKeywords?: string[]
 ): FsWhatsAppFlow {
   const edgeMap = buildEdgeMap(edges)
 
@@ -145,11 +146,12 @@ export function convertToFsWhatsApp(
   }
 
   // Pre-compute step names for all ordered nodes
+  // Use question text first for better identification, then label, then type
   const nodeStepNames = new Map<string, string>()
   for (const node of ordered) {
     const data = node.data as Record<string, any>
-    const label = data.label || node.type || "step"
-    const stepName = sanitizeStepName(label, getIdSuffix(node.id))
+    const text = data.question || data.text || data.label || node.type || "step"
+    const stepName = sanitizeStepName(text, getIdSuffix(node.id))
     nodeStepNames.set(node.id, stepName)
   }
 
@@ -311,10 +313,15 @@ export function convertToFsWhatsApp(
     steps.push(step)
   }
 
+  // Merge mapped trigger type keywords with custom trigger keywords
+  const mappedKeywords = mapTriggerKeywords(triggerIds) || []
+  const customKeywords = (triggerKeywords || []).filter(k => !mappedKeywords.includes(k))
+  const allKeywords = [...mappedKeywords, ...customKeywords]
+
   const flow: FsWhatsAppFlow = {
     name: flowName,
     description: flowDescription,
-    trigger_keywords: mapTriggerKeywords(triggerIds),
+    trigger_keywords: allKeywords.length > 0 ? allKeywords : undefined,
     enabled: true,
     steps,
   }

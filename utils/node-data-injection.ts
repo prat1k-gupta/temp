@@ -65,10 +65,16 @@ export function injectNodeCallbacks(
       onConvert: callbacks.convertNode,
       ...(node.type === "start" && flowContext && {
         flowDescription: flowContext.currentFlow?.description || "",
-        onFlowUpdate: (updates: { description?: string }) => {
-          if (updates.description !== undefined && flowContext.flowId) {
-            updateFlow(flowContext.flowId, { description: updates.description })
-            flowContext.setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
+        triggerKeywords: flowContext.currentFlow?.triggerKeywords || [],
+        onFlowUpdate: (updates: { description?: string; triggerKeywords?: string[] }) => {
+          if (flowContext.flowId) {
+            const flowUpdates: Record<string, any> = {}
+            if (updates.description !== undefined) flowUpdates.description = updates.description
+            if (updates.triggerKeywords !== undefined) flowUpdates.triggerKeywords = updates.triggerKeywords
+            if (Object.keys(flowUpdates).length > 0) {
+              updateFlow(flowContext.flowId, flowUpdates)
+              flowContext.setCurrentFlow((prev) => (prev ? { ...prev, ...flowUpdates } : null))
+            }
           }
         },
       }),

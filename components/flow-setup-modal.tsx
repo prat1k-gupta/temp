@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { Loader2, Layout, Globe } from "lucide-react"
+import { Loader2, Layout, Globe, Plus, X } from "lucide-react"
 import type { Platform } from "@/types"
+import { Badge } from "@/components/ui/badge"
 import { getTriggersByPlatform } from "@/constants/triggers"
 
 interface FlowSetupModalProps {
@@ -19,6 +20,7 @@ interface FlowSetupModalProps {
     platform: Platform
     triggerId: string
     description?: string
+    triggerKeywords?: string[]
   }) => Promise<void>
 }
 
@@ -29,6 +31,8 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   const [selectedTrigger, setSelectedTrigger] = useState<string>("")
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreating, setIsCreating] = useState(false)
+  const [triggerKeywords, setTriggerKeywords] = useState<string[]>([])
+  const [keywordInput, setKeywordInput] = useState("")
 
   const triggers = getTriggersByPlatform(selectedPlatform)
   const filteredTriggers = triggers.filter(
@@ -81,6 +85,18 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }
 
+  const addKeyword = () => {
+    const keyword = keywordInput.trim().toLowerCase()
+    if (keyword && !triggerKeywords.includes(keyword)) {
+      setTriggerKeywords([...triggerKeywords, keyword])
+    }
+    setKeywordInput("")
+  }
+
+  const removeKeyword = (keyword: string) => {
+    setTriggerKeywords(triggerKeywords.filter(k => k !== keyword))
+  }
+
   const handleComplete = async () => {
     if (flowName.trim() && selectedTrigger && !isCreating) {
       setIsCreating(true)
@@ -90,6 +106,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
           platform: selectedPlatform,
           triggerId: selectedTrigger,
           description: flowDescription.trim() || undefined,
+          triggerKeywords: triggerKeywords.length > 0 ? triggerKeywords : undefined,
         })
         // Reset state only on success
         setFlowName("")
@@ -97,6 +114,8 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
         setSelectedPlatform("whatsapp")
         setSelectedTrigger("")
         setSearchQuery("")
+        setTriggerKeywords([])
+        setKeywordInput("")
       } catch (error) {
         // Error handling is done in parent component
         // Don't reset state on error so user can retry
@@ -256,6 +275,57 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               )}
             </div>
           </div>
+
+          {/* Trigger Keywords (WhatsApp only) */}
+          {selectedPlatform === "whatsapp" && (
+            <div className="space-y-2 px-1">
+              <Label className="text-sm text-muted-foreground">
+                Trigger Keywords <span className="text-xs text-muted-foreground/70">(Optional)</span>
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Words that start this flow when a user sends a message (e.g. "hi", "menu", "help")
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      addKeyword()
+                    }
+                  }}
+                  placeholder="Type a keyword and press Enter"
+                  className="flex-1 h-8 text-sm"
+                  disabled={isCreating}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addKeyword}
+                  disabled={!keywordInput.trim() || isCreating}
+                  className="h-8 px-3"
+                >
+                  <Plus className="w-3 h-3" />
+                </Button>
+              </div>
+              {triggerKeywords.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {triggerKeywords.map((keyword) => (
+                    <Badge
+                      key={keyword}
+                      variant="secondary"
+                      className="flex items-center gap-1 px-2 py-0.5 text-xs cursor-pointer hover:bg-destructive/10"
+                      onClick={() => !isCreating && removeKeyword(keyword)}
+                    >
+                      {keyword}
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

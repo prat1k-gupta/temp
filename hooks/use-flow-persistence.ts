@@ -183,7 +183,7 @@ export function useFlowPersistence({
   }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow, loadFromDb])
 
   const handleFlowSetupComplete = useCallback(
-    async (data: { name: string; platform: Platform; triggerId: string; description?: string }) => {
+    async (data: { name: string; platform: Platform; triggerId: string; description?: string; triggerKeywords?: string[] }) => {
       if (isNewFlow) {
         if (loadFromDb) {
           try {
@@ -196,6 +196,7 @@ export function useFlowPersistence({
                 platform: data.platform,
                 triggerId: data.triggerId,
                 triggerIds: data.triggerId ? [data.triggerId] : [],
+                triggerKeywords: data.triggerKeywords || [],
                 nodes: [
                   {
                     id: "1",
@@ -206,6 +207,7 @@ export function useFlowPersistence({
                       platform: data.platform,
                       triggerId: data.triggerId,
                       triggerIds: data.triggerId ? [data.triggerId] : [],
+                      triggerKeywords: data.triggerKeywords || [],
                     },
                     draggable: false,
                     selectable: true,

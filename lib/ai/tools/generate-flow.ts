@@ -672,9 +672,6 @@ ${platformGuidelines}
 **${isEdit ? "COMPREHENSIVE NODE DOCUMENTATION" : "AVAILABLE NODE TYPES"}:**
 ${nodeDocs}
 
-**Flow Context:**
-${request.flowContext || "General conversational flow"}
-
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}
 
@@ -1026,8 +1023,3 @@ function getEditResponseFormat(): string {
   ].join("\n")
 }
 
-function getAvailableNodeTypes(platform: Platform): string {
-  // This function is now replaced by getNodeDocumentationForPrompt
-  // But keeping it for backward compatibility - it will be overridden by the comprehensive docs
-  return "See COMPREHENSIVE NODE DOCUMENTATION section above for detailed information about all available node types, their properties, limits, and usage guidelines."
-}

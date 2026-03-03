@@ -20,6 +20,33 @@ import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { isMultiOutputType, getBaseNodeType } from "./platform-helpers"
 import { autoStoreAs, collectFlowVariables } from "./flow-variables"
 
+// AI models sometimes output shorthand type names — normalize to canonical types
+const COMMON_ALIASES: Record<string, string> = {
+  list: "interactiveList",
+}
+
+const PLATFORM_ALIASES: Record<string, Record<string, string>> = {
+  whatsapp: { message: "whatsappMessage" },
+  instagram: { message: "instagramDM" },
+  web: {},
+}
+
+function normalizeNodeType(nodeType: string, platform: Platform): string {
+  return PLATFORM_ALIASES[platform]?.[nodeType] || COMMON_ALIASES[nodeType] || nodeType
+}
+
+function normalizeSteps(steps: FlowStep[], platform: Platform): FlowStep[] {
+  return steps.map((step) => {
+    if (step.step === "node") {
+      return { ...step, nodeType: normalizeNodeType(step.nodeType, platform) }
+    }
+    if (step.step === "branch") {
+      return { ...step, steps: normalizeSteps(step.steps, platform) }
+    }
+    return step
+  })
+}
+
 // ──────────────────────────────────────────
 // Public API
 // ──────────────────────────────────────────
@@ -44,7 +71,7 @@ export function buildFlowFromPlan(
   let previousNodeId: string = "1" // start node
   let lastMultiOutputNodeId: string | null = null
 
-  walkSteps(plan.steps, {
+  walkSteps(normalizeSteps(plan.steps, platform), {
     nodes,
     edges,
     nodeOrder,
@@ -92,6 +119,11 @@ export function buildEditFlowFromPlan(
   const nodeUpdates: BuildEditFlowResult["nodeUpdates"] = []
   const warnings: string[] = []
   const positionShiftMap = new Map<string, number>() // nodeId → total dx
+
+  // Normalize AI aliases in chain steps
+  if (plan.chains) {
+    plan = { ...plan, chains: plan.chains.map((c) => ({ ...c, steps: normalizeSteps(c.steps, platform) })) }
+  }
 
   // Process nodeUpdates — convert content to node data, preserving existing button/option IDs
   if (plan.nodeUpdates) {

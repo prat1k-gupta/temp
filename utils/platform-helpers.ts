@@ -49,7 +49,7 @@ export const getBaseNodeType = (platformType: string): string => {
   }
 
   // List nodes
-  if (platformType.includes("List") || platformType === "interactiveList") {
+  if (platformType.includes("List") || platformType === "interactiveList" || platformType === "list") {
     return "list"
   }
 

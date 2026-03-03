@@ -1,4 +1,4 @@
-import { buildAIContext, getPlatformGuidelines, getNodeTypeGuidelines } from "../core/ai-context"
+import { buildAIContext, getPlatformGuidelines } from "../core/ai-context"
 import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
 import { getAIClient } from "../core/ai-client"
 import { buildFlowGraphString } from "./generate-flow"
@@ -121,7 +121,7 @@ export async function suggestNodes(
       })
 
       // If we filtered out suggestions, try to get more (but don't exceed max)
-      if (suggestions.length < maxSuggestions && existingNodeTypes.size > 0) {
+      if (suggestions.length < maxSuggestions && existingBaseTypes.size > 0) {
         console.log(`[suggest-nodes] Filtered out ${maxSuggestions - suggestions.length} duplicate suggestions`)
       }
 
@@ -153,24 +153,64 @@ export async function suggestNodes(
 }
 
 function buildSystemPrompt(
-  context: ReturnType<typeof buildAIContext>,
+  _context: ReturnType<typeof buildAIContext>,
   request: SuggestNodesRequest
 ): string {
   const platform = request.platform
-  const currentNodeType = request.currentNodeType
-
-  const platformGuidelines = getPlatformGuidelines(platform)
-  const nodeTypeGuidelines = getNodeTypeGuidelines(currentNodeType, platform)
-  
-  // Get compact node documentation (types + categories + content hints)
   const nodeDocs = getSimplifiedNodeDocumentation(platform)
+  const platformGuidelines = getPlatformGuidelines(platform)
+  const n = request.maxSuggestions || 2
 
-  // Analyze existing nodes to determine flow pattern
-  const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
-  const flowPattern = detectFlowPattern(request.flowContext, existingNodeTypes, currentNodeType)
+  return `You are an expert conversational flow designer for ${platform}.
 
-  // Build flow graph string from edges + existingNodes when available
-  let flowGraphSection = ""
+${platformGuidelines}
+
+**AVAILABLE NODE TYPES:**
+${nodeDocs}
+
+**NODE TYPE SELECTION RULES:**
+- Data collection → ALWAYS use super nodes: "name", "email", "dob", "address" (platform-agnostic)
+- Interaction nodes → use platform-specific types: e.g. "whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList" for WhatsApp
+- quickReply vs list: if ≤3 choices → use quickReply; if 4+ choices → use list (interactiveList)
+- Question nodes are ONLY for open-ended questions, NOT for collecting name/email/dob/address
+
+**CONTENT GENERATION RULES:**
+- **CRITICAL: All content MUST be specific to the flow's purpose.** Read the flow context and generate realistic, contextual content — NOT generic placeholders.
+- NEVER use placeholder text like "Option A", "Option B", "Please select one of the following options", "What would you like to know?", etc.
+- For quickReply: generate a contextual question + 2-3 button labels that fit the flow's purpose
+- For list: generate a contextual question + list options relevant to what the flow is about
+- For question: generate a question that makes sense in the flow's context
+- For message: generate a message that advances the conversation naturally
+- For super nodes: generate a prompt that fits the flow tone (e.g. "What's your email so we can send the report?" not "Please enter your email")
+- ALWAYS include "label" in generatedContent
+
+**OUTPUT FORMAT:**
+Return JSON with exactly ${n} suggestions:
+{
+  "suggestions": [
+    {
+      "type": "exact node type string",
+      "label": "Display label",
+      "reason": "Why this fits after the current node",
+      "description": "What this node does",
+      "previewContent": "Short preview of content",
+      "generatedContent": { "label": "...", "question": "...", "buttons": [{"text": "..."}], "options": [{"text": "..."}] }
+    }
+  ]
+}`
+}
+
+function buildUserPrompt(request: SuggestNodesRequest): string {
+  const parts: string[] = []
+
+  parts.push(`Current node: "${request.currentNodeType}"`)
+  parts.push(`Platform: ${request.platform}`)
+
+  if (request.flowContext) {
+    parts.push(`\nFlow purpose: ${request.flowContext}`)
+  }
+
+  // Flow graph — visual structure
   if (request.existingNodes && request.existingNodes.length > 0 && request.edges) {
     const minimalNodes: Node[] = request.existingNodes.map(n => ({
       id: n.id,
@@ -184,126 +224,25 @@ function buildSystemPrompt(
       target: e.target,
       sourceHandle: e.sourceHandle || undefined,
     }))
-    flowGraphSection = `\n\n**Current Flow Graph:**\n${buildFlowGraphString(minimalNodes, minimalEdges)}`
+    parts.push(`\nCurrent flow:\n${buildFlowGraphString(minimalNodes, minimalEdges)}`)
   }
 
-  let prompt = `You are an expert conversational flow designer for ${platform} platforms.
-
-Your task is to suggest the most relevant next nodes that would logically follow after a "${currentNodeType}" node. Understand the user need and context of current conversation and suggest nodes that enhance user experience.
-
-**Platform Guidelines:**
-${platformGuidelines}
-
-**Current Node Context:**
-${nodeTypeGuidelines}
-
-**Flow Purpose:**
-${request.flowContext || "General conversational flow"}${flowGraphSection}
-
-**Detected Flow Pattern:**
-${flowPattern.description}
-
-**Flow Pattern Guidelines:**
-${flowPattern.guidelines}
-
-**AVAILABLE NODE TYPES:**
-${nodeDocs}
-
-**Guidelines:**
-1. Suggest exactly ${request.maxSuggestions || 2} nodes
-2. **CRITICAL - Follow the flow pattern**: ${flowPattern.description}
-3. **CRITICAL - Avoid duplicates**: DO NOT suggest nodes that already exist in the flow. Check the existing nodes list carefully.
-4. Choose nodes that make logical sense after the current node based on the flow pattern
-5. Consider the flow context and purpose
-6. Provide a clear reason for each suggestion
-7. Focus on creating a smooth user experience
-8. **Suggest nodes in logical sequence**: Follow the pattern ${flowPattern.sequence}
-7. **CRITICAL - Node Type Selection:**
-   - **For data collection, ALWAYS use super nodes (NOT question nodes):**
-     - To collect email → use "email" (NOT whatsappQuestion/webQuestion)
-     - To collect name → use "name" (NOT whatsappQuestion/webQuestion)
-     - To collect date of birth → use "dob" (NOT whatsappQuestion/webQuestion)
-     - To collect address → use "address" (NOT whatsappQuestion/webQuestion)
-   - **Super nodes have built-in validation** - use them for any data collection needs
-   - **Question nodes are ONLY for general questions**, not for collecting specific data fields
-8. **IMPORTANT**: 
-   - **Use platform-specific node types** for interaction nodes (e.g., "whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList" for WhatsApp; "webQuestion", "webQuickReply" for web)
-   - **Super nodes (name, email, dob, address) are platform-agnostic** - use them as-is (e.g., "email", not "whatsappEmail")
-   - For each suggested node, generate the actual content that should be in that node:
-     - For "question" nodes: Generate the question text (for general questions only)
-     - For "quickReply" nodes: Generate the question text AND 2-3 button options, **ALWAYS include "label" field**
-     - For "list" nodes: Generate the question text AND 3-5 list options, **ALWAYS include "label" field**
-     - For "name", "email", "dob", "address" super nodes: Generate the prompt/question text (these nodes have built-in validation)
-     - For other nodes: Generate appropriate content based on the node type
-   - **ALWAYS include "label" field** in generatedContent for all nodes (e.g., "label": "Quick Reply", "label": "Email")
-
-**OUTPUT FORMAT:**
-Return a JSON object with exactly ${request.maxSuggestions || 2} suggestions in this format:
-{
-  "suggestions": [
-    {
-      "type": "email" (use "email" for email collection, NOT whatsappQuestion),
-      "label": "Collect Email",
-      "reason": "Why this node makes sense",
-      "description": "What this node does",
-      "previewContent": "A short preview of the generated content",
-      "generatedContent": {
-        "label": "Email" (ALWAYS include this),
-        "question": "The prompt/question text for collecting email"
-      }
-    },
-    {
-      "type": "whatsappQuickReply" (use platform-specific type for interaction nodes),
-      "label": "Quick Reply",
-      "reason": "Why this node makes sense",
-      "description": "What this node does",
-      "previewContent": "A short preview of the generated content",
-      "generatedContent": {
-        "label": "Quick Reply" (ALWAYS include this),
-        "question": "The question text",
-        "buttons": [{"text": "Button 1"}, {"text": "Button 2"}] (for quickReply nodes)
-      }
-    }
-  ]
-}
-
-**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.
-
-**Examples of correct node type selection:**
-- Collecting email → type: "email" (super node)
-- Collecting name → type: "name" (super node)
-- Collecting address → type: "address" (super node)
-- General question → type: "whatsappQuestion" (interaction node)
-- Question with buttons → type: "whatsappQuickReply" (interaction node)`
-
-  return prompt
-}
-
-function buildUserPrompt(request: SuggestNodesRequest): string {
-  let prompt = `Current node: ${request.currentNodeType}
-Platform: ${request.platform}`
-
-  if (request.flowContext) {
-    prompt += `\n\nFlow Context: ${request.flowContext}`
-  }
-
+  // Existing base types — single deduped list
   if (request.existingNodes && request.existingNodes.length > 0) {
-    prompt += `\n\n**EXISTING NODES IN FLOW (${request.existingNodes.length}) - DO NOT SUGGEST THESE AGAIN:**`
-    request.existingNodes.forEach((node, index) => {
-      const base = getBaseNodeType(node.type)
-      const baseNote = base !== node.type ? ` (base: "${base}")` : ""
-      prompt += `\n${index + 1}. Type: "${node.type}"${baseNote}${node.label ? `, Label: "${node.label}"` : ""}`
-    })
-
-    // Deduplicated base types — this is the canonical "already used" list
     const existingBaseTypes = [...new Set(request.existingNodes.map(n => getBaseNodeType(n.type)))]
-    prompt += `\n\n**Already used base node types (DO NOT repeat any of these or their platform variants):** ${existingBaseTypes.join(", ")}`
-    prompt += `\n\n**CRITICAL**: You MUST NOT suggest any node whose base type matches one in the list above. For example, if "question" is listed, do NOT suggest "question", "whatsappQuestion", "webQuestion", or "instagramQuestion".`
+    parts.push(`\nAlready used types (do NOT suggest these or their platform variants): ${existingBaseTypes.join(", ")}`)
   }
 
-  prompt += `\n\nSuggest ${request.maxSuggestions || 2} relevant next nodes that would logically follow after the current "${request.currentNodeType}" node. Make sure each suggestion is a DIFFERENT node type that doesn't already exist in the flow.`
+  // Detected flow pattern
+  const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
+  const flowPattern = detectFlowPattern(request.flowContext, existingNodeTypes, request.currentNodeType)
+  parts.push(`\nFlow pattern: ${flowPattern.description}`)
+  parts.push(`Suggested sequence: ${flowPattern.sequence}`)
+  parts.push(flowPattern.guidelines)
 
-  return prompt
+  parts.push(`\nSuggest ${request.maxSuggestions || 2} next nodes with contextual content specific to this flow's purpose.`)
+
+  return parts.join("\n")
 }
 
 function detectFlowPattern(
@@ -426,12 +365,6 @@ function detectFlowPattern(
 - If questionnaire done → suggest thank you message or next steps`,
     sequence: "Interaction → Data Collection → Questionnaire → Thank You"
   }
-}
-
-function getAvailableNodeTypes(platform: Platform): string {
-  // This function is now replaced by getNodeDocumentationForPrompt
-  // But keeping it for backward compatibility - it will be overridden by the comprehensive docs
-  return "See COMPREHENSIVE NODE DOCUMENTATION section above for detailed information about all available node types, their properties, limits, and usage guidelines."
 }
 
 function parseSuggestions(content: string, maxSuggestions: number): SuggestedNode[] {

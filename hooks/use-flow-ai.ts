@@ -6,6 +6,7 @@ import type { EditFlowPlan, NodeContent } from "@/types/flow-plan"
 import { getBaseNodeType, isMultiOutputType } from "@/utils/platform-helpers"
 import { createNode, createCommentNode } from "@/utils/node-factory"
 import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
+import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { processAiNodes, processAiEdges, transformAiNodeData, normalizeAiNodeType } from "@/utils/ai-data-transform"
 import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import { changeTracker } from "@/utils/change-tracker"
@@ -666,10 +667,18 @@ export function useFlowAI({
 
       try {
         // Normalize to base node type
-        const normalizedType = getBaseNodeType(suggestion.type)
+        let normalizedType = getBaseNodeType(suggestion.type)
+
+        // Auto-convert list→quickReply when ≤3 options (WhatsApp/Instagram button limit)
+        const gc = suggestion.generatedContent
+        if (normalizedType === "list" && gc?.options && gc.options.length <= BUTTON_LIMITS[platform]) {
+          normalizedType = "quickReply"
+          // Convert options → buttons format
+          gc.buttons = gc.options.map((o: any) => ({ text: o.text || o }))
+          delete gc.options
+        }
 
         // Convert generatedContent → NodeContent (plan format)
-        const gc = suggestion.generatedContent
         const content: NodeContent = {
           label: gc?.label,
           question: gc?.question,

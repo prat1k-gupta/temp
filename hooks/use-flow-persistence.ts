@@ -385,15 +385,19 @@ export function useFlowPersistence({
   }, [editingFlowNameValue, currentFlow, loadFromDb, flowId])
 
   const saveFlowFields = useCallback(async (updates: Record<string, any>) => {
-    if (!loadFromDb || !flowId) return
-    try {
-      await fetch(`/api/flows/${flowId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      })
-    } catch (error) {
-      console.error("[App] Error saving flow fields:", error)
+    if (!flowId) return
+    if (loadFromDb) {
+      try {
+        await fetch(`/api/flows/${flowId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        })
+      } catch (error) {
+        console.error("[App] Error saving flow fields:", error)
+      }
+    } else {
+      updateFlow(flowId, updates)
     }
   }, [loadFromDb, flowId])
 

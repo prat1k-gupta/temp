@@ -461,6 +461,13 @@ function MagicFlowInner() {
             persistence.setCurrentFlow((prev) =>
               prev ? { ...prev, publishedFlowId: flowId } : null
             )
+            persistence.saveFlowFields({ publishedFlowId: flowId })
+          }}
+          onDisconnect={() => {
+            persistence.setCurrentFlow((prev) =>
+              prev ? { ...prev, publishedFlowId: undefined } : null
+            )
+            persistence.saveFlowFields({ publishedFlowId: null })
           }}
         />
 

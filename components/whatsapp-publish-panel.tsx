@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Loader2, Variable, GitBranch, RefreshCw } from "lucide-react"
+import { Send, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Loader2, Variable, GitBranch, RefreshCw, Unlink } from "lucide-react"
 import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import { convertToFsWhatsApp, type FsWhatsAppFlow } from "@/utils/whatsapp-converter"
@@ -19,11 +19,12 @@ interface WhatsAppPublishPanelProps {
   triggerKeywords?: string[]
   publishedFlowId?: string
   onPublished?: (flowId: string) => void
+  onDisconnect?: () => void
 }
 
 type PublishStatus = "idle" | "publishing" | "success" | "error"
 
-export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished }: WhatsAppPublishPanelProps) {
+export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished, onDisconnect }: WhatsAppPublishPanelProps) {
   const [showJson, setShowJson] = useState(false)
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
@@ -102,6 +103,26 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Published flow ID */}
+      {isUpdate && publishedFlowId && (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+          <RefreshCw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Linked to published flow</p>
+            <p className="text-[11px] text-blue-600/70 dark:text-blue-400/70 font-mono truncate">{publishedFlowId}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDisconnect?.()}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
+          >
+            <Unlink className="w-3 h-3 mr-1" />
+            Disconnect
+          </Button>
+        </div>
+      )}
+
       {/* Summary badges */}
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="secondary" className="flex items-center gap-1">
@@ -112,12 +133,6 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
           <Variable className="w-3 h-3" />
           {variables.length} variables
         </Badge>
-        {isUpdate && (
-          <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200">
-            <RefreshCw className="w-3 h-3" />
-            Update
-          </Badge>
-        )}
         {warnings.length > 0 && (
           <Badge variant="destructive" className="flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
@@ -170,9 +185,22 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       )}
 
       {publishStatus === "error" && publishError && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-          <AlertTriangle className="w-4 h-4 text-red-600" />
-          <span className="text-sm text-red-700 dark:text-red-400">{publishError}</span>
+        <div className="flex flex-col gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span className="text-sm text-red-700 dark:text-red-400">{publishError}</span>
+          </div>
+          {isUpdate && publishError.includes("404") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onDisconnect?.()}
+              className="self-start text-xs text-red-600 border-red-200 hover:bg-red-50"
+            >
+              <Unlink className="w-3 h-3 mr-1" />
+              Disconnect and publish as new
+            </Button>
+          )}
         </div>
       )}
 

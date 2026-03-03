@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, Copy, Check, Eye, Upload, FileText, Send } from "lucide-react"
+import { Download, Copy, Check, Eye, Upload, FileText, Send, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
@@ -29,9 +29,10 @@ interface ExportModalProps {
   triggerKeywords?: string[]
   publishedFlowId?: string
   onPublished?: (flowId: string) => void
+  onDisconnect?: () => void
 }
 
-export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished }: ExportModalProps) {
+export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished, onDisconnect }: ExportModalProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setIsOpen = onOpenChange || setInternalOpen
@@ -183,8 +184,8 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
             </TabsTrigger>
             {flowData.platform === "whatsapp" && (
               <TabsTrigger value="publish" className="flex items-center gap-2">
-                <Send className="w-4 h-4" />
-                Publish
+                {publishedFlowId ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                {publishedFlowId ? "Update" : "Publish"}
               </TabsTrigger>
             )}
           </TabsList>
@@ -321,6 +322,7 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
                 triggerKeywords={triggerKeywords}
                 publishedFlowId={publishedFlowId}
                 onPublished={onPublished}
+                onDisconnect={onDisconnect}
               />
             </TabsContent>
           )}

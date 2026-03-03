@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json()
-    const flowId = result.id || result.flow_id || publishedFlowId
+    // fs-whatsapp uses fastglue envelope: { status, data: { id, ... } }
+    const data = result.data || result
+    const flowId = data.id || data.flow_id || publishedFlowId
     return NextResponse.json({ success: true, flowId, updated: isUpdate })
   } catch (error: any) {
     return NextResponse.json(

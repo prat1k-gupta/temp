@@ -29,6 +29,7 @@ export const createQuestionNode = (
       platform,
       label: getPlatformSpecificLabel("question", platform),
       question: getPlatformSpecificContent("question", platform),
+      storeAs: "",
     } as NodeData,
   }
 }
@@ -51,6 +52,7 @@ export const createQuickReplyNode = (
       label: getPlatformSpecificLabel("quickReply", platform),
       question: getPlatformSpecificContent("quickReply", platform),
       buttons: [createButtonData("Action 1")],
+      storeAs: "",
     } as NodeData,
   }
 }
@@ -73,6 +75,7 @@ export const createListNode = (
       label: getPlatformSpecificLabel("interactiveList", platform),
       question: getPlatformSpecificContent("interactiveList", platform),
       options: [createOptionData("Option 1")],
+      storeAs: "",
     } as NodeData,
   }
 }
@@ -159,12 +162,19 @@ export const createSuperNode = (
   }
 
   const config = superNodeConfig[nodeType]
-  
+
   // For address nodes, set autocomplete based on platform
   if (nodeType === "address" && config.validationRules) {
     config.validationRules.autocomplete = platform === "web"
   }
-  
+
+  const superNodeStoreAs: Record<string, string> = {
+    name: "user_name",
+    email: "user_email",
+    dob: "user_dob",
+    address: "user_address",
+  }
+
   return {
     id: nodeId,
     type: nodeType,
@@ -172,6 +182,7 @@ export const createSuperNode = (
     data: {
       platform,
       ...config,
+      storeAs: superNodeStoreAs[nodeType] || "",
     } as NodeData,
   }
 }

@@ -3,6 +3,7 @@ import type { Platform } from "@/types"
 import { getBaseNodeType } from "./platform-helpers"
 import { createNode } from "./node-factory"
 import { createButtonData } from "./node-operations"
+import { autoPopulateStoreAs } from "./flow-plan-builder"
 
 /**
  * Transform AI node data - handles quickReply options→buttons conversion,
@@ -102,6 +103,8 @@ export function processAiNodes(
       continue
     }
   }
+
+  autoPopulateStoreAs(processedNodes)
 
   return processedNodes
 }

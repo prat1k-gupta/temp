@@ -38,6 +38,11 @@ describe("createQuestionNode", () => {
     expect(createQuestionNode("whatsapp", position).type).toBe("whatsappQuestion")
     expect(createQuestionNode("instagram", position).type).toBe("instagramQuestion")
   })
+
+  it("includes storeAs default", () => {
+    const node = createQuestionNode("whatsapp", position)
+    expect(node.data.storeAs).toBe("")
+  })
 })
 
 describe("createQuickReplyNode", () => {
@@ -55,6 +60,11 @@ describe("createQuickReplyNode", () => {
     expect(createQuickReplyNode("whatsapp", position).type).toBe("whatsappQuickReply")
     expect(createQuickReplyNode("instagram", position).type).toBe("instagramQuickReply")
   })
+
+  it("includes storeAs default", () => {
+    const node = createQuickReplyNode("whatsapp", position)
+    expect(node.data.storeAs).toBe("")
+  })
 })
 
 describe("createListNode", () => {
@@ -69,6 +79,11 @@ describe("createListNode", () => {
 
   it("sets correct type based on platform mapping", () => {
     expect(createListNode("whatsapp", position).type).toBe("whatsappInteractiveList")
+  })
+
+  it("includes storeAs default", () => {
+    const node = createListNode("whatsapp", position)
+    expect(node.data.storeAs).toBe("")
   })
 })
 
@@ -127,6 +142,13 @@ describe("createSuperNode", () => {
   it("disables autocomplete for whatsapp address node", () => {
     const node = createSuperNode("address", "whatsapp", position)
     expect((node.data.validationRules as any).autocomplete).toBe(false)
+  })
+
+  it("auto-sets storeAs for each super node type", () => {
+    expect(createSuperNode("name", "whatsapp", position).data.storeAs).toBe("user_name")
+    expect(createSuperNode("email", "whatsapp", position).data.storeAs).toBe("user_email")
+    expect(createSuperNode("dob", "whatsapp", position).data.storeAs).toBe("user_dob")
+    expect(createSuperNode("address", "whatsapp", position).data.storeAs).toBe("user_address")
   })
 })
 

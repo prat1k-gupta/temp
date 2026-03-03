@@ -14,6 +14,8 @@ import { getNodeLimits, getTextFieldLimit } from "@/constants"
 import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
 import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses } from "@/utils/button-styles"
+import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
+import { slugify } from "@/utils/flow-variables"
 
 export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -74,8 +76,13 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
     if (e?.relatedTarget && editingContainerRef.current?.contains(e.relatedTarget as Node)) {
       return
     }
+    const updates: Record<string, any> = { ...data, question: editingQuestionValue }
+    // Auto-generate storeAs from question if still empty
+    if (!data.storeAs && editingQuestionValue.trim()) {
+      updates.storeAs = slugify(editingQuestionValue)
+    }
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
+      data.onNodeUpdate(data.id, updates)
     }
     setIsEditingQuestion(false)
   }
@@ -295,6 +302,18 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
               {data.question || "Enter your question..."}
             </div>
           )}
+
+          {/* Save Response As */}
+          <StoreAsPill
+            storeAs={data.storeAs || ""}
+            onUpdate={(value) => {
+              if (data.onNodeUpdate) {
+                data.onNodeUpdate(data.id, { ...data, storeAs: value })
+              }
+            }}
+            flowVariables={data.flowVariables || []}
+            suggestedName={data.question || data.label}
+          />
 
           {/* AI Button Generator */}
           {(data.question || editingQuestionValue) && manualButtons.length < 10 && (

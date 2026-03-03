@@ -18,6 +18,7 @@ import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { isMultiOutputType, getBaseNodeType } from "./platform-helpers"
+import { autoStoreAs, collectFlowVariables } from "./flow-variables"
 
 // ──────────────────────────────────────────
 // Public API
@@ -55,6 +56,8 @@ export function buildFlowFromPlan(
     maxBranchX: 0,
     warnings,
   })
+
+  autoPopulateStoreAs(nodes)
 
   return { nodes, edges: deduplicateEdges(edges), nodeOrder, warnings }
 }
@@ -445,6 +448,8 @@ export function buildEditFlowFromPlan(
     ([nodeId, dx]) => ({ nodeId, dx })
   )
 
+  autoPopulateStoreAs(newNodes)
+
   return {
     newNodes,
     newEdges: deduplicateEdges(newEdges),
@@ -709,6 +714,7 @@ export function isNodeTypeValidForPlatform(
 /**
  * Convert plan content fields to node data format.
  * Converts string buttons → ButtonData[], string options → OptionData[], etc.
+ * Auto-generates storeAs from label/question for storable node types.
  */
 export function contentToNodeData(
   content: NodeContent,
@@ -738,6 +744,23 @@ export function contentToNodeData(
   }
 
   return data
+}
+
+/**
+ * Post-process all built nodes to auto-populate storeAs for storable types.
+ * Deduplicates variable names across the entire set.
+ */
+export function autoPopulateStoreAs(nodes: Node[]): void {
+  const existing = collectFlowVariables(nodes)
+  for (const node of nodes) {
+    const generated = autoStoreAs(node, existing)
+    if (generated) {
+      ;(node.data as Record<string, any>).storeAs = generated
+      if (!existing.includes(generated)) {
+        existing.push(generated)
+      }
+    }
+  }
 }
 
 // isMultiOutputType is imported from platform-helpers.ts

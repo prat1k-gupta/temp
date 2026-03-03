@@ -12,6 +12,8 @@ import { useState, useEffect } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
 import { getAddButtonClasses, getDeleteButtonSmallClasses } from "@/utils/button-styles"
+import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
+import { slugify } from "@/utils/flow-variables"
 
 export function WhatsAppListNode({ data, selected }: { data: any; selected?: boolean }) {
   const options = data.options || []
@@ -69,7 +71,11 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
 
   const finishEditingQuestion = () => {
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
+      const updates: Record<string, any> = { ...data, question: editingQuestionValue }
+      if (!data.storeAs && editingQuestionValue.trim()) {
+        updates.storeAs = slugify(editingQuestionValue)
+      }
+      data.onNodeUpdate(data.id, updates)
     }
     setIsEditingQuestion(false)
   }
@@ -191,6 +197,18 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               {data.question || "Choose an option:"}
             </div>
           )}
+
+          {/* Save Response As */}
+          <StoreAsPill
+            storeAs={data.storeAs || ""}
+            onUpdate={(value) => {
+              if (data.onNodeUpdate) {
+                data.onNodeUpdate(data.id, { ...data, storeAs: value })
+              }
+            }}
+            flowVariables={data.flowVariables || []}
+            suggestedName={data.question || data.label}
+          />
 
           <div className="space-y-1">
             {options.map((option: any, index: number) => (

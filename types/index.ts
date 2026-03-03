@@ -1,6 +1,15 @@
 // Core platform and node types
 export type Platform = "web" | "whatsapp" | "instagram"
 
+export type WhatsAppInputType = "none" | "text" | "number" | "email" | "phone" | "date" | "select" | "button"
+
+export interface ValidationConfig {
+  regex?: string
+  errorMessage?: string
+  retryOnInvalid?: boolean
+  maxRetries?: number
+}
+
 export interface ButtonData {
   text?: string
   label?: string
@@ -27,16 +36,19 @@ export interface BaseNodeData extends Record<string, unknown> {
 export interface QuestionNodeData extends BaseNodeData {
   question?: string
   characterLimit?: number
+  storeAs?: string
 }
 
 export interface QuickReplyNodeData extends BaseNodeData {
   question?: string
   buttons?: ButtonData[]
+  storeAs?: string
 }
 
 export interface ListNodeData extends BaseNodeData {
   question?: string
   options?: OptionData[]
+  storeAs?: string
 }
 
 export interface MessageNodeData extends BaseNodeData {
@@ -54,6 +66,7 @@ export interface SuperNodeData extends BaseNodeData {
   question?: string
   validationRules?: Record<string, unknown>
   addressComponents?: string[]
+  storeAs?: string
 }
 
 export interface FulfillmentNodeData extends BaseNodeData {

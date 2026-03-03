@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, Copy, Check, Eye, Upload, FileText } from "lucide-react"
+import { Download, Copy, Check, Eye, Upload, FileText, Send } from "lucide-react"
 import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
+import { WhatsAppPublishPanel } from "@/components/whatsapp-publish-panel"
 
 interface ExportModalProps {
   flowData: {
@@ -22,9 +23,12 @@ interface ExportModalProps {
   children?: React.ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  flowName?: string
+  flowDescription?: string
+  triggerIds?: string[]
 }
 
-export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange }: ExportModalProps) {
+export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds }: ExportModalProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setIsOpen = onOpenChange || setInternalOpen
@@ -165,7 +169,7 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
         </DialogHeader>
         
         <Tabs defaultValue="export" className="flex-1 flex flex-col">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={`grid w-full ${flowData.platform === "whatsapp" ? "grid-cols-3" : "grid-cols-2"}`}>
             <TabsTrigger value="export" className="flex items-center gap-2">
               <Download className="w-4 h-4" />
               Export
@@ -174,6 +178,12 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
               <Upload className="w-4 h-4" />
               Import
             </TabsTrigger>
+            {flowData.platform === "whatsapp" && (
+              <TabsTrigger value="publish" className="flex items-center gap-2">
+                <Send className="w-4 h-4" />
+                Publish
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="export" className="flex-1 flex flex-col gap-4 mt-4">
@@ -296,6 +306,18 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
               </div>
             </div>
           </TabsContent>
+
+          {flowData.platform === "whatsapp" && (
+            <TabsContent value="publish" className="flex-1 flex flex-col gap-4 mt-4">
+              <WhatsAppPublishPanel
+                nodes={flowData.nodes}
+                edges={flowData.edges}
+                flowName={flowName || "Untitled Flow"}
+                flowDescription={flowDescription}
+                triggerIds={triggerIds}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>

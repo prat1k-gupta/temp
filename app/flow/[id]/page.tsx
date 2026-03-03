@@ -447,6 +447,9 @@ function MagicFlowInner() {
           onImportFlow={importFlow}
           open={isExportModalOpen}
           onOpenChange={setIsExportModalOpen}
+          flowName={persistence.currentFlow?.name}
+          flowDescription={persistence.currentFlow?.description}
+          triggerIds={persistence.currentFlow?.triggerIds}
         />
 
         <VersionHistoryModal
@@ -523,7 +526,7 @@ function MagicFlowInner() {
                   flowId,
                   currentFlow: persistence.currentFlow,
                   setCurrentFlow: persistence.setCurrentFlow,
-                })
+                }, nodes)
               )}
             edges={edges
               .filter((edge) => edge && edge.id && edge.source && edge.target)

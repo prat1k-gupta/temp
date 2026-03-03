@@ -16,6 +16,8 @@ import type { Platform, ButtonData } from "@/types"
 import { convertButtonsToOptions } from "@/utils/node-operations"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
+import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
+import { slugify } from "@/utils/flow-variables"
 
 export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
@@ -88,7 +90,11 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
       if (editingQuestionValue.length > maxQuestionLength) {
         return
       }
-      data.onNodeUpdate(data.id, { ...data, question: editingQuestionValue })
+      const updates: Record<string, any> = { ...data, question: editingQuestionValue }
+      if (!data.storeAs && editingQuestionValue.trim()) {
+        updates.storeAs = slugify(editingQuestionValue)
+      }
+      data.onNodeUpdate(data.id, updates)
     }
     setIsEditingQuestion(false)
   }
@@ -335,6 +341,18 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
               {data.question || "Choose an action..."}
             </div>
           )}
+
+          {/* Save Response As */}
+          <StoreAsPill
+            storeAs={data.storeAs || ""}
+            onUpdate={(value) => {
+              if (data.onNodeUpdate) {
+                data.onNodeUpdate(data.id, { ...data, storeAs: value })
+              }
+            }}
+            flowVariables={data.flowVariables || []}
+            suggestedName={data.question || data.label}
+          />
 
           {/* AI Button Generator */}
           {(data.question || editingQuestionValue) && buttons.length < 10 && (

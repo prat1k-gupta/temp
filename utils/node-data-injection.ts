@@ -2,6 +2,7 @@ import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
 import type { ButtonData, OptionData } from "@/types"
 import { updateFlow } from "@/utils/flow-storage"
+import { collectFlowVariables } from "@/utils/flow-variables"
 
 interface NodeCallbacks {
   updateNodeData: (nodeId: string, updates: any, shouldFocus?: boolean) => void
@@ -24,7 +25,8 @@ interface FlowContext {
 export function injectNodeCallbacks(
   node: Node,
   callbacks: NodeCallbacks,
-  flowContext?: FlowContext
+  flowContext?: FlowContext,
+  allNodes?: Node[]
 ): Node {
   // Ensure stable IDs exist for buttons/options (migration for legacy data)
   const data = { ...node.data }
@@ -47,11 +49,14 @@ export function injectNodeCallbacks(
     if (needsUpdate) node = { ...node, data }
   }
 
+  const flowVariables = allNodes ? collectFlowVariables(allNodes) : []
+
   return {
     ...node,
     data: {
       ...data,
       id: node.id,
+      flowVariables,
       onNodeUpdate: callbacks.updateNodeData,
       onAddButton: () => callbacks.addButtonToNode(node.id),
       onAddOption: () => callbacks.addButtonToNode(node.id),

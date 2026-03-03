@@ -119,6 +119,40 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
   return lines.join("\n")
 }
 
+/**
+ * Compact "node selection cheatsheet" from NODE_TEMPLATES selectionRule fields.
+ * Injected into AI prompts so the model knows when to pick each node type.
+ */
+export function getNodeSelectionRules(platform: Platform): string {
+  const lines: string[] = ["NODE SELECTION RULES:"]
+
+  for (const t of NODE_TEMPLATES) {
+    if (!t.platforms.includes(platform)) continue
+    if (!t.ai?.selectionRule) continue
+    lines.push(`- ${t.type}: ${t.ai.selectionRule}`)
+  }
+
+  return lines.join("\n")
+}
+
+/**
+ * Compact dependency rules from NODE_TEMPLATES dependencies fields.
+ * Tells the AI which nodes require other nodes to exist first.
+ */
+export function getNodeDependencies(platform: Platform): string {
+  const lines: string[] = ["NODE DEPENDENCIES:"]
+  let hasAny = false
+
+  for (const t of NODE_TEMPLATES) {
+    if (!t.platforms.includes(platform)) continue
+    if (!t.ai?.dependencies || t.ai.dependencies.length === 0) continue
+    lines.push(`- ${t.type} requires: ${t.ai.dependencies.join(", ")}`)
+    hasAny = true
+  }
+
+  return hasAny ? lines.join("\n") : ""
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

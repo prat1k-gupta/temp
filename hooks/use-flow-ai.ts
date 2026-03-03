@@ -114,11 +114,20 @@ export function useFlowAI({
       setIsAISuggestionsPanelOpen(true)
       fetchSuggestions({
         currentNodeType: selectedNode.type,
+        currentNodeId: selectedNode.id,
         platform,
         flowContext: currentFlow?.description,
         existingNodes: nodes
           .filter((n) => n.type)
-          .map((n) => ({ id: n.id, type: n.type!, label: n.data.label as string | undefined })),
+          .map((n) => ({
+            id: n.id,
+            type: n.type!,
+            label: n.data.label as string | undefined,
+            question: n.data.question as string | undefined,
+            text: n.data.text as string | undefined,
+            buttons: n.data.buttons as Array<{ text?: string; id?: string }> | undefined,
+            options: n.data.options as Array<{ text?: string; id?: string }> | undefined,
+          })),
         edges: edges.map((e) => ({
           source: e.source,
           target: e.target,
@@ -659,7 +668,7 @@ export function useFlowAI({
   )
 
   const onAcceptAISuggestion = useCallback(
-    async (suggestion: { type: string; label?: string; generatedContent?: any }) => {
+    async (suggestion: { type: string; label?: string; generatedContent?: any; sourceButtonIndex?: number }) => {
       if (!selectedNode) {
         toast.error("No node selected")
         return
@@ -687,13 +696,27 @@ export function useFlowAI({
           options: gc?.options?.map((o: any) => o.text || ""),
         }
 
-        // Determine insertion target: find if selectedNode has a "default path" outgoing edge
+        // Determine which handle to attach from and which existing edge to replace
         const isMultiOutput = selectedNode.type ? isMultiOutputType(selectedNode.type) : false
-        const outgoingEdge = edges.find((e) => {
-          if (e.source !== selectedNode.id) return false
-          if (isMultiOutput) return e.sourceHandle === "next-step"
-          return !e.sourceHandle || e.sourceHandle === "next-step"
-        })
+        let attachHandle: string | undefined
+        let outgoingEdge: typeof edges[number] | undefined
+
+        if (isMultiOutput && suggestion.sourceButtonIndex != null) {
+          // Connect from a specific button handle
+          const buttons: Array<{ id?: string }> = (selectedNode.data as any)?.buttons || []
+          const btn = buttons[suggestion.sourceButtonIndex]
+          attachHandle = btn?.id ? btn.id : `button-${suggestion.sourceButtonIndex}`
+          outgoingEdge = edges.find(
+            (e) => e.source === selectedNode.id && e.sourceHandle === attachHandle
+          )
+        } else {
+          // Default: connect from "next-step" (sequential output)
+          outgoingEdge = edges.find((e) => {
+            if (e.source !== selectedNode.id) return false
+            if (isMultiOutput) return e.sourceHandle === "next-step"
+            return !e.sourceHandle || e.sourceHandle === "next-step"
+          })
+        }
         const nextNodeId = outgoingEdge?.target // undefined = end of flow (append)
 
         // Build an EditFlowPlan and run through the existing pipeline
@@ -701,6 +724,7 @@ export function useFlowAI({
           message: `Added ${suggestion.label || suggestion.type}`,
           chains: [{
             attachTo: selectedNode.id,
+            attachHandle,
             steps: [{ step: "node", nodeType: normalizedType, content }],
             connectTo: nextNodeId,
           }],

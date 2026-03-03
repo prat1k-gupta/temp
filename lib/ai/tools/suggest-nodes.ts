@@ -1,5 +1,6 @@
-import { buildAIContext, getPlatformGuidelines } from "../core/ai-context"
-import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
+import { getPlatformGuidelines } from "../core/ai-context"
+import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies } from "../core/node-documentation"
+import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { getAIClient } from "../core/ai-client"
 import { buildFlowGraphString } from "./generate-flow"
 import { getBaseNodeType } from "@/utils/platform-helpers"
@@ -9,9 +10,18 @@ import { z } from "zod"
 
 export interface SuggestNodesRequest {
   currentNodeType: string
+  currentNodeId?: string
   platform: Platform
   flowContext?: string
-  existingNodes?: Array<{ id: string; type: string; label?: string }>
+  existingNodes?: Array<{
+    id: string
+    type: string
+    label?: string
+    question?: string
+    text?: string
+    buttons?: Array<{ text?: string; id?: string }>
+    options?: Array<{ text?: string; id?: string }>
+  }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
 }
@@ -32,15 +42,10 @@ export async function suggestNodes(
   request: SuggestNodesRequest
 ): Promise<SuggestNodesResponse | null> {
   try {
-    const context = buildAIContext({
-      nodeType: request.currentNodeType,
-      platform: request.platform,
-    })
-
     const maxSuggestions = request.maxSuggestions || 2
 
     // Build system prompt
-    const systemPrompt = buildSystemPrompt(context, request)
+    const systemPrompt = buildSystemPrompt(request)
 
     // Build user prompt
     const userPrompt = buildUserPrompt(request)
@@ -65,7 +70,8 @@ export async function suggestNodes(
       reason: z.string().describe("Why this node makes sense after the current node"),
       description: z.string().describe("What this node does"),
       previewContent: z.string().optional().describe("Short preview of the generated content"),
-      generatedContent: generatedContentSchema.describe("The actual content for this node")
+      generatedContent: generatedContentSchema.describe("The actual content for this node"),
+      sourceButtonIndex: z.number().optional().describe("If the selected node is a quickReply/list, which button (0-based) this suggestion connects from"),
     })
 
     const responseSchema = z.object({
@@ -91,6 +97,7 @@ export async function suggestNodes(
         label: item.label || item.type,
         reason: item.reason || "",
         description: item.description || "",
+        sourceButtonIndex: item.sourceButtonIndex,
         previewContent: item.previewContent || generatePreviewContent(item),
         generatedContent: item.generatedContent || {},
       }))
@@ -100,21 +107,29 @@ export async function suggestNodes(
       const existingBaseTypes = new Set(
         (request.existingNodes || []).map(n => getBaseNodeType(n.type).toLowerCase())
       )
-      const hasHomeDelivery = existingBaseTypes.has("homedelivery")
 
       suggestions = suggestions.filter(s => {
         const suggestionBase = getBaseNodeType(s.type).toLowerCase()
 
-        // CRITICAL: trackingNotification should ONLY be suggested when homeDelivery exists
-        if (suggestionBase === "trackingnotification" && !hasHomeDelivery) {
-          console.log("[suggest-nodes] Filtering out trackingNotification - homeDelivery not found in flow")
-          return false
+        // Check dependency metadata — filter out nodes whose dependencies don't exist in the flow at all
+        const template = NODE_TEMPLATES.find(t => t.type.toLowerCase() === suggestionBase)
+        if (template?.ai?.dependencies) {
+          const missingDep = template.ai.dependencies.some(
+            dep => !existingBaseTypes.has(dep.toLowerCase())
+          )
+          if (missingDep) {
+            console.log(`[suggest-nodes] Filtering out "${s.type}" — missing dependency: ${template.ai.dependencies.join(", ")}`)
+            return false
+          }
         }
 
-        // Allow if it's a different base type, or if it's a super node that can appear multiple times
-        const isSuperNode = ['name', 'email', 'dob', 'address'].includes(suggestionBase)
-        if (existingBaseTypes.has(suggestionBase) && !isSuperNode) {
-          console.log(`[suggest-nodes] Filtering out "${s.type}" — base type "${suggestionBase}" already exists in flow`)
+        // Filter out node types that are unique-per-flow (information, fulfillment, integration)
+        // Interaction/logic/action nodes (question, quickReply, message, condition) can appear multiple times
+        const isUniquePerFlow = template?.category === "information" ||
+          template?.category === "fulfillment" ||
+          template?.category === "integration"
+        if (existingBaseTypes.has(suggestionBase) && isUniquePerFlow) {
+          console.log(`[suggest-nodes] Filtering out "${s.type}" — unique node type already exists in flow`)
           return false
         }
         return true
@@ -152,14 +167,14 @@ export async function suggestNodes(
   }
 }
 
-function buildSystemPrompt(
-  _context: ReturnType<typeof buildAIContext>,
-  request: SuggestNodesRequest
-): string {
+function buildSystemPrompt(request: SuggestNodesRequest): string {
   const platform = request.platform
   const nodeDocs = getSimplifiedNodeDocumentation(platform)
   const platformGuidelines = getPlatformGuidelines(platform)
   const n = request.maxSuggestions || 2
+
+  const selectionRules = getNodeSelectionRules(platform)
+  const dependencyRules = getNodeDependencies(platform)
 
   return `You are an expert conversational flow designer for ${platform}.
 
@@ -168,21 +183,16 @@ ${platformGuidelines}
 **AVAILABLE NODE TYPES:**
 ${nodeDocs}
 
-**NODE TYPE SELECTION RULES:**
-- Data collection → ALWAYS use super nodes: "name", "email", "dob", "address" (platform-agnostic)
-- Interaction nodes → use platform-specific types: e.g. "whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList" for WhatsApp
-- quickReply vs list: if ≤3 choices → use quickReply; if 4+ choices → use list (interactiveList)
-- Question nodes are ONLY for open-ended questions, NOT for collecting name/email/dob/address
+${selectionRules}
+${dependencyRules ? `\n${dependencyRules}` : ""}
 
-**CONTENT GENERATION RULES:**
-- **CRITICAL: All content MUST be specific to the flow's purpose.** Read the flow context and generate realistic, contextual content — NOT generic placeholders.
-- NEVER use placeholder text like "Option A", "Option B", "Please select one of the following options", "What would you like to know?", etc.
-- For quickReply: generate a contextual question + 2-3 button labels that fit the flow's purpose
-- For list: generate a contextual question + list options relevant to what the flow is about
-- For question: generate a question that makes sense in the flow's context
-- For message: generate a message that advances the conversation naturally
-- For super nodes: generate a prompt that fits the flow tone (e.g. "What's your email so we can send the report?" not "Please enter your email")
-- ALWAYS include "label" in generatedContent
+**SUGGESTION RULES:**
+- Study the flow graph to understand which branch the selected node is on and what comes before/after it.
+- Suggest nodes that make sense for the selected node's position and branch context.
+- Do NOT suggest fulfillment/delivery/tracking on rejection or decline branches.
+- Generate realistic, contextual content — NEVER use placeholder text like "Option A", "Please select one".
+- ALWAYS include "label" in generatedContent.
+- If the selected node is a quickReply/list with buttons, each suggestion MUST include "sourceButtonIndex" (0-based) indicating which button it connects from. Different suggestions should connect from different buttons.
 
 **OUTPUT FORMAT:**
 Return JSON with exactly ${n} suggestions:
@@ -191,9 +201,10 @@ Return JSON with exactly ${n} suggestions:
     {
       "type": "exact node type string",
       "label": "Display label",
-      "reason": "Why this fits after the current node",
+      "reason": "Why this node fits at this position",
       "description": "What this node does",
       "previewContent": "Short preview of content",
+      "sourceButtonIndex": 0,
       "generatedContent": { "label": "...", "question": "...", "buttons": [{"text": "..."}], "options": [{"text": "..."}] }
     }
   ]
@@ -203,20 +214,25 @@ Return JSON with exactly ${n} suggestions:
 function buildUserPrompt(request: SuggestNodesRequest): string {
   const parts: string[] = []
 
-  parts.push(`Current node: "${request.currentNodeType}"`)
   parts.push(`Platform: ${request.platform}`)
 
   if (request.flowContext) {
-    parts.push(`\nFlow purpose: ${request.flowContext}`)
+    parts.push(`Flow purpose: ${request.flowContext}`)
   }
 
-  // Flow graph — visual structure
+  // Flow graph — the AI reads this to understand structure and branches
   if (request.existingNodes && request.existingNodes.length > 0 && request.edges) {
     const minimalNodes: Node[] = request.existingNodes.map(n => ({
       id: n.id,
       type: n.type,
       position: { x: 0, y: 0 },
-      data: { label: n.label || "" },
+      data: {
+        label: n.label || "",
+        question: n.question,
+        text: n.text,
+        buttons: n.buttons,
+        options: n.options,
+      },
     }))
     const minimalEdges: Edge[] = request.edges.map((e, i) => ({
       id: `e-${i}`,
@@ -227,144 +243,12 @@ function buildUserPrompt(request: SuggestNodesRequest): string {
     parts.push(`\nCurrent flow:\n${buildFlowGraphString(minimalNodes, minimalEdges)}`)
   }
 
-  // Existing base types — single deduped list
-  if (request.existingNodes && request.existingNodes.length > 0) {
-    const existingBaseTypes = [...new Set(request.existingNodes.map(n => getBaseNodeType(n.type)))]
-    parts.push(`\nAlready used types (do NOT suggest these or their platform variants): ${existingBaseTypes.join(", ")}`)
-  }
-
-  // Detected flow pattern
-  const existingNodeTypes = request.existingNodes?.map(n => n.type) || []
-  const flowPattern = detectFlowPattern(request.flowContext, existingNodeTypes, request.currentNodeType)
-  parts.push(`\nFlow pattern: ${flowPattern.description}`)
-  parts.push(`Suggested sequence: ${flowPattern.sequence}`)
-  parts.push(flowPattern.guidelines)
-
-  parts.push(`\nSuggest ${request.maxSuggestions || 2} next nodes with contextual content specific to this flow's purpose.`)
+  // Selected node — the AI should find this in the graph above
+  const nodeId = request.currentNodeId ? ` [${request.currentNodeId}]` : ""
+  parts.push(`\nSelected node:${nodeId} type="${request.currentNodeType}"`)
+  parts.push(`Suggest ${request.maxSuggestions || 2} nodes that connect to this node. Use the flow graph to understand its branch context.`)
 
   return parts.join("\n")
-}
-
-function detectFlowPattern(
-  flowContext: string | undefined,
-  existingNodeTypes: string[],
-  currentNodeType: string
-): { description: string; guidelines: string; sequence: string } {
-  const contextLower = (flowContext || "").toLowerCase()
-  const allNodeTypes = [...existingNodeTypes, currentNodeType]
-  const nodeTypesLower = allNodeTypes.map(t => t.toLowerCase())
-
-  // Check for fulfillment-related keywords and nodes
-  const hasFulfillmentKeywords = 
-    contextLower.includes("delivery") || 
-    contextLower.includes("fulfillment") || 
-    contextLower.includes("shipping") ||
-    contextLower.includes("order") ||
-    contextLower.includes("purchase") ||
-    contextLower.includes("product")
-  
-  const hasFulfillmentNodes = 
-    nodeTypesLower.some(t => t.includes("address")) ||
-    nodeTypesLower.some(t => t.includes("delivery")) ||
-    nodeTypesLower.some(t => t.includes("homeDelivery"))
-  
-  const hasHomeDelivery = nodeTypesLower.some(t => t === "homedelivery")
-
-  // Check for feedback-related keywords
-  const hasFeedbackKeywords = 
-    contextLower.includes("feedback") || 
-    contextLower.includes("review") || 
-    contextLower.includes("rating") ||
-    contextLower.includes("experience") ||
-    contextLower.includes("trial") ||
-    contextLower.includes("survey")
-
-  // Check for interaction/data collection patterns
-  const hasDataCollectionNodes = 
-    nodeTypesLower.some(t => t === "name" || t === "email" || t === "dob" || t === "address")
-  
-  const hasInteractionNodes = 
-    nodeTypesLower.some(t => t.includes("question") || t.includes("quickReply") || t.includes("list"))
-
-  // Determine flow pattern
-  if (hasFulfillmentKeywords || hasFulfillmentNodes) {
-    return {
-      description: "Fulfillment Flow - Focus on order processing, delivery, and tracking",
-      guidelines: `
-**Fulfillment Flow Pattern:**
-1. **Address Collection** → Use "address" super node to collect delivery address
-2. **Schedule Delivery** → Use fulfillment nodes (homeDelivery, event, retailStore) or interaction nodes to schedule
-3. **Tracking Notification** → Use message/question nodes to provide tracking information
-4. **Thank You Message** → End with a confirmation/thank you message
-5. **Integrations** → Add in the middle if needed (Shopify, Stripe, etc.)
-
-**Current Stage Analysis:**
-- Has address collection: ${nodeTypesLower.some(t => t.includes("address")) ? "Yes" : "No"}
-- Has delivery scheduling: ${nodeTypesLower.some(t => t.includes("delivery") || t.includes("event") || t.includes("store")) ? "Yes" : "No"}
-- Has tracking: ${nodeTypesLower.some(t => t.includes("track") || t.includes("notification")) ? "Yes" : "No"}
-
-**Next Steps:**
-- If no address → suggest "address" node
-- If address exists but no delivery → suggest "homeDelivery" node
-- If homeDelivery exists but no tracking → suggest "trackingNotification" node (ONLY suggest trackingNotification when homeDelivery exists)
-- If delivery and tracking exist → suggest thank you message
-- If all fulfillment steps done → suggest thank you message
-
-**CRITICAL - Tracking Notification Rules:**
-- trackingNotification node should ONLY be suggested when homeDelivery node exists in the flow
-- trackingNotification comes AFTER homeDelivery in the flow sequence
-- Use type "trackingNotification" (not question/message nodes) for delivery tracking
-- Current flow has homeDelivery: ${hasHomeDelivery ? "Yes - trackingNotification can be suggested" : "No - DO NOT suggest trackingNotification"}`,
-      sequence: "Address Collection → Schedule Delivery → Tracking Notification → Thank You"
-    }
-  }
-
-  if (hasFeedbackKeywords) {
-    return {
-      description: "Feedback Flow - Focus on collecting user feedback and reviews",
-      guidelines: `
-**Feedback Flow Pattern:**
-1. **Initial Interaction** → Start with question/quickReply to understand feedback type
-2. **Data Collection** → Collect relevant info (email for follow-up, name for personalization)
-3. **Feedback Questions** → Use question/quickReply nodes to ask about experience, product, or trial
-4. **Thank You Message** → End with appreciation message
-5. **Integrations** → Add in the middle if needed (Mailchimp, Salesforce, etc.)
-
-**Current Stage Analysis:**
-- Has data collection: ${hasDataCollectionNodes ? "Yes" : "No"}
-- Has feedback questions: ${hasInteractionNodes ? "Yes" : "No"}
-
-**Next Steps:**
-- If no data collection → suggest "email" or "name" nodes
-- If data collected but no feedback questions → suggest question/quickReply nodes for feedback
-- If feedback collected → suggest thank you message`,
-      sequence: "Interaction → Data Collection → Feedback Questions → Thank You"
-    }
-  }
-
-  // Default: Interaction/Data Collection flow
-  return {
-    description: "Interaction Flow - Focus on engagement, data collection, and user experience",
-    guidelines: `
-**Interaction Flow Pattern:**
-1. **Initial Interaction** → Start with question/quickReply/list nodes to engage user
-2. **Data Collection** → Use super nodes (name, email, dob, address) to collect information
-3. **Questionnaire** → Use question/quickReply nodes to gather more details
-4. **Thank You Message** → End with confirmation or next steps message
-5. **Integrations** → Add in the middle if needed (Shopify, Meta, etc.)
-
-**Current Stage Analysis:**
-- Has interaction nodes: ${hasInteractionNodes ? "Yes" : "No"}
-- Has data collection: ${hasDataCollectionNodes ? "Yes" : "No"}
-- Has questionnaire: ${hasInteractionNodes && hasDataCollectionNodes ? "Yes" : "No"}
-
-**Next Steps:**
-- If no interaction yet → suggest question/quickReply nodes
-- If interaction exists but no data collection → suggest super nodes (email, name, etc.)
-- If data collected but no questionnaire → suggest question/quickReply for additional info
-- If questionnaire done → suggest thank you message or next steps`,
-    sequence: "Interaction → Data Collection → Questionnaire → Thank You"
-  }
 }
 
 function parseSuggestions(content: string, maxSuggestions: number): SuggestedNode[] {

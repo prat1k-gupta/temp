@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       currentNodeType,
+      currentNodeId,
       platform,
       flowContext,
       existingNodes,
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
 
     const result = await suggestNodes({
       currentNodeType,
+      currentNodeId,
       platform: platform as Platform,
       flowContext,
       existingNodes,

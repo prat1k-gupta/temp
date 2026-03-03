@@ -1,6 +1,8 @@
 import { getAIClient } from "../core/ai-client"
 import { getPlatformGuidelines } from "../core/ai-context"
-import { getSimplifiedNodeDocumentation } from "../core/node-documentation"
+import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies } from "../core/node-documentation"
+import { NODE_TEMPLATES } from "@/constants/node-categories"
+import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 import type { Platform } from "@/types"
 import type { Node, Edge } from "@xyflow/react"
 import { z } from "zod"
@@ -41,44 +43,14 @@ export interface GenerateFlowResponse {
   debugData?: Record<string, unknown>
 }
 
-function getNodeTypeLabel(nodeType: string, platform: Platform): string {
-  // Map node types to display labels
-  const typeMap: Record<string, string> = {
-    // Information nodes
-    name: "Name",
-    email: "Email",
-    dob: "Date of Birth",
-    address: "Address",
-    // Fulfillment nodes
-    homeDelivery: "Home Delivery",
-    event: "Event",
-    retailStore: "Retail Store",
-    // Integration nodes
-    shopify: "Shopify",
-    metaAudience: "Meta Audience",
-    stripe: "Stripe",
-    zapier: "Zapier",
-    google: "Google Sheets",
-    salesforce: "Salesforce",
-    mailchimp: "Mailchimp",
-    twilio: "Twilio",
-    slack: "Slack",
-    airtable: "Airtable",
-  }
+function getNodeTypeLabel(nodeType: string): string {
+  // Strip platform prefix (e.g. "whatsappQuestion" → "Question")
+  if (nodeType.includes("Question")) return "Question"
+  if (nodeType.includes("QuickReply")) return "Quick Reply"
+  if (nodeType.includes("List")) return "List"
 
-  // Check if it's a platform-specific interaction node
-  if (nodeType.includes("Question")) {
-    return "Question"
-  }
-  if (nodeType.includes("QuickReply")) {
-    return "Quick Reply"
-  }
-  if (nodeType.includes("List")) {
-    return "List"
-  }
-
-  // Return mapped label or capitalize the type
-  return typeMap[nodeType] || nodeType.charAt(0).toUpperCase() + nodeType.slice(1)
+  const template = NODE_TEMPLATES.find(t => t.type === nodeType)
+  return template?.label || nodeType.charAt(0).toUpperCase() + nodeType.slice(1)
 }
 
 /**
@@ -243,30 +215,16 @@ function processFlowResponse(
     // Process the parsed response
     if (parsed) {
       
-      // Get platform-specific node type prefix
-      const platformPrefix = platform === "whatsapp" ? "whatsapp" : platform === "instagram" ? "instagram" : "web"
-      
-      // All valid node types (platform-agnostic)
-      // Platform-specific interaction nodes are validated by checking if they start with platform prefix
-      const validNodeTypes = [
-        // Information nodes (super nodes)
-        "name", "email", "dob", "address",
-        // Logic nodes
-        "condition",
-        // Fulfillment nodes
-        "homeDelivery", "event", "retailStore",
-        // Integration nodes
-        "shopify", "stripe", "zapier", "google", "salesforce", "mailchimp", "twilio", "slack", "airtable",
-        // Meta integration (whatsapp/instagram only)
-        ...(platform === "whatsapp" || platform === "instagram" ? ["metaAudience"] : [])
-      ]
-      
-      // Platform-specific interaction node types that are available
-      const platformInteractionNodes = platform === "whatsapp"
-        ? ["whatsappQuestion", "whatsappQuickReply", "whatsappInteractiveList", "whatsappMessage"]
-        : platform === "instagram"
-        ? ["instagramQuestion", "instagramQuickReply", "instagramDM", "instagramStory"]
-        : ["webQuestion", "webQuickReply"]
+      // Build valid node types dynamically from NODE_TEMPLATES
+      const validNodeTypesSet = new Set<string>()
+      for (const template of NODE_TEMPLATES) {
+        if (!template.platforms.includes(platform)) continue
+        // Add the base type
+        validNodeTypesSet.add(template.type)
+        // Add the platform-specific mapped type (e.g., question → whatsappQuestion)
+        const mapped = NODE_TYPE_MAPPINGS[template.type]?.[platform]
+        if (mapped) validNodeTypesSet.add(mapped)
+      }
       
       // Calculate max X position from existing nodes (for better positioning)
       let maxX = 250 // Start node is at x: 250
@@ -280,26 +238,19 @@ function processFlowResponse(
         parsed.flowData.nodes = parsed.flowData.nodes
           // Filter out start nodes
           .filter((node: any) => node.type !== "start")
-          // Filter to only valid nodes (platform-specific interaction nodes or platform-agnostic nodes)
-          .filter((node: any) => {
-            const nodeType = node.type || ""
-            // Allow only actual platform-specific interaction nodes OR valid platform-agnostic nodes
-            return (
-              platformInteractionNodes.includes(nodeType) ||
-              validNodeTypes.includes(nodeType)
-            )
-          })
+          // Filter to only valid nodes for this platform
+          .filter((node: any) => validNodeTypesSet.has(node.type || ""))
           // Fix positioning and transform data
           .map((node: any, index: number) => {
             // Fix positioning: space nodes horizontally starting after existing nodes
-            const xPosition = node.position?.x && node.position.x > 250 
-              ? node.position.x 
+            const xPosition = node.position?.x && node.position.x > 250
+              ? node.position.x
               : maxX + 350 + (index * 350)
             const yPosition = node.position?.y || 150
-            
+
             // Ensure label is always set
-            const nodeLabel = node.data?.label || node.label || getNodeTypeLabel(node.type, platform)
-            
+            const nodeLabel = node.data?.label || node.label || getNodeTypeLabel(node.type)
+
             return {
               ...node,
               position: {
@@ -319,15 +270,8 @@ function processFlowResponse(
         parsed.updates.nodes = parsed.updates.nodes
           // Filter out start nodes
           .filter((node: any) => node.type !== "start")
-          // Filter to only valid nodes (platform-specific interaction nodes or platform-agnostic nodes)
-          .filter((node: any) => {
-            const nodeType = node.type || ""
-            // Allow only actual platform-specific interaction nodes OR valid platform-agnostic nodes
-            return (
-              platformInteractionNodes.includes(nodeType) ||
-              validNodeTypes.includes(nodeType)
-            )
-          })
+          // Filter to only valid nodes for this platform
+          .filter((node: any) => validNodeTypesSet.has(node.type || ""))
           // Fix positioning
           .map((node: any, index: number) => {
             // Fix positioning: space nodes horizontally
@@ -338,7 +282,7 @@ function processFlowResponse(
             const yPosition = node.position?.y || 150
             
             // Ensure label is always set
-            const nodeLabel = node.data?.label || node.label || getNodeTypeLabel(node.type, platform)
+            const nodeLabel = node.data?.label || node.label || getNodeTypeLabel(node.type)
             
             return {
               ...node,
@@ -395,14 +339,18 @@ function processFlowResponse(
         parsed.updates.edges = deduplicateEdges(parsed.updates.edges)
       }
 
-      // Validate delivery flows have required nodes
+      // Validate node dependencies from NODE_TEMPLATES metadata
       const allNodes = [...(parsed.flowData?.nodes || []), ...(parsed.updates?.nodes || [])]
-      const hasHomeDelivery = allNodes.some((n: any) => n.type === "homeDelivery")
-      const hasAddress = allNodes.some((n: any) => n.type === "address")
-      
-      if (hasHomeDelivery && !hasAddress) {
-        console.warn("[generate-flow] Delivery flow missing address node - this should be added by AI")
-        // Could add address node automatically, but better to let AI fix it
+      const allBaseTypes = new Set(allNodes.map((n: any) => n.type?.toLowerCase()))
+      for (const node of allNodes) {
+        const template = NODE_TEMPLATES.find(t => t.type === node.type)
+        if (template?.ai?.dependencies) {
+          for (const dep of template.ai.dependencies) {
+            if (!allBaseTypes.has(dep.toLowerCase())) {
+              console.warn(`[generate-flow] "${node.type}" requires "${dep}" but it's missing from the flow`)
+            }
+          }
+        }
       }
 
       return {
@@ -662,6 +610,9 @@ function buildSystemPrompt(
   // Both modes are plan-based now — use compact docs
   const nodeDocs = getSimplifiedNodeDocumentation(request.platform)
 
+  const selectionRules = getNodeSelectionRules(request.platform)
+  const dependencyRules = getNodeDependencies(request.platform)
+
   let prompt = `You are an expert conversational flow designer for ${request.platform} platforms.
 
 Your task is to ${action} a conversational flow based on user requirements.
@@ -671,6 +622,9 @@ ${platformGuidelines}
 
 **${isEdit ? "COMPREHENSIVE NODE DOCUMENTATION" : "AVAILABLE NODE TYPES"}:**
 ${nodeDocs}
+
+${selectionRules}
+${dependencyRules ? `\n${dependencyRules}` : ""}
 
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}
@@ -713,14 +667,8 @@ Platform: ${request.platform}`
     prompt += `\n\nIMPORTANT: Each source node can only have ONE edge per sourceHandle. If you need to change a connection, replace the existing edge.`
   }
 
-  // Detect if delivery is mentioned and emphasize address collection
-  const promptLower = request.prompt.toLowerCase()
-  const mentionsDelivery = promptLower.includes("deliver") || promptLower.includes("delivery") || promptLower.includes("ship") || promptLower.includes("home") || promptLower.includes("sample")
-  
-  if (mentionsDelivery && !isEdit) {
-    prompt += `\n\nDELIVERY FLOW: Include name → quickReply (offer) → branches → address → homeDelivery. Consider metaAudience for WhatsApp/Instagram.`
-  } else if (!isEdit) {
-    prompt += `\n\nOnly include nodes that are directly relevant to the user's request. Do NOT add name, email, address, or other data-collection nodes unless the user asks for them or the flow logically requires them (e.g., delivery needs address). Use quickReply for choices with branches.`
+  if (!isEdit) {
+    prompt += `\n\nOnly include nodes that are directly relevant to the user's request. Do NOT add name, email, address, or other data-collection nodes unless the user asks for them or the flow logically requires them. Use quickReply for choices with branches.`
   }
 
   // Always include start node info for new flows
@@ -764,25 +712,15 @@ function getCreateInstructions(): string {
     '',
     '**Key Rules:**',
     '- Only include nodes directly relevant to the user\'s request — do NOT add name, email, dob, or address unless the flow logically needs that data',
-    '- Use "question" when asking the user something that expects a text reply back',
-    '- Use "whatsappMessage" / "instagramDM" ONLY for one-way informational messages where NO user response is needed (e.g., "Thank you!", confirmations)',
-    '- Use quickReply (not question) when you need buttons/choices',
-    '- **Prefer quickReply over question when the answer domain is finite.** Examples:',
-    '  - "What\'s your dog breed?" → quickReply with breed buttons',
-    '  - "What size?" → quickReply ["S", "M", "L", "XL"]',
-    '  - "Rate your experience" → quickReply ["Great", "Good", "Could be better"]',
-    '  Only use "question" for truly open-ended input (comments, descriptions, freeform feedback).',
     '- **After a quickReply/interactiveList:**',
     '  - If ALL buttons lead to the SAME follow-up: place node steps directly after the quickReply (no branches needed) — every button will connect to the same node.',
     '  - If buttons lead to DIFFERENT paths: use branch steps for the differing parts.',
     '  - If branches converge to shared follow-up steps: place the shared steps AFTER all branch steps — they\'ll be created once and all branches will connect to them.',
     '  - Do NOT duplicate identical nodes inside every branch.',
-    '- For delivery flows: MUST include "address" + "homeDelivery"',
     '- Include integrations (metaAudience, shopify, etc.) only when relevant',
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
     '- Max branches per platform: web=10, whatsapp=3, instagram=3',
-    '- **WhatsApp/Instagram quickReply limit:** Max 3 buttons. If you need more than 3 choices, use interactiveList with options[] instead (supports up to 10). The system will auto-convert if you exceed the limit, but prefer using the correct type upfront.',
     '- Each branch should contain ONLY the steps that are UNIQUE to that button choice.',
   ].join("\n")
 }
@@ -857,20 +795,11 @@ function getEditInstructions(): string {
     '',
     '**Key Rules:**',
     '- When restructuring, always remove old edges/nodes THEN add new ones',
-    '- Use "question" when asking the user something that expects a text reply',
-    '- Use "whatsappMessage" / "instagramDM" ONLY for one-way informational messages (no reply expected)',
-    '- Use quickReply (not question) when you need buttons/choices',
-    '- **Prefer quickReply over question when the answer domain is finite.** Examples:',
-    '  - "What\'s your dog breed?" → quickReply with breed buttons',
-    '  - "What size?" → quickReply ["S", "M", "L", "XL"]',
-    '  Only use "question" for truly open-ended input (comments, descriptions, freeform feedback).',
     '- Only add information nodes (name, email, dob, address) when the flow logically needs them',
     '- Steps after branch steps become shared nodes — do not duplicate identical follow-ups in each branch',
-    '- For delivery flows: MUST include "address" + "homeDelivery"',
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
     '- Max branches per platform: web=10, whatsapp=3, instagram=3',
-    '- **WhatsApp/Instagram quickReply limit:** Max 3 buttons. If you need more than 3 choices, use interactiveList with options[] instead (supports up to 10). The system will auto-convert if you exceed the limit, but prefer using the correct type upfront.',
   ].join("\n")
 }
 
@@ -894,11 +823,8 @@ function getCreateResponseFormat(): string {
     "**IMPORTANT:**",
     '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',
     '- Only include information nodes (name, email, dob, address) when the flow needs that data — do NOT add them by default',
-    '- Use "question" when asking users something that expects a text reply; use "whatsappMessage"/"instagramDM" ONLY for one-way messages (no reply expected)',
-    "- Use quickReply for choices/buttons (not question)",
     "- Steps AFTER all branch steps become shared convergence nodes — all branches connect to them. Do NOT duplicate identical follow-up nodes inside every branch.",
     "- If ALL buttons lead to the same path, skip branches entirely and place steps directly after the quickReply.",
-    "- For delivery: MUST include address + homeDelivery",
     "- Add integrations only when relevant (metaAudience for WhatsApp/Instagram)",
     "- Write full, natural questions",
     "- Branches follow the last quickReply/interactiveList in the current scope",
@@ -1009,9 +935,6 @@ function getEditResponseFormat(): string {
     '- "removeEdges" disconnects specific edges by source+target',
     '- "addEdges" creates new edges — use sourceButtonIndex to connect from a specific button (0-based)',
     "- When restructuring: remove old edges/nodes first, then add new chains",
-    '- Use "question" when asking users something that expects a text reply',
-    '- Use "whatsappMessage"/"instagramDM" ONLY for one-way messages (no reply expected)',
-    "- Use quickReply for choices/buttons (not question)",
     "- Only add information nodes (name, email, etc.) when the flow needs that data",
     "- Write full, natural questions",
     "",

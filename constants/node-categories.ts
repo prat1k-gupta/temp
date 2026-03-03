@@ -40,6 +40,10 @@ export interface NodeTemplateAI {
   requiredProperties: string[]
   /** Optional properties */
   optionalProperties?: string[]
+  /** Short imperative rule for AI node selection (injected into all prompts) */
+  selectionRule?: string
+  /** Node IDs that must exist in the flow before this node can be used */
+  dependencies?: string[]
 }
 
 export interface NodeTemplate {
@@ -124,6 +128,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       contentFields: "question (ONLY for open-ended text — prefer quickReply when answers are finite)",
       requiredProperties: ["label", "question", "platform"],
+      selectionRule: "Only for open-ended text input. Use quickReply when answers are finite.",
     },
   },
   {
@@ -136,7 +141,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     limits: { textField: "question", hasButtons: true, multiOutput: true },
     ai: {
       description: "Question with button options. Supports branching - each button can connect to different nodes using sourceHandle (button-0, button-1, button-2).",
-      whenToUse: "When the answer has finite/known options. Prefer this over question whenever possible — selections, ratings, yes/no, categories, sizes, types, etc. Perfect for branching flows where different buttons lead to different paths.",
+      whenToUse: "When the answer has finite/known options (1-3 choices). ALWAYS use this instead of interactiveList when there are 3 or fewer options — buttons are more tap-friendly. Max 3 buttons on WhatsApp/Instagram. Perfect for branching flows where different buttons lead to different paths.",
       bestPractices: [
         "Use action-oriented button text (Yes, No, Continue, etc.)",
         "Keep button text short and scannable (max 20 chars for WhatsApp)",
@@ -150,6 +155,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       contentFields: "question, buttons[] (prefer over question when answer options are finite)",
       requiredProperties: ["label", "question", "buttons", "platform"],
+      selectionRule: "Use for 1-3 choices. Always prefer over interactiveList for ≤3 options.",
     },
   },
   {
@@ -162,7 +168,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     limits: { textField: "question", hasOptions: true, listTitleMax: 60, multiOutput: true, maxConnections: 10 },
     ai: {
       description: "Interactive list menu with options. Each option can have a title and description.",
-      whenToUse: "When you need to present multiple options in a structured list format. Better for 3+ options than buttons.",
+      whenToUse: "ONLY when there are 4 or more choices. Never use for 3 or fewer options — use quickReply instead. Renders as a scrollable list menu on WhatsApp (up to 10 options).",
       bestPractices: [
         "Keep option titles concise (max 24 chars)",
         "Use descriptions to provide context (max 72 chars)",
@@ -174,6 +180,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       contentFields: "question, options[], listTitle",
       requiredProperties: ["label", "question", "listTitle", "options", "platform"],
+      selectionRule: "Only for 4+ choices. Never use for ≤3 options — use quickReply.",
     },
   },
   {
@@ -197,6 +204,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       contentFields: "text (one-way message only, NOT for questions)",
       requiredProperties: ["label", "text", "platform"],
+      selectionRule: "One-way message only. No user reply expected. Not for questions.",
     },
   },
   {
@@ -220,6 +228,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       contentFields: "text (one-way message only, NOT for questions)",
       requiredProperties: ["label", "text", "platform"],
+      selectionRule: "One-way message only. No user reply expected.",
     },
   },
   {
@@ -479,6 +488,8 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       requiredProperties: ["label", "platform", "message"],
       optionalProperties: ["trackingNumber", "estimatedDelivery"],
+      selectionRule: "Only after homeDelivery node exists in the flow.",
+      dependencies: ["homeDelivery"],
     },
   },
   {

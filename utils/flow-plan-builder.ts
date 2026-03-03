@@ -86,6 +86,9 @@ export function buildFlowFromPlan(
 
   autoPopulateStoreAs(nodes)
 
+  // Validate node dependencies from NODE_TEMPLATES metadata
+  validateDependencies(nodes, warnings)
+
   return { nodes, edges: deduplicateEdges(edges), nodeOrder, warnings }
 }
 
@@ -482,6 +485,14 @@ export function buildEditFlowFromPlan(
 
   autoPopulateStoreAs(newNodes)
 
+  // Validate node dependencies — check new nodes against both existing and new nodes
+  const removedSet = new Set(plan.removeNodeIds || [])
+  const allNodesForDeps = [
+    ...existingNodes.filter(n => !removedSet.has(n.id)),
+    ...newNodes,
+  ]
+  validateDependencies(allNodesForDeps, warnings, newNodes)
+
   return {
     newNodes,
     newEdges: deduplicateEdges(newEdges),
@@ -865,6 +876,31 @@ function countChainNodes(chain: EditChain): number {
 /** Generate a short random suffix for node IDs to prevent collisions on duplicate runs */
 function rand4(): string {
   return Math.random().toString(36).slice(2, 6)
+}
+
+/**
+ * Validate node dependencies from NODE_TEMPLATES metadata.
+ * If a node has dependencies that aren't present in the flow, emit a warning.
+ * @param allNodes - all nodes in the flow (existing + new)
+ * @param warnings - mutable warnings array
+ * @param onlyCheck - if provided, only validate these nodes (useful for edit mode to only warn about new nodes)
+ */
+function validateDependencies(allNodes: Node[], warnings: string[], onlyCheck?: Node[]): void {
+  const allBaseTypes = new Set(
+    allNodes.map(n => getBaseNodeType(n.type || "").toLowerCase())
+  )
+  const nodesToCheck = onlyCheck || allNodes
+  for (const node of nodesToCheck) {
+    const baseType = getBaseNodeType(node.type || "")
+    const template = NODE_TEMPLATES.find(t => t.type === baseType)
+    if (template?.ai?.dependencies) {
+      for (const dep of template.ai.dependencies) {
+        if (!allBaseTypes.has(dep.toLowerCase())) {
+          warnings.push(`"${baseType}" requires "${dep}" but it's missing from the flow`)
+        }
+      }
+    }
+  }
 }
 
 /**

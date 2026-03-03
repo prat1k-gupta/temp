@@ -343,16 +343,18 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
           )}
 
           {/* Save Response As */}
-          <StoreAsPill
-            storeAs={data.storeAs || ""}
-            onUpdate={(value) => {
-              if (data.onNodeUpdate) {
-                data.onNodeUpdate(data.id, { ...data, storeAs: value })
-              }
-            }}
-            flowVariables={data.flowVariables || []}
-            suggestedName={data.question || data.label}
-          />
+          <div className="border-t border-border/40 pt-2">
+            <StoreAsPill
+                storeAs={data.storeAs || ""}
+                onUpdate={(value) => {
+                  if (data.onNodeUpdate) {
+                    data.onNodeUpdate(data.id, { ...data, storeAs: value })
+                  }
+                }}
+                flowVariables={data.flowVariables || []}
+                suggestedName={data.question || data.label}
+              />
+          </div>
 
           {/* AI Button Generator */}
           {(data.question || editingQuestionValue) && buttons.length < 10 && (

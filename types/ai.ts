@@ -119,6 +119,8 @@ export interface SuggestedNode {
   reason: string
   description: string
   previewContent?: string
+  /** For quickReply/list nodes: which button (0-based) this suggestion connects from */
+  sourceButtonIndex?: number
   generatedContent?: {
     question?: string
     buttons?: Array<{ text: string; label?: string }>

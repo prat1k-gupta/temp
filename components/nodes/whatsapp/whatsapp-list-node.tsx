@@ -13,7 +13,9 @@ import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
 import { getAddButtonClasses, getDeleteButtonSmallClasses } from "@/utils/button-styles"
 import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
+import { AIButtonToolbar } from "@/components/ai"
 import { slugify } from "@/utils/flow-variables"
+import type { ButtonData } from "@/types"
 
 export function WhatsAppListNode({ data, selected }: { data: any; selected?: boolean }) {
   const options = data.options || []
@@ -113,6 +115,16 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
     }
   }
 
+  const handleUpdateOptions = (newButtons: ButtonData[]) => {
+    const formatted = newButtons.map(btn => ({
+      text: btn.label,
+      id: btn.id,
+    }))
+    if (data.onNodeUpdate) {
+      data.onNodeUpdate(data.id, { ...data, options: formatted.slice(0, maxOptions) })
+    }
+  }
+
   return (
     <div className="relative">
       <Card
@@ -199,16 +211,31 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
           )}
 
           {/* Save Response As */}
-          <StoreAsPill
-            storeAs={data.storeAs || ""}
-            onUpdate={(value) => {
-              if (data.onNodeUpdate) {
-                data.onNodeUpdate(data.id, { ...data, storeAs: value })
-              }
-            }}
-            flowVariables={data.flowVariables || []}
-            suggestedName={data.question || data.label}
-          />
+          <div className="border-t border-border/40 pt-2">
+            <StoreAsPill
+                storeAs={data.storeAs || ""}
+                onUpdate={(value) => {
+                  if (data.onNodeUpdate) {
+                    data.onNodeUpdate(data.id, { ...data, storeAs: value })
+                  }
+                }}
+                flowVariables={data.flowVariables || []}
+                suggestedName={data.question || data.label}
+              />
+          </div>
+
+          {/* AI Option Generator */}
+          {(data.question || editingQuestionValue) && options.length < maxOptions && (
+            <AIButtonToolbar
+              questionContext={editingQuestionValue || data.question}
+              buttons={options.map((o: any) => ({ id: o.id || `opt-${Date.now()}`, label: o.text, value: o.text }))}
+              onUpdateButtons={handleUpdateOptions}
+              maxButtons={maxOptions}
+              maxButtonLength={maxOptionLength}
+              nodeType={nodeType}
+              platform={platform}
+            />
+          )}
 
           <div className="space-y-1">
             {options.map((option: any, index: number) => (

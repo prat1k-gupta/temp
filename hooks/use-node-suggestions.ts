@@ -3,9 +3,18 @@ import type { Platform, SuggestedNode } from "@/types"
 
 interface UseNodeSuggestionsOptions {
   currentNodeType: string
+  currentNodeId?: string
   platform: Platform
   flowContext?: string
-  existingNodes?: Array<{ id: string; type: string; label?: string }>
+  existingNodes?: Array<{
+    id: string
+    type: string
+    label?: string
+    question?: string
+    text?: string
+    buttons?: Array<{ text?: string; id?: string }>
+    options?: Array<{ text?: string; id?: string }>
+  }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
 }
@@ -27,6 +36,7 @@ export function useNodeSuggestions() {
         },
         body: JSON.stringify({
           currentNodeType: options.currentNodeType,
+          currentNodeId: options.currentNodeId,
           platform: options.platform,
           flowContext: options.flowContext,
           existingNodes: options.existingNodes,

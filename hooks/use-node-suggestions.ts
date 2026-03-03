@@ -14,6 +14,7 @@ interface UseNodeSuggestionsOptions {
     text?: string
     buttons?: Array<{ text?: string; id?: string }>
     options?: Array<{ text?: string; id?: string }>
+    storeAs?: string
   }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number

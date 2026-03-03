@@ -11,11 +11,11 @@ export const runtime = 'edge'
 export async function POST(request: NextRequest) {
   try {
     // Check for API key
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[API] OpenAI API key not configured')
+    if (!process.env.XAI_API_KEY) {
+      console.error('[API] xAI API key not configured')
       return NextResponse.json(
-        { 
-          error: 'OpenAI API key not configured. Please create a .env.local file with OPENAI_API_KEY=your-key-here and restart the dev server.' 
+        {
+          error: 'xAI API key not configured. Please set XAI_API_KEY in your .env.local file.'
         },
         { status: 500 }
       )

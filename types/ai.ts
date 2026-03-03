@@ -191,7 +191,7 @@ export interface AIContext {
  * AI service configuration
  */
 export interface AIServiceConfig {
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'xai'
   model?: string
   apiKey?: string
   maxTokens?: number

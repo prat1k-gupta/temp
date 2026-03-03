@@ -5,9 +5,9 @@ import type { Platform } from "@/types"
 export async function POST(request: NextRequest) {
   try {
     // Check for API key
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
-        { error: "OpenAI API key not configured. Please set OPENAI_API_KEY in your .env.local file." },
+        { error: "Anthropic API key not configured. Please set ANTHROPIC_API_KEY in your .env.local file." },
         { status: 500 }
       )
     }

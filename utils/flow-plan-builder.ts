@@ -771,6 +771,7 @@ export function contentToNodeData(
   if (content.comment) data.comment = content.comment
   if (content.message) data.message = content.message
   if (content.listTitle) data.listTitle = content.listTitle
+  if (content.storeAs) data.storeAs = content.storeAs
 
   // Convert string buttons → ButtonData[]
   if (content.buttons && content.buttons.length > 0) {

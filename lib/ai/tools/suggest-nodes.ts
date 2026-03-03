@@ -21,6 +21,7 @@ export interface SuggestNodesRequest {
     text?: string
     buttons?: Array<{ text?: string; id?: string }>
     options?: Array<{ text?: string; id?: string }>
+    storeAs?: string
   }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
@@ -61,7 +62,8 @@ export async function suggestNodes(
         text: z.string(),
         description: z.string().optional()
       })).optional().describe("List options (for list nodes)"),
-      text: z.string().optional().describe("Message text (for message nodes)")
+      text: z.string().optional().describe("Message text (for message nodes)"),
+      storeAs: z.string().optional().describe("Variable name to store the user response (for question/quickReply/list nodes)")
     }).passthrough()
 
     const suggestionSchema = z.object({
@@ -88,7 +90,8 @@ export async function suggestNodes(
       }>({
         systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object with exactly ${maxSuggestions} suggestions.`,
         userPrompt,
-        schema: responseSchema
+        schema: responseSchema,
+        model: 'claude-haiku',
       })
 
       // Transform and validate suggestions
@@ -149,6 +152,7 @@ export async function suggestNodes(
         userPrompt,
         temperature: 0.7,
         maxTokens: 500,
+        model: 'claude-haiku',
       })
 
       const content = response.text
@@ -193,6 +197,14 @@ ${dependencyRules ? `\n${dependencyRules}` : ""}
 - Generate realistic, contextual content — NEVER use placeholder text like "Option A", "Please select one".
 - ALWAYS include "label" in generatedContent.
 - If the selected node is a quickReply/list with buttons, each suggestion MUST include "sourceButtonIndex" (0-based) indicating which button it connects from. Different suggestions should connect from different buttons.
+- For question/quickReply/list suggestions, include a "storeAs" field with a short snake_case variable name.
+
+**VARIABLE INTERPOLATION:**
+- Nodes with {storeAs: "var_name"} in the flow graph store user responses as variables.
+- Button/list responses: use {{var_name_title}} to get the display text the user chose.
+- Text input responses: use {{var_name}} directly.
+- When generating message text, reference earlier variables using {{var_name}} or {{var_name_title}} — NEVER use [placeholder] syntax.
+- Super nodes: name→{{user_name}}, email→{{user_email}}, dob→{{user_dob}}, address→{{user_address}}.
 
 **OUTPUT FORMAT:**
 Return JSON with exactly ${n} suggestions:
@@ -232,6 +244,7 @@ function buildUserPrompt(request: SuggestNodesRequest): string {
         text: n.text,
         buttons: n.buttons,
         options: n.options,
+        storeAs: n.storeAs,
       },
     }))
     const minimalEdges: Edge[] = request.edges.map((e, i) => ({

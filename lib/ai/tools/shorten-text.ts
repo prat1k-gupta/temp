@@ -54,7 +54,8 @@ export const shortenTextTool: AITool<ShortenTextRequest, ShortenTextResponse> = 
       }>({
         systemPrompt,
         userPrompt,
-        schema: responseSchema
+        schema: responseSchema,
+        model: 'grok-fast',
       })
 
       const originalLength = text.length

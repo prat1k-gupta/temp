@@ -10,6 +10,7 @@ import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import { isMultiOutputType } from "@/utils/platform-helpers"
+import { collectFlowVariables } from "@/utils/flow-variables"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -100,10 +101,12 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     const label = (node.data as any)?.label || ""
     const question = typeof (node.data as any)?.question === "string" ? (node.data as any).question : ""
     const text = typeof (node.data as any)?.text === "string" ? (node.data as any).text : ""
+    const storeAs = typeof (node.data as any)?.storeAs === "string" ? (node.data as any).storeAs : ""
     const displayText = question || text
     const labelPart = label ? ` ${label}` : ""
     const contentPart = displayText ? ` — "${displayText.substring(0, 60)}${displayText.length > 60 ? "..." : ""}"` : ""
-    return `[${node.id}]${labelPart} (${node.type})${contentPart}`
+    const storeAsPart = storeAs ? ` {storeAs: "${storeAs}"}` : ""
+    return `[${node.id}]${labelPart} (${node.type})${contentPart}${storeAsPart}`
   }
 
   function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {
@@ -446,7 +449,8 @@ export async function generateFlow(
         const editPlan = await aiClient.generateJSON<EditFlowPlan>({
           systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
           userPrompt,
-          schema: editFlowPlanSchema
+          schema: editFlowPlanSchema,
+          model: 'claude-sonnet',
         })
 
         console.log("[generate-flow] Edit plan from AI:", JSON.stringify({
@@ -504,7 +508,8 @@ export async function generateFlow(
         const plan = await aiClient.generateJSON<FlowPlan>({
           systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
           userPrompt,
-          schema: flowPlanSchema
+          schema: flowPlanSchema,
+          model: 'claude-sonnet',
         })
 
         // Convert plan → ReactFlow nodes + edges
@@ -527,6 +532,7 @@ export async function generateFlow(
         userPrompt,
         temperature: 0.7,
         maxTokens: 2000,
+        model: 'claude-sonnet',
       })
 
       const content = response.text
@@ -664,6 +670,12 @@ Platform: ${request.platform}`
       prompt += `\nApply your changes relative to this node. Do NOT modify nodes or edges far from this area unless explicitly asked.`
     }
 
+    // Include available variables from existing nodes
+    const existingVars = collectFlowVariables(request.existingFlow.nodes)
+    if (existingVars.length > 0) {
+      prompt += `\n\nAvailable variables (from storeAs fields — use {{variable_name}} to reference in messages):\n${existingVars.map(v => `  - {{${v}}}`).join("\n")}`
+    }
+
     prompt += `\n\nIMPORTANT: Each source node can only have ONE edge per sourceHandle. If you need to change a connection, replace the existing edge.`
   }
 
@@ -709,6 +721,23 @@ function getCreateInstructions(): string {
     '- text: string — for whatsappMessage, instagramDM, instagramStory',
     '- label: string — custom display label (otherwise auto-generated)',
     '- message: string — for trackingNotification',
+    '- storeAs: string — variable name to store the user\'s response (e.g. "selected_flavor"). ALWAYS provide this for question, quickReply, and interactiveList nodes so later nodes can reference the answer via {{storeAs_value}}.',
+    '',
+    '**CRITICAL — quickReply vs interactiveList:**',
+    '- **≤3 choices → ALWAYS use quickReply** (with buttons[]). NEVER use interactiveList for 3 or fewer options.',
+    '- **4+ choices → use interactiveList** (with options[] and listTitle).',
+    '- This rule is absolute and has no exceptions.',
+    '',
+    '**VARIABLE INTERPOLATION (referencing previous answers):**',
+    '- Nodes that collect input (question, quickReply, interactiveList, super nodes) store the user\'s response in a variable.',
+    '- ALWAYS set `storeAs` in the content field for question, quickReply, and interactiveList nodes. Use short, descriptive snake_case names (e.g. "selected_flavor", "delivery_slot", "feedback_rating").',
+    '- To reference a stored value in later messages/questions, use double curly braces: {{variable_name}}',
+    '- **Button/list responses store TWO variables:** {{storeAs}} holds the internal ID, {{storeAs_title}} holds the display text the user chose. ALWAYS use {{storeAs_title}} when showing the user\'s choice in messages.',
+    '- Example: A quickReply with storeAs "selected_flavor" → use {{selected_flavor_title}} in messages: "Great choice! We\'ll send you {{selected_flavor_title}} right away."',
+    '- For text input nodes (question, super nodes), just use {{storeAs}} directly — there is no _title variant.',
+    '- Super nodes have fixed variables: name→user_name, email→user_email, dob→user_dob, address→user_address.',
+    '- NEVER use square brackets like [flavor] or [selected_flavor]. ALWAYS use {{variable_name}} with double curly braces.',
+    '- Only reference variables from nodes that appear EARLIER in the flow.',
     '',
     '**Key Rules:**',
     '- Only include nodes directly relevant to the user\'s request — do NOT add name, email, dob, or address unless the flow logically needs that data',
@@ -780,6 +809,7 @@ function getEditInstructions(): string {
     '',
     '**Content fields (all optional — factory provides defaults):**',
     '- question, buttons[], options[], listTitle, text, label, message',
+    '- storeAs: string — variable name for storing user response. ALWAYS provide for question/quickReply/interactiveList nodes.',
     '',
     '**MINIMAL CHANGE RULES (critical):**',
     '- Make the MINIMUM changes needed. One new node = one chain or one nodeUpdate. That\'s it.',
@@ -792,6 +822,22 @@ function getEditInstructions(): string {
     '- "chains" can be empty [] if you\'re only doing nodeUpdates or addEdges.',
     '- Do NOT touch nodes or edges the user didn\'t ask about.',
     '- If a Focus Area node is specified, apply changes relative to that node.',
+    '',
+    '**CRITICAL — quickReply vs interactiveList:**',
+    '- **≤3 choices → ALWAYS use quickReply** (with buttons[]). NEVER use interactiveList for 3 or fewer options.',
+    '- **4+ choices → use interactiveList** (with options[] and listTitle).',
+    '- This rule is absolute and has no exceptions.',
+    '',
+    '**VARIABLE INTERPOLATION (referencing previous answers):**',
+    '- Nodes that collect input store the user\'s response in a variable (shown as {storeAs: "var_name"} in the flow graph).',
+    '- ALWAYS set `storeAs` in the content field for new question, quickReply, and interactiveList nodes. Use short, descriptive snake_case names.',
+    '- To reference a stored value in later messages/questions, use double curly braces: {{variable_name}}',
+    '- **Button/list responses store TWO variables:** {{storeAs}} holds the internal ID, {{storeAs_title}} holds the display text. ALWAYS use {{storeAs_title}} when showing the user\'s choice in messages.',
+    '- Example: If a node has {storeAs: "selected_flavor"}, use {{selected_flavor_title}} in messages: "Great! We\'ll send you {{selected_flavor_title}}."',
+    '- For text input nodes (question, super nodes), just use {{storeAs}} directly — there is no _title variant.',
+    '- Super nodes have fixed variables: name→user_name, email→user_email, dob→user_dob, address→user_address.',
+    '- NEVER use square brackets like [flavor] or [selected_flavor]. ALWAYS use {{variable_name}} with double curly braces.',
+    '- Only reference variables from nodes that appear EARLIER in the flow.',
     '',
     '**Key Rules:**',
     '- When restructuring, always remove old edges/nodes THEN add new ones',
@@ -808,13 +854,14 @@ function getCreateResponseFormat(): string {
   const example = JSON.stringify({
     message: "Created a sample delivery flow with feedback collection",
     steps: [
-      { step: "node", nodeType: "quickReply", content: { question: "Choose a delivery slot for your sample.", buttons: ["Morning", "Afternoon", "Evening"] } },
+      { step: "node", nodeType: "quickReply", content: { question: "Choose a delivery slot for your sample.", buttons: ["Morning", "Afternoon", "Evening"], storeAs: "delivery_slot" } },
       { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Morning slot confirmed!" } }] },
       { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Afternoon slot confirmed!" } }] },
       { step: "branch", buttonIndex: 2, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Evening slot confirmed!" } }] },
       { step: "node", nodeType: "address" },
       { step: "node", nodeType: "homeDelivery" },
-      { step: "node", nodeType: "question", content: { question: "How was your experience with the sample?" } },
+      { step: "node", nodeType: "question", content: { question: "How was your experience with the sample?", storeAs: "experience_rating" } },
+      { step: "node", nodeType: "whatsappMessage", content: { text: "Thanks for sharing! Your {{delivery_slot_title}} delivery is on its way." } },
       { step: "node", nodeType: "metaAudience" },
     ],
   }, null, 2)

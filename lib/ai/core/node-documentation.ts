@@ -5,7 +5,7 @@
 
 import type { Platform } from "@/types"
 import { getNodeLimits } from "@/constants"
-import { BUTTON_LIMITS } from "@/constants/platform-limits"
+import { BUTTON_LIMITS, CHARACTER_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES, type NodeTemplate } from "@/constants/node-categories"
 import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 
@@ -109,12 +109,22 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
       const platformNote = t.platforms.length < 3
         ? ` (${t.platforms.join("/")} only)`
         : ""
-      lines.push(`  ${t.type} — ${t.description}${platformNote}${contentHints ? ` | content: ${contentHints}` : ""}`)
+      // Add text limit hint if the node has a custom textMax
+      const textLimit = t.limits?.textMax
+        ? ` [max ${t.limits.textMax} chars]`
+        : t.limits?.textField === "question"
+          ? ` [max ${CHARACTER_LIMITS[platform].question} chars]`
+          : ""
+      lines.push(`  ${t.type} — ${t.description}${platformNote}${textLimit}${contentHints ? ` | content: ${contentHints}` : ""}`)
     }
     lines.push("")
   }
 
   lines.push(`Button limits: web=${BUTTON_LIMITS.web}, whatsapp=${BUTTON_LIMITS.whatsapp}, instagram=${BUTTON_LIMITS.instagram}`)
+
+  const charLimits = CHARACTER_LIMITS[platform]
+  lines.push(`Character limits for ${platform}: question/text max=${charLimits.question} chars, button text max=${charLimits.button} chars`)
+  lines.push(`IMPORTANT: All generated text MUST fit within these character limits. Keep messages concise.`)
 
   return lines.join("\n")
 }

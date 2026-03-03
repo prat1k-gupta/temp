@@ -48,6 +48,7 @@ export interface NodeContent {
   listTitle?: string
   comment?: string
   message?: string
+  storeAs?: string
 }
 
 export interface NodeStep {
@@ -80,6 +81,7 @@ export const nodeContentSchema = z.object({
   listTitle: z.string().optional(),
   comment: z.string().optional(),
   message: z.string().optional(),
+  storeAs: z.string().optional(),
 })
 
 export const nodeStepSchema = z.object({

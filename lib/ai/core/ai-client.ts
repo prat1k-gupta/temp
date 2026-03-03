@@ -1,7 +1,7 @@
 import { generateText, generateObject } from 'ai'
-import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import type { AIServiceConfig } from '@/types/ai'
+import { getModel, DEFAULT_MODEL, type ModelId } from './models'
 
 /**
  * AI Client - Wrapper around Vercel AI SDK
@@ -28,6 +28,7 @@ export class AIClient {
     userPrompt: string
     temperature?: number
     maxTokens?: number
+    model?: ModelId
   }): Promise<{
     text: string
     usage?: {
@@ -37,17 +38,18 @@ export class AIClient {
     }
   }> {
     const startTime = Date.now()
+    const modelId = params.model || DEFAULT_MODEL
 
     try {
       const response = await generateText({
-        model: openai(this.config.model!),
+        model: getModel(modelId),
         system: params.systemPrompt,
         prompt: params.userPrompt,
         temperature: params.temperature ?? this.config.temperature,
       })
 
       const duration = Date.now() - startTime
-      console.log(`[AI Client] Generated text in ${duration}ms`)
+      console.log(`[AI Client] ${modelId} — Generated text in ${duration}ms`)
 
       return {
         text: response.text,
@@ -58,7 +60,7 @@ export class AIClient {
         } : undefined
       }
     } catch (error) {
-      console.error('[AI Client] Error generating text:', error)
+      console.error(`[AI Client] ${modelId} — Error generating text:`, error)
       throw error
     }
   }
@@ -90,14 +92,16 @@ export class AIClient {
     systemPrompt: string
     userPrompt: string
     schema?: z.ZodSchema<T>
+    model?: ModelId
   }): Promise<T> {
     const startTime = Date.now()
+    const modelId = params.model || DEFAULT_MODEL
 
     try {
       // If schema is provided, use structured outputs (more reliable)
       if (params.schema) {
         const response = await generateObject({
-          model: openai(this.config.model!),
+          model: getModel(modelId),
           schema: params.schema,
           system: params.systemPrompt,
           prompt: params.userPrompt,
@@ -105,7 +109,7 @@ export class AIClient {
         })
 
         const duration = Date.now() - startTime
-        console.log(`[AI Client] Generated structured JSON in ${duration}ms`)
+        console.log(`[AI Client] ${modelId} — Generated structured JSON in ${duration}ms`)
 
         return response.object as T
       }
@@ -135,6 +139,7 @@ Respond with raw JSON only.`
         systemPrompt: enhancedSystemPrompt,
         userPrompt: params.userPrompt,
         temperature: 0.3, // Lower temperature for more consistent JSON
+        model: modelId,
       })
 
       // Try to extract JSON from the response
@@ -150,7 +155,7 @@ Respond with raw JSON only.`
       try {
         const parsed = JSON.parse(jsonText) as T
         const duration = Date.now() - startTime
-        console.log(`[AI Client] Generated JSON in ${duration}ms`)
+        console.log(`[AI Client] ${modelId} — Generated JSON in ${duration}ms`)
         return parsed
       } catch (parseError) {
         console.error('[AI Client] Failed to parse JSON response:', jsonText)
@@ -158,7 +163,7 @@ Respond with raw JSON only.`
         throw new Error(`Invalid JSON response from AI. Response: ${jsonText.substring(0, 200)}...`)
       }
     } catch (error) {
-      console.error('[AI Client] Error generating JSON:', error)
+      console.error(`[AI Client] ${modelId} — Error generating JSON:`, error)
       throw error
     }
   }
@@ -188,4 +193,3 @@ export function getAIClient(config?: Partial<AIServiceConfig>): AIClient {
   }
   return aiClientInstance
 }
-

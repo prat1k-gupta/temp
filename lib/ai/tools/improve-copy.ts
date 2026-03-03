@@ -41,7 +41,8 @@ export const improveCopyTool: AITool<ImproveCopyRequest, ImproveCopyResponse> = 
       }>({
         systemPrompt,
         userPrompt,
-        schema: responseSchema
+        schema: responseSchema,
+        model: 'claude-haiku',
       })
 
       // Return result

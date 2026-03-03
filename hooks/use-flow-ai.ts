@@ -127,6 +127,7 @@ export function useFlowAI({
             text: n.data.text as string | undefined,
             buttons: n.data.buttons as Array<{ text?: string; id?: string }> | undefined,
             options: n.data.options as Array<{ text?: string; id?: string }> | undefined,
+            storeAs: n.data.storeAs as string | undefined,
           })),
         edges: edges.map((e) => ({
           source: e.source,

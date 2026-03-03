@@ -49,7 +49,8 @@ export const generateButtonsTool: AITool<GenerateOptionsRequest, GenerateOptions
       }>({
         systemPrompt,
         userPrompt,
-        schema: responseSchema
+        schema: responseSchema,
+        model: 'claude-haiku',
       })
 
       // Validate and return

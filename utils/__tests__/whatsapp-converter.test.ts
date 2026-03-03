@@ -94,8 +94,8 @@ describe("convertToFsWhatsApp", () => {
     expect(qrStep.buttons![0].title).toBe("Red")
     expect(qrStep.buttons![1].title).toBe("Blue")
     expect(qrStep.conditional_next).toBeDefined()
-    expect(qrStep.conditional_next!["Red"]).toBeDefined()
-    expect(qrStep.conditional_next!["Blue"]).toBeDefined()
+    expect(qrStep.conditional_next!["btn-red"]).toBeDefined()
+    expect(qrStep.conditional_next!["btn-blue"]).toBeDefined()
     expect(qrStep.store_as).toBe("color_choice")
   })
 
@@ -125,7 +125,7 @@ describe("convertToFsWhatsApp", () => {
     expect(listStep.input_type).toBe("select")
     expect(listStep.buttons).toHaveLength(2)
     expect(listStep.conditional_next).toBeDefined()
-    expect(listStep.conditional_next!["Apple"]).toBeDefined()
+    expect(listStep.conditional_next!["opt-apple"]).toBeDefined()
   })
 
   it("converts super nodes with correct input types", () => {
@@ -176,7 +176,7 @@ describe("convertToFsWhatsApp", () => {
     const condStep = result.steps[0]
     expect(condStep.message_type).toBe("conditional_routing")
     expect(condStep.input_type).toBe("none")
-    expect(condStep.conditional_routes).toHaveLength(2)
+    expect(condStep.conditional_routes).toHaveLength(3) // 2 groups + 1 default catch-all
     expect(condStep.conditional_routes![0].target).toBeDefined()
     expect(condStep.next_step).toBeDefined() // else branch
   })
@@ -248,7 +248,8 @@ describe("convertToFsWhatsApp", () => {
     const edges = [edge("start-1", "q1")]
 
     const result = convertToFsWhatsApp(nodes, edges, "Trigger Test", undefined, ["whatsapp-message", "whatsapp-ctwa"])
-    expect(result.trigger_keywords).toEqual(["message", "ctwa"])
+    // triggerIds determine activation type, not keywords — so they are not mapped
+    expect(result.trigger_keywords).toBeUndefined()
   })
 
   it("omits trigger_keywords when no triggerIds and no custom keywords", () => {
@@ -270,7 +271,8 @@ describe("convertToFsWhatsApp", () => {
     const edges = [edge("start-1", "q1")]
 
     const result = convertToFsWhatsApp(nodes, edges, "Merge Test", undefined, ["whatsapp-message"], ["hi", "hello", "menu"])
-    expect(result.trigger_keywords).toEqual(["message", "hi", "hello", "menu"])
+    // Only custom triggerKeywords are used; triggerIds are not mapped to keywords
+    expect(result.trigger_keywords).toEqual(["hi", "hello", "menu"])
   })
 
   it("includes only custom triggerKeywords when no triggerIds", () => {

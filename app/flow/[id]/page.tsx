@@ -451,6 +451,12 @@ function MagicFlowInner() {
           flowDescription={persistence.currentFlow?.description}
           triggerIds={persistence.currentFlow?.triggerIds}
           triggerKeywords={persistence.currentFlow?.triggerKeywords}
+          publishedFlowId={persistence.currentFlow?.publishedFlowId}
+          onPublished={(flowId) => {
+            persistence.setCurrentFlow((prev) =>
+              prev ? { ...prev, publishedFlowId: flowId } : null
+            )
+          }}
         />
 
         <VersionHistoryModal

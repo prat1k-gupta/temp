@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Loader2, Variable, GitBranch } from "lucide-react"
+import { Send, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Loader2, Variable, GitBranch, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import { convertToFsWhatsApp, type FsWhatsAppFlow } from "@/utils/whatsapp-converter"
@@ -17,14 +17,18 @@ interface WhatsAppPublishPanelProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  publishedFlowId?: string
+  onPublished?: (flowId: string) => void
 }
 
 type PublishStatus = "idle" | "publishing" | "success" | "error"
 
-export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords }: WhatsAppPublishPanelProps) {
+export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished }: WhatsAppPublishPanelProps) {
   const [showJson, setShowJson] = useState(false)
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
+
+  const isUpdate = !!publishedFlowId
 
   const converted = useMemo(
     () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords),
@@ -69,7 +73,10 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       const response = await fetch("/api/whatsapp/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(converted),
+        body: JSON.stringify({
+          ...converted,
+          publishedFlowId: publishedFlowId || undefined,
+        }),
       })
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -77,7 +84,13 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       }
       const result = await response.json()
       setPublishStatus("success")
-      toast.success("Flow published to WhatsApp!", {
+
+      // Store the flow ID for future updates
+      if (result.flowId && onPublished) {
+        onPublished(result.flowId)
+      }
+
+      toast.success(result.updated ? "Flow updated on WhatsApp!" : "Flow published to WhatsApp!", {
         description: result.flowId ? `Flow ID: ${result.flowId}` : undefined,
       })
     } catch (err: any) {
@@ -99,6 +112,12 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
           <Variable className="w-3 h-3" />
           {variables.length} variables
         </Badge>
+        {isUpdate && (
+          <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200">
+            <RefreshCw className="w-3 h-3" />
+            Update
+          </Badge>
+        )}
         {warnings.length > 0 && (
           <Badge variant="destructive" className="flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
@@ -144,7 +163,9 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       {publishStatus === "success" && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
           <CheckCircle2 className="w-4 h-4 text-green-600" />
-          <span className="text-sm text-green-700 dark:text-green-400">Flow published successfully!</span>
+          <span className="text-sm text-green-700 dark:text-green-400">
+            Flow {isUpdate ? "updated" : "published"} successfully!
+          </span>
         </div>
       )}
 
@@ -164,10 +185,14 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
         >
           {publishStatus === "publishing" ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : isUpdate ? (
+            <RefreshCw className="w-4 h-4" />
           ) : (
             <Send className="w-4 h-4" />
           )}
-          {publishStatus === "publishing" ? "Publishing..." : "Publish to WhatsApp"}
+          {publishStatus === "publishing"
+            ? (isUpdate ? "Updating..." : "Publishing...")
+            : (isUpdate ? "Update on WhatsApp" : "Publish to WhatsApp")}
         </Button>
       </div>
     </div>

@@ -150,6 +150,8 @@ export function useFlowPersistence({
                 description: currentFlow.description,
                 triggerId: currentFlow.triggerId,
                 triggerIds: currentFlow.triggerIds,
+                triggerKeywords: currentFlow.triggerKeywords,
+                publishedFlowId: currentFlow.publishedFlowId,
               }),
             })
 

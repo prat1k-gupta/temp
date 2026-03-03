@@ -19,17 +19,23 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json()
+    const { publishedFlowId, ...flowData } = await request.json()
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-API-Key": apiKey,
     }
 
-    const response = await fetch(`${apiUrl}/api/chatbot/flows`, {
-      method: "POST",
+    // Update existing flow or create new one
+    const isUpdate = !!publishedFlowId
+    const url = isUpdate
+      ? `${apiUrl}/api/chatbot/flows/${publishedFlowId}`
+      : `${apiUrl}/api/chatbot/flows`
+
+    const response = await fetch(url, {
+      method: isUpdate ? "PUT" : "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(flowData),
     })
 
     if (!response.ok) {
@@ -41,7 +47,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json()
-    return NextResponse.json({ success: true, flowId: result.id || result.flow_id })
+    const flowId = result.id || result.flow_id || publishedFlowId
+    return NextResponse.json({ success: true, flowId, updated: isUpdate })
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Failed to publish flow" },

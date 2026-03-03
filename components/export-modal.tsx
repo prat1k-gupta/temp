@@ -27,9 +27,11 @@ interface ExportModalProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  publishedFlowId?: string
+  onPublished?: (flowId: string) => void
 }
 
-export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords }: ExportModalProps) {
+export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished }: ExportModalProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setIsOpen = onOpenChange || setInternalOpen
@@ -317,6 +319,8 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
                 flowDescription={flowDescription}
                 triggerIds={triggerIds}
                 triggerKeywords={triggerKeywords}
+                publishedFlowId={publishedFlowId}
+                onPublished={onPublished}
               />
             </TabsContent>
           )}

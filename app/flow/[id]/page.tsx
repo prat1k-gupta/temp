@@ -533,6 +533,7 @@ function MagicFlowInner() {
                   flowId,
                   currentFlow: persistence.currentFlow,
                   setCurrentFlow: persistence.setCurrentFlow,
+                  saveFlowFields: persistence.saveFlowFields,
                 }, nodes)
               )}
             edges={edges

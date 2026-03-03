@@ -16,6 +16,7 @@ interface FlowContext {
   flowId: string
   currentFlow: FlowData | null
   setCurrentFlow: React.Dispatch<React.SetStateAction<FlowData | null>>
+  saveFlowFields?: (updates: Record<string, any>) => void
 }
 
 /**
@@ -74,6 +75,10 @@ export function injectNodeCallbacks(
             if (Object.keys(flowUpdates).length > 0) {
               updateFlow(flowContext.flowId, flowUpdates)
               flowContext.setCurrentFlow((prev) => (prev ? { ...prev, ...flowUpdates } : null))
+              // Persist to DB
+              if (flowContext.saveFlowFields) {
+                flowContext.saveFlowFields(flowUpdates)
+              }
             }
           }
         },

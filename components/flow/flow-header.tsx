@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
-import { PlatformSelector } from "@/components/platform-selector"
+// PlatformSelector removed — platform is locked after flow creation
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PublishModal } from "@/components/publish-modal"
 import {
@@ -240,22 +240,15 @@ export function FlowHeader({
 
         {/* Right Section */}
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 transition-all cursor-pointer hover:shadow-md ${
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 ${
               platform === "web"
-                ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50"
+                ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
                 : platform === "whatsapp"
-                  ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/50"
-                  : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800 hover:bg-pink-100 dark:hover:bg-pink-950/50"
+                  ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+                  : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800"
             }`}
-            onClick={() => {
-              const platforms: Platform[] = ["web", "whatsapp", "instagram"]
-              const currentIndex = platforms.indexOf(platform)
-              const nextIndex = (currentIndex + 1) % platforms.length
-              handlePlatformChange(platforms[nextIndex])
-            }}
-            title={`Click to switch platform. Current: ${getPlatformDisplayName(platform)}`}
+            title={getPlatformDisplayName(platform)}
           >
             {platform === "web" && <WebIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
             {platform === "whatsapp" && <WhatsAppIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
@@ -271,7 +264,7 @@ export function FlowHeader({
             >
               {getPlatformDisplayName(platform)}
             </span>
-          </button>
+          </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -350,13 +343,6 @@ export function FlowHeader({
                   </DropdownMenuItem>
                 </>
               )}
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuLabel>Platform</DropdownMenuLabel>
-              <div className="px-2 py-1.5">
-                <PlatformSelector platform={platform} onPlatformChange={handlePlatformChange} />
-              </div>
 
               <DropdownMenuSeparator />
 

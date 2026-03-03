@@ -553,6 +553,7 @@ function MagicFlowInner() {
               .map((edge) => ({
                 ...edge,
                 style: { ...edge.style, strokeWidth: 2, stroke: "#6366f1" },
+                zIndex: 1,
               }))}
             onNodesChange={nodeOps.onNodesChange}
             onEdgesChange={nodeOps.onEdgesChange}
@@ -578,6 +579,7 @@ function MagicFlowInner() {
             }}
             onConnectStart={interactions.onConnectStart}
             onConnectEnd={interactions.onConnectEnd}
+            elevateEdgesOnSelect
             deleteKeyCode={["Backspace", "Delete"]}
             multiSelectionKeyCode={["Control", "Meta"]}
           >

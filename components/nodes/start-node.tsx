@@ -235,7 +235,21 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                 <p className="text-[10px] text-muted-foreground/70 mt-1">Click to add triggers</p>
               </div>
             )}
-            
+
+            {triggerKeywords.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {triggerKeywords.map((keyword) => (
+                  <Badge
+                    key={keyword}
+                    variant="secondary"
+                    className={`text-[10px] px-1.5 py-0 h-4 ${getPlatformTextColor(platform)} bg-background/50 border ${getPlatformBorder(platform)}`}
+                  >
+                    {keyword}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
             <Button
               variant="outline"
               size="sm"

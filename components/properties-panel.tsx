@@ -32,6 +32,8 @@ import {
   Users,
   Globe,
   PhoneForwarded,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -286,6 +288,210 @@ function SortableOptionItem({
           </Badge>
         )}
       </div>
+    </div>
+  )
+}
+
+// --- API Test Section (extracted for clarity) ---
+
+function ApiTestSection({
+  url,
+  method,
+  headers,
+  body,
+  responseMapping,
+}: {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body: string
+  responseMapping: Record<string, string>
+}) {
+  const [testVars, setTestVars] = useState<Record<string, string>>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [result, setResult] = useState<{
+    status?: number
+    statusText?: string
+    duration?: number
+    body?: any
+    processedUrl?: string
+    error?: string
+  } | null>(null)
+  const [mappedValues, setMappedValues] = useState<Record<string, any> | null>(null)
+
+  // Extract {{variable}} placeholders from url, body, headers
+  const templateVars = useMemo(() => {
+    const vars = new Set<string>()
+    const regex = /\{\{(\w+)\}\}/g
+    let match: RegExpExecArray | null
+
+    for (const str of [url, body, ...Object.values(headers)]) {
+      regex.lastIndex = 0
+      while ((match = regex.exec(str)) !== null) {
+        vars.add(match[1])
+      }
+    }
+    return Array.from(vars)
+  }, [url, body, headers])
+
+  const runTest = async () => {
+    if (!url) return
+    setIsLoading(true)
+    setResult(null)
+    setMappedValues(null)
+
+    try {
+      const res = await fetch("/api/test-api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          method,
+          headers,
+          body,
+          testVariables: testVars,
+        }),
+      })
+      const data = await res.json()
+
+      if (data.error) {
+        setResult({ error: data.error })
+      } else {
+        setResult(data)
+
+        // Extract mapped values if response is JSON and mappings exist
+        if (
+          data.body &&
+          typeof data.body === "object" &&
+          Object.keys(responseMapping).length > 0
+        ) {
+          const extractRes = await fetch("/api/test-api", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              responseBody: data.body,
+              responseMapping,
+            }),
+          })
+          const extractData = await extractRes.json()
+          if (extractData.extracted) {
+            setMappedValues(extractData.extracted)
+          }
+        }
+      }
+    } catch (err: any) {
+      setResult({ error: err.message || "Request failed" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <Label className="text-sm font-medium mb-2 block">Test API</Label>
+
+      {/* Test variable inputs */}
+      {templateVars.length > 0 && (
+        <div className="space-y-2 mb-3">
+          <p className="text-xs text-muted-foreground">Test values for variables:</p>
+          {templateVars.map((varName) => (
+            <div key={varName} className="flex items-center gap-2">
+              <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded min-w-[80px]">
+                {`{{${varName}}}`}
+              </code>
+              <Input
+                value={testVars[varName] || ""}
+                onChange={(e) => setTestVars((prev) => ({ ...prev, [varName]: e.target.value }))}
+                placeholder={`test value for ${varName}`}
+                className="flex-1 text-xs h-7"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Send button */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={runTest}
+        disabled={isLoading || !url}
+        className="w-full cursor-pointer"
+      >
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        ) : (
+          <Play className="w-4 h-4 mr-2" />
+        )}
+        {isLoading ? "Sending..." : "Send Request"}
+      </Button>
+
+      {/* Results */}
+      {result && (
+        <div className="mt-3 space-y-2">
+          {result.error ? (
+            <div className="flex items-start gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-xs">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>{result.error}</span>
+            </div>
+          ) : (
+            <>
+              {/* Status line */}
+              <div className="flex items-center gap-2 text-xs">
+                <Badge
+                  variant={result.status && result.status < 400 ? "default" : "destructive"}
+                  className="text-[10px] px-1.5 py-0"
+                >
+                  {result.status} {result.statusText}
+                </Badge>
+                <span className="text-muted-foreground">{result.duration}ms</span>
+              </div>
+
+              {/* Processed URL */}
+              {result.processedUrl && result.processedUrl !== url && (
+                <p className="text-[10px] text-muted-foreground font-mono truncate" title={result.processedUrl}>
+                  {result.processedUrl}
+                </p>
+              )}
+
+              {/* Response body */}
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1">Response:</p>
+                <pre className="text-[10px] font-mono bg-muted p-2 rounded-md overflow-auto max-h-[200px] whitespace-pre-wrap break-all">
+                  {typeof result.body === "object"
+                    ? JSON.stringify(result.body, null, 2)
+                    : String(result.body)}
+                </pre>
+              </div>
+
+              {/* Mapped values */}
+              {mappedValues && Object.keys(mappedValues).length > 0 && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    Mapped Variables:
+                  </p>
+                  <div className="space-y-1">
+                    {Object.entries(mappedValues).map(([varName, value]) => (
+                      <div key={varName} className="flex items-center gap-2 text-[10px]">
+                        <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{varName}</code>
+                        <span className="text-muted-foreground">=</span>
+                        <span className="font-mono text-green-600 dark:text-green-400 truncate" title={String(value)}>
+                          {value === undefined || value === null ? (
+                            <span className="text-destructive italic">not found</span>
+                          ) : (
+                            String(value)
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -2320,6 +2526,17 @@ export function PropertiesPanel({
                   Use mapped variables with <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> syntax
                 </p>
               </div>
+
+              <Separator />
+
+              {/* Test API */}
+              <ApiTestSection
+                url={selectedNode.data.url as string || ""}
+                method={selectedNode.data.method as string || "GET"}
+                headers={selectedNode.data.headers as Record<string, string> || {}}
+                body={selectedNode.data.body as string || ""}
+                responseMapping={selectedNode.data.responseMapping as Record<string, string> || {}}
+              />
             </>
           )}
 

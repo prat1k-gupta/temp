@@ -1,10 +1,15 @@
 "use client"
 
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { useReactFlow } from "@xyflow/react"
 import { PropertiesPanel } from "@/components/properties-panel"
 import { Button } from "@/components/ui/button"
+
+const MIN_WIDTH = 320
+const MAX_WIDTH = 700
+const DEFAULT_WIDTH = 320
 
 interface PropertiesPanelWrapperProps {
   selectedNode: Node | null
@@ -38,13 +43,62 @@ export function PropertiesPanelWrapper({
   selectAllNodes,
 }: PropertiesPanelWrapperProps) {
   const { screenToFlowPosition } = useReactFlow()
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
+  const isDragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(DEFAULT_WIDTH)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    startX.current = e.clientX
+    startWidth.current = panelWidth
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+  }, [panelWidth])
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      // Panel is on the right, so dragging left = wider
+      const delta = startX.current - e.clientX
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
+      setPanelWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+    }
+  }, [])
 
   return (
     <div
-      className={`transition-all duration-300 ease-in-out ${isOpen ? "w-80" : "w-0"} overflow-hidden bg-background border-l border-border`}
+      className="relative bg-background border-l border-border overflow-hidden flex-shrink-0"
+      style={{
+        width: isOpen ? panelWidth : 0,
+        transition: isDragging.current ? "none" : "width 300ms ease-in-out",
+      }}
     >
+      {/* Resize handle */}
+      {isOpen && (
+        <div
+          onMouseDown={onMouseDown}
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 active:bg-primary/30 transition-colors"
+        />
+      )}
+
       {selectedNode && (
-        <div className="w-80 flex flex-col h-full">
+        <div className="flex flex-col h-full" style={{ minWidth: MIN_WIDTH }}>
           <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
             <h2 className="text-lg font-semibold text-foreground">Properties</h2>
             <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
@@ -64,7 +118,7 @@ export function PropertiesPanelWrapper({
         </div>
       )}
       {!selectedNode && isOpen && (
-        <div className="w-80">
+        <div style={{ minWidth: MIN_WIDTH }}>
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-lg font-semibold text-foreground">Multiple Selection</h2>
             <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">

@@ -2694,7 +2694,7 @@ export function PropertiesPanel({
                     if (tmpl) {
                       // Extract variables from body
                       const bodyVars = (tmpl.body_content || "").match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []
-                      const varNames = [...new Set(bodyVars.map((m: string) => m.replace(/\{\{|\}\}/g, "")))]
+                      const varNames = [...new Set<string>(bodyVars.map((m: string) => m.replace(/\{\{|\}\}/g, "")))]
                       // Auto-create parameter mappings for detected variables
                       const mappings = varNames.map((v: string) => {
                         const existing = (selectedNode.data.parameterMappings || []).find((m: any) => m.templateVar === v)

@@ -552,7 +552,7 @@ describe("round-trip conversion", () => {
 
     const tplStep = result.steps[0]
     expect(tplStep.message_type).toBe("template")
-    expect(tplStep.input_type).toBe("none")
+    expect(tplStep.input_type).toBe("button") // always wait for user reply (24h window)
     expect(tplStep.message).toBe("order_confirmation")
     expect(tplStep.input_config).toBeDefined()
     expect(tplStep.input_config!.template_name).toBe("order_confirmation")
@@ -611,10 +611,14 @@ describe("round-trip conversion", () => {
     const result = convertToFsWhatsApp(nodes, edges, "Promo Flow")
     const tplStep = result.steps[0]
     expect(tplStep.message_type).toBe("template")
-    expect(tplStep.input_type).toBe("button")
-    expect(tplStep.buttons).toHaveLength(2) // only quick_reply buttons
+    expect(tplStep.input_type).toBe("button") // processor must wait for quick reply response
+    expect(tplStep.buttons).toHaveLength(3) // all buttons including URL
     expect(tplStep.buttons![0].title).toBe("Yes")
+    expect(tplStep.buttons![0].type).toBe("reply")
     expect(tplStep.buttons![1].title).toBe("No")
+    expect(tplStep.buttons![1].type).toBe("reply")
+    expect(tplStep.buttons![2].title).toBe("Learn More")
+    expect(tplStep.buttons![2].type).toBe("url")
     expect(tplStep.conditional_next).toBeDefined()
     // Template conditional_next is keyed by button TEXT (not ID) because
     // WhatsApp template quick reply responses send button text as payload

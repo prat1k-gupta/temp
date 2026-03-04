@@ -89,6 +89,8 @@ export function getImplicitInputType(nodeType: string): WhatsAppInputType {
       return "none"
     case "instagramStory":
       return "none"
+    case "templateMessage":
+      return "button"
     default:
       return "none"
   }

@@ -10,7 +10,7 @@ export interface FsWhatsAppFlowStep {
   message: string
   message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer" | "template"
   input_type: WhatsAppInputType
-  buttons?: Array<{ id: string; title: string }>
+  buttons?: Array<{ id: string; title: string; type?: string; url?: string }>
   store_as?: string
   validation_regex?: string
   validation_error?: string
@@ -488,7 +488,8 @@ export function convertToFsWhatsApp(
 
       case "templateMessage": {
         step.message_type = "template"
-        step.input_type = "none"
+        // input_type defaults to "button" from getImplicitInputType — flow always
+        // waits for user reply (needed to re-open 24h messaging window)
         step.message = data.templateName || ""
         const bodyParams: string[] = (data.parameterMappings || []).map(
           (m: { templateVar: string; flowValue: string }) => m.flowValue
@@ -503,16 +504,20 @@ export function convertToFsWhatsApp(
           template_buttons: allButtons.map((b) => ({ type: b.type, text: b.text })),
         }
 
+        // Include ALL buttons with proper types for preview rendering
+        // quick_reply → type: 'reply', url → type: 'url'
+        step.buttons = allButtons.map((btn) => ({
+          id: btn.text, // Use text as ID so it matches WhatsApp payload
+          title: btn.text,
+          type: btn.type === "url" ? "url" as const : "reply" as const,
+          ...(btn.type === "url" && { url: (btn as any).url || "" }),
+        }))
+
         // Quick reply buttons → conditional_next (flow branches by user response)
         // Template quick reply responses come as type:"button" with payload = button text,
         // so conditional_next must be keyed by button TEXT (not internal ID).
         const qrButtons = allButtons.filter((b) => b.type === "quick_reply")
         if (qrButtons.length > 0) {
-          step.input_type = "button"
-          step.buttons = qrButtons.map((btn) => ({
-            id: btn.text, // Use text as ID so it matches WhatsApp payload
-            title: btn.text,
-          }))
           const conditionalNext: Record<string, string> = {}
           for (let qi = 0; qi < qrButtons.length; qi++) {
             const btn = qrButtons[qi]
@@ -671,8 +676,9 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         if (step.buttons && step.buttons.length > 0) {
           data.buttons = step.buttons.map((btn: any, idx: number) => ({
             id: `btn-${idx}`,
-            type: "quick_reply",
+            type: btn.type === "url" ? "url" : "quick_reply",
             text: btn.title || btn.text || "",
+            ...(btn.type === "url" && { url: btn.url || "" }),
           }))
         }
         break
@@ -716,7 +722,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
     if (step.conditional_next) {
       const buttons = step.buttons || []
       const nodeData = nodes.find((n) => n.id === sourceId)?.data
-      const nodeButtons: Array<{ id: string; text: string }> = nodeData?.buttons || []
+      const nodeButtons: Array<{ id: string; text: string }> = (nodeData?.buttons as Array<{ id: string; text: string }>) || []
       for (const [btnKey, targetStepName] of Object.entries(step.conditional_next)) {
         const targetId = stepNodeMap.get(targetStepName)
         if (!targetId) continue

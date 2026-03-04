@@ -32,8 +32,10 @@ import {
   Users,
   Globe,
   PhoneForwarded,
+  FileText,
   Loader2,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -113,6 +115,7 @@ const NODE_ICONS = {
   // Action nodes
   apiFetch: Globe,
   transfer: PhoneForwarded,
+  templateMessage: FileText,
 }
 
 const NODE_COLORS = {
@@ -147,6 +150,7 @@ const NODE_COLORS = {
   // Action nodes
   apiFetch: "bg-[#1a365d] text-white",
   transfer: "bg-[#7c2d12] text-white",
+  templateMessage: "bg-[#075e54] text-white",
 }
 
 function SortableButtonItem({
@@ -528,6 +532,24 @@ export function PropertiesPanel({
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<any>(null)
 
+  // Template picker state
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+
+  useEffect(() => {
+    if (selectedNode?.type === "templateMessage") {
+      setTemplatesLoading(true)
+      fetch("/api/templates?status=APPROVED")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : data.templates || []
+          setAvailableTemplates(list)
+        })
+        .catch((err) => console.error("Failed to load templates:", err))
+        .finally(() => setTemplatesLoading(false))
+    }
+  }, [selectedNode?.type])
+
   if (!selectedNode) {
     return null
   }
@@ -737,6 +759,8 @@ export function PropertiesPanel({
         return "API Call Node"
       case "transfer":
         return "Transfer Node"
+      case "templateMessage":
+        return "Template Message Node"
       default:
         return "Node Properties"
     }
@@ -747,6 +771,7 @@ export function PropertiesPanel({
   const isFulfillmentNode = ["homeDelivery", "trackingNotification", "event", "retailStore"].includes(selectedNode.type || "")
   const isApiFetchNode = selectedNode.type === "apiFetch"
   const isTransferNode = selectedNode.type === "transfer"
+  const isTemplateMessageNode = selectedNode.type === "templateMessage"
 
   // Get available fields purely from flow session variables
   const getAvailableFields = () => {
@@ -2634,6 +2659,196 @@ export function PropertiesPanel({
                     <p className="text-xs text-orange-800 dark:text-orange-300">
                       This node transfers the conversation to a human agent or team. The flow will end after transfer.
                     </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Template Message Node */}
+          {isTemplateMessageNode && (
+            <>
+              {/* Label */}
+              <div>
+                <Label htmlFor="node-label" className="text-sm font-medium">
+                  Node Label
+                </Label>
+                <Input
+                  id="node-label"
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => handleLabelChange(e.target.value)}
+                  placeholder="Enter node label..."
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Template Picker */}
+              <div>
+                <Label className="text-sm font-medium">Select Template</Label>
+                <Select
+                  value={selectedNode.data.templateId || ""}
+                  onValueChange={(templateId) => {
+                    const tmpl = availableTemplates.find((t) => t.id === templateId)
+                    if (tmpl) {
+                      // Extract variables from body
+                      const bodyVars = (tmpl.body_content || "").match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []
+                      const varNames = [...new Set(bodyVars.map((m: string) => m.replace(/\{\{|\}\}/g, "")))]
+                      // Auto-create parameter mappings for detected variables
+                      const mappings = varNames.map((v: string) => {
+                        const existing = (selectedNode.data.parameterMappings || []).find((m: any) => m.templateVar === v)
+                        return { templateVar: v, flowValue: existing?.flowValue || "" }
+                      })
+                      // Assign IDs to buttons for handle mapping
+                      const buttons = (tmpl.buttons || []).map((btn: any, idx: number) => ({
+                        ...btn,
+                        id: btn.id || `btn-${idx}`,
+                      }))
+                      onNodeUpdate(selectedNode.id, {
+                        ...selectedNode.data,
+                        templateId: tmpl.id,
+                        templateName: tmpl.name,
+                        displayName: tmpl.display_name || "",
+                        language: tmpl.language,
+                        category: tmpl.category,
+                        headerType: tmpl.header_type,
+                        bodyPreview: tmpl.body_content,
+                        buttons,
+                        parameterMappings: mappings,
+                        label: selectedNode.data.label || tmpl.display_name || tmpl.name,
+                      })
+                    }
+                  }}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder={templatesLoading ? "Loading templates..." : "Choose an approved template"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTemplates.map((tmpl) => (
+                      <SelectItem key={tmpl.id} value={tmpl.id}>
+                        <span className="font-medium">{tmpl.display_name || tmpl.name}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">({tmpl.language})</span>
+                      </SelectItem>
+                    ))}
+                    {!templatesLoading && availableTemplates.length === 0 && (
+                      <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                        No approved templates found
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+                {selectedNode.data.templateName && (
+                  <p className="text-xs text-muted-foreground mt-1.5 font-mono">
+                    {selectedNode.data.templateName}
+                  </p>
+                )}
+              </div>
+
+              {/* Selected Template Preview */}
+              {selectedNode.data.templateId && (
+                <>
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {selectedNode.data.category && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                          {selectedNode.data.category}
+                        </Badge>
+                      )}
+                      {selectedNode.data.language && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                          {selectedNode.data.language}
+                        </Badge>
+                      )}
+                    </div>
+                    {selectedNode.data.bodyPreview && (
+                      <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap">
+                        {selectedNode.data.bodyPreview}
+                      </p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Parameter Mappings */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium">Parameter Mappings</Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          const mappings = selectedNode.data.parameterMappings || []
+                          const next = mappings.length + 1
+                          onNodeUpdate(selectedNode.id, {
+                            ...selectedNode.data,
+                            parameterMappings: [...mappings, { templateVar: String(next), flowValue: "" }],
+                          })
+                        }}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                    {(selectedNode.data.parameterMappings || []).length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">No variables in this template.</p>
+                    )}
+                    {(selectedNode.data.parameterMappings || []).map((mapping: any, idx: number) => (
+                      <div key={idx} className="flex items-center gap-2 mb-2">
+                        <div className="w-16 text-center font-mono text-xs bg-muted rounded px-1.5 py-1.5 text-muted-foreground shrink-0">
+                          {`{{${mapping.templateVar}}}`}
+                        </div>
+                        <span className="text-xs text-muted-foreground">=</span>
+                        <Input
+                          value={mapping.flowValue}
+                          onChange={(e) => {
+                            const mappings = [...(selectedNode.data.parameterMappings || [])]
+                            mappings[idx] = { ...mappings[idx], flowValue: e.target.value }
+                            onNodeUpdate(selectedNode.id, { ...selectedNode.data, parameterMappings: mappings })
+                          }}
+                          placeholder="{{customer_name}} or literal"
+                          className="flex-1 text-xs"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive"
+                          onClick={() => {
+                            const mappings = (selectedNode.data.parameterMappings || []).filter((_: any, i: number) => i !== idx)
+                            onNodeUpdate(selectedNode.id, { ...selectedNode.data, parameterMappings: mappings })
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Map template variables to flow values. Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
+              {/* Link to builder */}
+              <div className="p-4 bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <FileText className="w-5 h-5 text-teal-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-teal-800 dark:text-teal-300 mb-2">
+                      Create and manage templates in the Template Builder.
+                    </p>
+                    <a
+                      href="/templates"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Open Template Builder
+                    </a>
                   </div>
                 </div>
               </div>

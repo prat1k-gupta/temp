@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded, FileText } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -331,6 +331,29 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       requiredProperties: ["label", "platform"],
       optionalProperties: ["teamId", "teamName", "notes", "message"],
+    },
+  },
+  {
+    type: "templateMessage",
+    icon: FileText,
+    label: "Template Message",
+    description: "Send a pre-approved WhatsApp template message",
+    category: "action",
+    platforms: ["whatsapp"],
+    limits: { maxConnections: 1 },
+    ai: {
+      whenToUse: "When you need to send a pre-approved WhatsApp template message (e.g. outside the 24-hour window).",
+      bestPractices: [
+        "Select an approved template from the template library",
+        "Map flow variables to template parameters",
+        "Templates must be pre-approved by Meta before use",
+      ],
+      examples: [
+        "Send order confirmation template",
+        "Send appointment reminder template",
+      ],
+      requiredProperties: ["label", "platform", "templateName", "language"],
+      optionalProperties: ["parameterMappings"],
     },
   },
 

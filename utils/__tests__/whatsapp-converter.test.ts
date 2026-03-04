@@ -526,4 +526,99 @@ describe("round-trip conversion", () => {
     expect(rtNodes[2].type).toBe("whatsappMessage")
     expect(rtNodes[1].data.storeAs).toBe("answer")
   })
+
+  it("converts template message node with parameter mappings", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("tpl1", "templateMessage", {
+        label: "Order Confirm",
+        templateName: "order_confirmation",
+        language: "en",
+        category: "UTILITY",
+        parameterMappings: [
+          { templateVar: "1", flowValue: "{{customer_name}}" },
+          { templateVar: "2", flowValue: "{{order_id}}" },
+        ],
+      }),
+      node("m1", "whatsappMessage", { text: "Thanks!" }),
+    ]
+    const edges = [
+      edge("start-1", "tpl1"),
+      edge("tpl1", "m1", "next-step"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Template Flow")
+    expect(result.steps).toHaveLength(2)
+
+    const tplStep = result.steps[0]
+    expect(tplStep.message_type).toBe("template")
+    expect(tplStep.input_type).toBe("none")
+    expect(tplStep.message).toBe("order_confirmation")
+    expect(tplStep.input_config).toBeDefined()
+    expect(tplStep.input_config!.template_name).toBe("order_confirmation")
+    expect(tplStep.input_config!.language).toBe("en")
+    expect(tplStep.input_config!.body_parameters).toEqual(["{{customer_name}}", "{{order_id}}"])
+    expect(tplStep.next_step).toBeDefined()
+    expect(tplStep.next_step).not.toBe("__complete__")
+  })
+
+  it("converts template message node with no params", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("tpl1", "templateMessage", {
+        label: "Welcome",
+        templateName: "welcome_msg",
+        language: "en",
+        parameterMappings: [],
+      }),
+    ]
+    const edges = [
+      edge("start-1", "tpl1"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Simple Template")
+    expect(result.steps).toHaveLength(1)
+
+    const tplStep = result.steps[0]
+    expect(tplStep.message_type).toBe("template")
+    expect(tplStep.input_config!.body_parameters).toEqual([])
+    expect(tplStep.next_step).toBe("__complete__")
+  })
+
+  it("converts template message node with quick reply buttons", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("tpl1", "templateMessage", {
+        label: "Promo",
+        templateName: "promo_offer",
+        language: "en",
+        buttons: [
+          { id: "btn-0", type: "quick_reply", text: "Yes" },
+          { id: "btn-1", type: "quick_reply", text: "No" },
+          { id: "btn-url", type: "url", text: "Learn More", url: "https://example.com" },
+        ],
+        parameterMappings: [],
+      }),
+      node("m1", "whatsappMessage", { text: "Great!" }),
+      node("m2", "whatsappMessage", { text: "Maybe next time." }),
+    ]
+    const edges = [
+      edge("start-1", "tpl1"),
+      edge("tpl1", "m1", "btn-0"),
+      edge("tpl1", "m2", "btn-1"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Promo Flow")
+    const tplStep = result.steps[0]
+    expect(tplStep.message_type).toBe("template")
+    expect(tplStep.input_type).toBe("button")
+    expect(tplStep.buttons).toHaveLength(2) // only quick_reply buttons
+    expect(tplStep.buttons![0].title).toBe("Yes")
+    expect(tplStep.buttons![1].title).toBe("No")
+    expect(tplStep.conditional_next).toBeDefined()
+    // Template conditional_next is keyed by button TEXT (not ID) because
+    // WhatsApp template quick reply responses send button text as payload
+    expect(tplStep.conditional_next!["Yes"]).toBeDefined()
+    expect(tplStep.conditional_next!["No"]).toBeDefined()
+  })
 })

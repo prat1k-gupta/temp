@@ -6,13 +6,14 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, FileEdit, Database, Loader2 } from "lucide-react"
+import { Plus, Trash2, Copy, FileEdit, Database, Loader2, FileText } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { getAllFlows, getSharedFlows, createFlow, deleteFlow, deleteSharedFlow, duplicateFlow, updateFlow, type FlowMetadata } from "@/utils/flow-storage"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
+import Link from "next/link"
 
 // Freestand LogoClosed component (icon only)
 const LogoClosed = ({ className }: { className?: string }) => (
@@ -332,8 +333,14 @@ export default function FlowsPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button 
-                onClick={handleCreateFlow} 
+              <Link href="/templates">
+                <Button variant="outline" size="lg" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  Templates
+                </Button>
+              </Link>
+              <Button
+                onClick={handleCreateFlow}
                 size="lg"
                 className="gap-2 shadow-md hover:shadow-lg transition-all bg-[#052762] hover:bg-[#0A49B7] text-white"
               >

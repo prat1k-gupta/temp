@@ -109,6 +109,27 @@ export interface TransferNodeData extends BaseNodeData {
   message?: string
 }
 
+export interface TemplateMessageNodeData extends BaseNodeData {
+  templateId?: string
+  templateName?: string
+  displayName?: string
+  language?: string
+  category?: string
+  headerType?: string
+  bodyPreview?: string
+  buttons?: Array<{
+    id?: string
+    type: string
+    text: string
+    url?: string
+    phone_number?: string
+  }>
+  parameterMappings?: Array<{
+    templateVar: string
+    flowValue: string
+  }>
+}
+
 export type NodeData =
   | QuestionNodeData
   | QuickReplyNodeData
@@ -121,6 +142,7 @@ export type NodeData =
   | ConditionNodeData
   | ApiFetchNodeData
   | TransferNodeData
+  | TemplateMessageNodeData
 
 // Context menu types
 export interface ContextMenuState {

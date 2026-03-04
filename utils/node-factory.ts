@@ -450,6 +450,33 @@ export const createTransferNode = (
 }
 
 /**
+ * Create a Template Message node
+ */
+export const createTemplateMessageNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("templateMessage")
+  return {
+    id: nodeId,
+    type: "templateMessage",
+    position,
+    data: {
+      platform,
+      label: "Template Message",
+      templateId: "",
+      templateName: "",
+      language: "en",
+      category: "",
+      headerType: "",
+      bodyPreview: "",
+      parameterMappings: [],
+    } as NodeData,
+  }
+}
+
+/**
  * Factory function to create any node type
  */
 export const createNode = (
@@ -467,6 +494,9 @@ export const createNode = (
   }
   else if (nodeType === "transfer") {
     node = createTransferNode(platform, position, customId)
+  }
+  else if (nodeType === "templateMessage") {
+    node = createTemplateMessageNode(platform, position, customId)
   }
   // Logic nodes
   else if (nodeType === "condition") {

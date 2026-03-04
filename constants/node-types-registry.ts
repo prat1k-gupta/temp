@@ -25,6 +25,7 @@ import { RetailStoreNode } from "@/components/nodes/fulfillment/retail-store-nod
 import { GenericIntegrationNode } from "@/components/nodes/integration/generic-integration-node"
 import { ApiFetchNode } from "@/components/nodes/action/api-fetch-node"
 import { TransferNode } from "@/components/nodes/action/transfer-node"
+import { TemplateMessageNode } from "@/components/nodes/action/template-message-node"
 
 export const nodeTypes = {
   start: StartNode,
@@ -62,6 +63,7 @@ export const nodeTypes = {
   // Action nodes
   apiFetch: ApiFetchNode,
   transfer: TransferNode,
+  templateMessage: TemplateMessageNode,
   // Integration nodes
   shopify: GenericIntegrationNode,
   metaAudience: GenericIntegrationNode,

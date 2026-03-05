@@ -9,16 +9,19 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { 
-  Upload, 
-  CheckCircle, 
-  Clock, 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Upload,
+  CheckCircle,
+  Clock,
   GitBranch,
   Loader2,
   AlertCircle
 } from "lucide-react"
 import { toast } from "sonner"
+import type { Node, Edge } from "@xyflow/react"
 import type { FlowChange } from "@/types"
+import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 
 interface PublishModalProps {
   changes: FlowChange[]
@@ -27,6 +30,17 @@ interface PublishModalProps {
   onPublishVersion: (versionId?: string, versionName?: string, description?: string) => Promise<void>
   currentVersion: any
   children: React.ReactNode
+  platform?: string
+  nodes?: Node[]
+  edges?: Edge[]
+  flowName?: string
+  flowDescription?: string
+  triggerIds?: string[]
+  triggerKeywords?: string[]
+  publishedFlowId?: string
+  waAccountId?: string
+  waPhoneNumber?: string
+  onPublished?: (flowId: string, waPhoneNumber?: string) => void
 }
 
 export function PublishModal({
@@ -35,13 +49,49 @@ export function PublishModal({
   onCreateVersion,
   onPublishVersion,
   currentVersion,
-  children
+  children,
+  platform,
+  nodes,
+  edges,
+  flowName,
+  flowDescription,
+  triggerIds,
+  triggerKeywords,
+  publishedFlowId,
+  waAccountId,
+  waPhoneNumber: waPhoneNumberProp,
+  onPublished,
 }: PublishModalProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [versionName, setVersionName] = useState("")
   const [versionDescription, setVersionDescription] = useState("")
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishMode, setPublishMode] = useState<'create' | 'publish'>('create')
+
+  // WhatsApp account selection
+  const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
+  const [waAccountsLoading, setWaAccountsLoading] = useState(false)
+  const [selectedWaAccountId, setSelectedWaAccountId] = useState(waAccountId || "")
+
+  // Fetch WhatsApp accounts when modal opens
+  useEffect(() => {
+    if (isOpen && platform === "whatsapp") {
+      setWaAccountsLoading(true)
+      fetch("/api/accounts")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : data.accounts || []
+          setWaAccounts(list)
+          // Pre-select stored account or default outgoing
+          if (!selectedWaAccountId) {
+            const defaultAcc = list.find((a: any) => a.is_default_outgoing) || list[0]
+            if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
+          }
+        })
+        .catch(() => setWaAccounts([]))
+        .finally(() => setWaAccountsLoading(false))
+    }
+  }, [isOpen, platform])
 
   // Initialize with default name when modal opens
   useEffect(() => {
@@ -69,12 +119,71 @@ export function PublishModal({
     try {
       if (publishMode === 'create') {
         await onCreateVersion(finalVersionName, versionDescription.trim() || undefined)
-        toast.success("Version created successfully!")
       } else {
         await onPublishVersion(undefined, finalVersionName, versionDescription.trim() || undefined)
-        toast.success("Version published successfully!")
       }
-      
+
+      // If WhatsApp platform, also publish to fs-whatsapp
+      if (platform === "whatsapp" && nodes && edges && flowName) {
+        try {
+          const converted = convertToFsWhatsApp(
+            nodes,
+            edges,
+            flowName,
+            flowDescription,
+            triggerIds,
+            triggerKeywords,
+          )
+          const response = await fetch("/api/whatsapp/publish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...converted,
+              publishedFlowId: publishedFlowId || undefined,
+            }),
+          })
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.error || `Publish failed (${response.status})`)
+          }
+          const result = await response.json()
+          if (result.flowId && onPublished) {
+            // Fetch the actual phone number from Meta via account test endpoint
+            let phoneNumber = waPhoneNumberProp
+            if (selectedWaAccountId) {
+              try {
+                console.log("[PublishModal] Fetching phone number for account:", selectedWaAccountId)
+                const tcRes = await fetch(`/api/accounts/${selectedWaAccountId}/test`, { method: "POST" })
+                const tcData = await tcRes.json()
+                console.log("[PublishModal] Test connection response:", tcData)
+                if (tcData.display_phone_number) {
+                  phoneNumber = tcData.display_phone_number.replace(/[^0-9]/g, "")
+                  console.log("[PublishModal] Resolved phone number:", phoneNumber)
+                }
+              } catch (err) {
+                console.error("[PublishModal] Failed to fetch phone number:", err)
+              }
+            }
+            console.log("[PublishModal] Calling onPublished with flowId:", result.flowId, "phone:", phoneNumber)
+            onPublished(result.flowId, phoneNumber)
+          }
+          toast.success(
+            result.updated ? "Flow updated on WhatsApp!" : "Published to WhatsApp!",
+            { description: result.flowId ? `Flow ID: ${result.flowId}` : undefined }
+          )
+        } catch (waErr: any) {
+          toast.error("Version created, but WhatsApp publish failed", {
+            description: waErr.message,
+          })
+        }
+      } else {
+        toast.success(
+          publishMode === 'create'
+            ? "Version created successfully!"
+            : "Version published successfully!"
+        )
+      }
+
       setVersionName("")
       setVersionDescription("")
       setIsOpen(false)
@@ -228,6 +337,34 @@ export function PublishModal({
             </div>
           )}
 
+          {/* WhatsApp Account Selector */}
+          {platform === "whatsapp" && (
+            <div className="space-y-2">
+              <Label>WhatsApp Account</Label>
+              <Select
+                value={selectedWaAccountId}
+                onValueChange={setSelectedWaAccountId}
+                disabled={isPublishing || waAccountsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={waAccountsLoading ? "Loading accounts..." : "Select WhatsApp account"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {waAccounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                      {acc.phone_number ? ` (${acc.phone_number})` : ""}
+                      {acc.status !== "active" ? ` - ${acc.status}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Flow will be deployed to this WhatsApp Business account
+              </p>
+            </div>
+          )}
+
           <Separator />
 
           {/* Changes Summary */}
@@ -288,9 +425,11 @@ export function PublishModal({
               className="flex items-center gap-2"
             >
               {isPublishing && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isPublishing 
-                ? (publishMode === 'create' ? 'Creating...' : 'Publishing...')
-                : (publishMode === 'create' ? 'Create & Publish' : 'Publish Version')
+              {isPublishing
+                ? (platform === "whatsapp" ? "Publishing to WhatsApp..." : (publishMode === 'create' ? 'Creating...' : 'Publishing...'))
+                : (platform === "whatsapp"
+                  ? (publishedFlowId ? "Update & Publish to WhatsApp" : "Create & Publish to WhatsApp")
+                  : (publishMode === 'create' ? 'Create & Publish' : 'Publish Version'))
               }
             </Button>
           </div>

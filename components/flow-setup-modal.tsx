@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { Loader2, Layout, Globe, Plus, X } from "lucide-react"
 import type { Platform } from "@/types"
@@ -21,6 +22,8 @@ interface FlowSetupModalProps {
     triggerId: string
     description?: string
     triggerKeywords?: string[]
+    waAccountId?: string
+    waPhoneNumber?: string
   }) => Promise<void>
 }
 
@@ -33,6 +36,30 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   const [isCreating, setIsCreating] = useState(false)
   const [triggerKeywords, setTriggerKeywords] = useState<string[]>([])
   const [keywordInput, setKeywordInput] = useState("")
+
+  // WhatsApp account selection
+  const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
+  const [waAccountsLoading, setWaAccountsLoading] = useState(false)
+  const [selectedWaAccountId, setSelectedWaAccountId] = useState("")
+
+  useEffect(() => {
+    if (selectedPlatform === "whatsapp" && open) {
+      setWaAccountsLoading(true)
+      fetch("/api/accounts")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : data.accounts || []
+          setWaAccounts(list)
+          // Auto-select default outgoing or first account
+          const defaultAcc = list.find((a: any) => a.is_default_outgoing) || list[0]
+          if (defaultAcc && !selectedWaAccountId) {
+            setSelectedWaAccountId(defaultAcc.id)
+          }
+        })
+        .catch(() => setWaAccounts([]))
+        .finally(() => setWaAccountsLoading(false))
+    }
+  }, [selectedPlatform, open])
 
   const triggers = getTriggersByPlatform(selectedPlatform)
   const filteredTriggers = triggers.filter(
@@ -107,6 +134,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
           triggerId: selectedTrigger,
           description: flowDescription.trim() || undefined,
           triggerKeywords: triggerKeywords.length > 0 ? triggerKeywords : undefined,
+          waAccountId: selectedPlatform === "whatsapp" && selectedWaAccountId ? selectedWaAccountId : undefined,
         })
         // Reset state only on success
         setFlowName("")
@@ -116,6 +144,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
         setSearchQuery("")
         setTriggerKeywords([])
         setKeywordInput("")
+        setSelectedWaAccountId("")
       } catch (error) {
         // Error handling is done in parent component
         // Don't reset state on error so user can retry
@@ -275,6 +304,34 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
               )}
             </div>
           </div>
+
+          {/* WhatsApp Account (WhatsApp only) */}
+          {selectedPlatform === "whatsapp" && (
+            <div className="space-y-2 px-1">
+              <Label className="text-sm text-muted-foreground">WhatsApp Account</Label>
+              <Select
+                value={selectedWaAccountId}
+                onValueChange={setSelectedWaAccountId}
+                disabled={isCreating || waAccountsLoading}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder={waAccountsLoading ? "Loading accounts..." : "Select WhatsApp account"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {waAccounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                      {acc.phone_number ? ` (${acc.phone_number})` : ""}
+                      {acc.status !== "active" ? ` - ${acc.status}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The WhatsApp Business account used to deploy and test this flow
+              </p>
+            </div>
+          )}
 
           {/* Trigger Keywords (WhatsApp only) */}
           {selectedPlatform === "whatsapp" && (

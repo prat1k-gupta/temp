@@ -32,6 +32,8 @@ import {
   History,
   Camera,
   Trash2,
+  Copy,
+  Link,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -72,6 +74,14 @@ interface FlowHeaderProps {
   setShowDeleteDialog: (show: boolean) => void
   onCreateVersion: (name: string, description?: string) => Promise<void>
   onPublishVersion: (versionId?: string, versionName?: string, description?: string) => Promise<void>
+  flowName?: string
+  flowDescription?: string
+  triggerIds?: string[]
+  triggerKeywords?: string[]
+  publishedFlowId?: string
+  waAccountId?: string
+  waPhoneNumber?: string
+  onPublished?: (flowId: string, waPhoneNumber?: string) => void
 }
 
 export function FlowHeader({
@@ -111,6 +121,14 @@ export function FlowHeader({
   setShowDeleteDialog,
   onCreateVersion,
   onPublishVersion,
+  flowName,
+  flowDescription,
+  triggerIds,
+  triggerKeywords,
+  publishedFlowId,
+  waAccountId,
+  waPhoneNumber,
+  onPublished,
 }: FlowHeaderProps) {
   return (
     <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
@@ -165,7 +183,7 @@ export function FlowHeader({
                   {currentVersion.isPublished && !isEditMode ? (
                     <>
                       <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
-                      {currentVersion.previewUrl && (
+                      {platform !== "whatsapp" && currentVersion.previewUrl && (
                         <a
                           href={currentVersion.previewUrl}
                           target="_blank"
@@ -184,6 +202,62 @@ export function FlowHeader({
                     <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
                   )}
                 </div>
+              )}
+              {publishedFlowId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(publishedFlowId)
+                    toast.success("Flow ID copied!")
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted text-xs text-muted-foreground transition-colors cursor-pointer"
+                  title={`Flow ID: ${publishedFlowId}`}
+                >
+                  <Link className="w-3 h-3" />
+                  <span className="font-mono">{publishedFlowId.slice(0, 8)}...</span>
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
+              {platform === "whatsapp" && waPhoneNumber && triggerKeywords && triggerKeywords.length > 0 && (
+                triggerKeywords.length === 1 ? (
+                  <a
+                    href={`https://wa.me/${waPhoneNumber}?text=${encodeURIComponent(triggerKeywords[0])}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500 hover:bg-green-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Test on WhatsApp
+                  </a>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500 hover:bg-green-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Test on WhatsApp
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="min-w-[160px]">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">Send keyword</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {triggerKeywords.map((kw) => (
+                        <DropdownMenuItem key={kw} asChild>
+                          <a
+                            href={`https://wa.me/${waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cursor-pointer"
+                          >
+                            <span className="font-mono text-xs">{kw}</span>
+                          </a>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )
               )}
             </>
           )}
@@ -221,6 +295,17 @@ export function FlowHeader({
             onCreateVersion={onCreateVersion}
             onPublishVersion={onPublishVersion}
             currentVersion={currentVersion}
+            platform={platform}
+            nodes={nodes}
+            edges={edges}
+            flowName={flowName}
+            flowDescription={flowDescription}
+            triggerIds={triggerIds}
+            triggerKeywords={triggerKeywords}
+            publishedFlowId={publishedFlowId}
+            waAccountId={waAccountId}
+            waPhoneNumber={waPhoneNumber}
+            onPublished={onPublished}
           >
             <Button
               variant="default"

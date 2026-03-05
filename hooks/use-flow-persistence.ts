@@ -155,6 +155,8 @@ export function useFlowPersistence({
                 triggerIds: latestFlow?.triggerIds ?? currentFlow?.triggerIds,
                 triggerKeywords: latestFlow?.triggerKeywords ?? currentFlow?.triggerKeywords,
                 publishedFlowId: latestFlow?.publishedFlowId ?? currentFlow?.publishedFlowId,
+                waAccountId: latestFlow?.waAccountId ?? currentFlow?.waAccountId,
+                waPhoneNumber: latestFlow?.waPhoneNumber ?? currentFlow?.waPhoneNumber,
               }),
             })
 
@@ -186,7 +188,7 @@ export function useFlowPersistence({
   }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow, loadFromDb])
 
   const handleFlowSetupComplete = useCallback(
-    async (data: { name: string; platform: Platform; triggerId: string; description?: string; triggerKeywords?: string[] }) => {
+    async (data: { name: string; platform: Platform; triggerId: string; description?: string; triggerKeywords?: string[]; waAccountId?: string; waPhoneNumber?: string }) => {
       if (isNewFlow) {
         if (loadFromDb) {
           try {
@@ -200,6 +202,8 @@ export function useFlowPersistence({
                 triggerId: data.triggerId,
                 triggerIds: data.triggerId ? [data.triggerId] : [],
                 triggerKeywords: data.triggerKeywords || [],
+                ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
+                ...(data.waPhoneNumber ? { waPhoneNumber: data.waPhoneNumber } : {}),
                 nodes: [
                   {
                     id: "1",
@@ -271,7 +275,7 @@ export function useFlowPersistence({
             throw error
           }
         } else {
-          const newFlow = createFlow(data.name, data.description, data.platform, data.triggerId)
+          const newFlow = createFlow(data.name, data.description, data.platform, data.triggerId, data.triggerKeywords, data.waAccountId)
 
           setCurrentFlow(newFlow)
           setNodes(newFlow.nodes)
@@ -288,6 +292,8 @@ export function useFlowPersistence({
           triggerId: data.triggerId,
           triggerIds: [data.triggerId],
           description: data.description,
+          triggerKeywords: data.triggerKeywords || [],
+          ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
           nodes: [
             {
               id: "1",
@@ -298,6 +304,7 @@ export function useFlowPersistence({
                 platform: data.platform,
                 triggerId: data.triggerId,
                 triggerIds: [data.triggerId],
+                triggerKeywords: data.triggerKeywords || [],
               },
               draggable: true,
               selectable: true,

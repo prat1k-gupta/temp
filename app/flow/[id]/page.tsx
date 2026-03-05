@@ -309,6 +309,32 @@ function MagicFlowInner() {
     }
   }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
 
+  // Backfill waPhoneNumber for flows published before account selector was added
+  useEffect(() => {
+    const flow = persistence.currentFlow
+    if (flow && flow.platform === "whatsapp" && flow.publishedFlowId && !flow.waPhoneNumber) {
+      // Fetch accounts, find default, then get phone number via test-connection
+      fetch("/api/accounts")
+        .then((res) => res.json())
+        .then(async (data) => {
+          const list = Array.isArray(data) ? data : data.accounts || []
+          const acc = flow.waAccountId
+            ? list.find((a: any) => a.id === flow.waAccountId)
+            : list.find((a: any) => a.is_default_outgoing) || list[0]
+          if (!acc) return
+          const tcRes = await fetch(`/api/accounts/${acc.id}/test`, { method: "POST" })
+          if (!tcRes.ok) return
+          const tcData = await tcRes.json()
+          if (tcData.display_phone_number) {
+            const phone = tcData.display_phone_number.replace(/[^0-9]/g, "")
+            persistence.setCurrentFlow((prev) => prev ? { ...prev, waPhoneNumber: phone, waAccountId: acc.id } : null)
+            persistence.saveFlowFields({ waPhoneNumber: phone, waAccountId: acc.id })
+          }
+        })
+        .catch(() => {})
+    }
+  }, [persistence.currentFlow?.publishedFlowId, persistence.currentFlow?.waPhoneNumber])
+
   // --- JSX ---
 
   return (
@@ -384,6 +410,24 @@ function MagicFlowInner() {
           setIsVersionHistoryModalOpen={setIsVersionHistoryModalOpen}
           setIsScreenshotModalOpen={setIsScreenshotModalOpen}
           setShowDeleteDialog={persistence.setShowDeleteDialog}
+          flowName={persistence.currentFlow?.name}
+          flowDescription={persistence.currentFlow?.description}
+          triggerIds={persistence.currentFlow?.triggerIds}
+          triggerKeywords={
+            (() => {
+              const nodeKw = nodes.find(n => n.type === "start")?.data?.triggerKeywords as string[] | undefined
+              return nodeKw?.length ? nodeKw : persistence.currentFlow?.triggerKeywords
+            })()
+          }
+          publishedFlowId={persistence.currentFlow?.publishedFlowId}
+          waAccountId={persistence.currentFlow?.waAccountId}
+          waPhoneNumber={persistence.currentFlow?.waPhoneNumber}
+          onPublished={(flowId, waPhoneNumber) => {
+            persistence.setCurrentFlow((prev) =>
+              prev ? { ...prev, publishedFlowId: flowId, ...(waPhoneNumber ? { waPhoneNumber } : {}) } : null
+            )
+            persistence.saveFlowFields({ publishedFlowId: flowId, ...(waPhoneNumber ? { waPhoneNumber } : {}) })
+          }}
           onCreateVersion={async (name, description) => {
             setIsLoadingVersion(true)
             const published = createAndPublishVersion(nodes, edges, platform, name, description)

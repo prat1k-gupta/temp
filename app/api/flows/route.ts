@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
       triggerId: flowData.triggerId,
       triggerIds: flowData.triggerId ? [flowData.triggerId] : [],
       triggerKeywords: flowData.triggerKeywords || [],
+      ...(flowData.waAccountId ? { waAccountId: flowData.waAccountId } : {}),
+      ...(flowData.waPhoneNumber ? { waPhoneNumber: flowData.waPhoneNumber } : {}),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

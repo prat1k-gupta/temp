@@ -85,6 +85,24 @@ export function injectNodeCallbacks(
               if (flowContext.saveFlowFields) {
                 flowContext.saveFlowFields(flowUpdates)
               }
+              // Sync trigger keywords to fs-whatsapp if flow is published
+              if (
+                updates.triggerKeywords &&
+                updates.triggerKeywords.length > 0 &&
+                flowContext.currentFlow?.publishedFlowId &&
+                flowContext.currentFlow?.platform === "whatsapp"
+              ) {
+                fetch("/api/whatsapp/update-keywords", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    flowId: flowContext.currentFlow.publishedFlowId,
+                    triggerKeywords: updates.triggerKeywords,
+                  }),
+                }).catch(() => {
+                  // Silent fail — keywords are still saved locally
+                })
+              }
             }
           }
         },

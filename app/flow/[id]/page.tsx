@@ -111,6 +111,18 @@ function MagicFlowInner() {
     draftChanges,
   } = versionManager
 
+  // Wrap autoEnterEditMode to set the flag that prevents the version-loading
+  // useEffect from overwriting nodes/edges when switching view→edit mode
+  const wrappedAutoEnterEditMode = useCallback(
+    (sn: any, se: any, sp: any, n: Node[], e: Edge[], p: Platform) => {
+      if (!isEditMode) {
+        setIsAutoEnteringEditMode(true)
+      }
+      autoEnterEditMode(sn, se, sp, n, e, p)
+    },
+    [autoEnterEditMode, isEditMode]
+  )
+
   const persistence = useFlowPersistence({
     flowId,
     isNewFlow,
@@ -135,7 +147,7 @@ function MagicFlowInner() {
     onNodesChangeOriginal,
     onEdgesChangeOriginal,
     isEditMode,
-    autoEnterEditMode,
+    autoEnterEditMode: wrappedAutoEnterEditMode,
     updateDraftChanges,
     currentFlow: persistence.currentFlow,
     setCurrentFlow: persistence.setCurrentFlow,
@@ -155,7 +167,7 @@ function MagicFlowInner() {
     setIsPropertiesPanelOpen: nodeOps.setIsPropertiesPanelOpen,
     setNodeToFocus: nodeOps.setNodeToFocus,
     isEditMode,
-    autoEnterEditMode,
+    autoEnterEditMode: wrappedAutoEnterEditMode,
     updateDraftChanges,
   })
 
@@ -171,7 +183,7 @@ function MagicFlowInner() {
     deleteNode: nodeOps.deleteNode,
     setNodeToFocus: nodeOps.setNodeToFocus,
     isEditMode,
-    autoEnterEditMode,
+    autoEnterEditMode: wrappedAutoEnterEditMode,
     updateDraftChanges,
     currentFlow: persistence.currentFlow,
     setCurrentFlow: persistence.setCurrentFlow,
@@ -194,7 +206,7 @@ function MagicFlowInner() {
     updateNodeData: nodeOps.updateNodeData,
     convertNode: nodeOps.convertNode,
     isEditMode,
-    autoEnterEditMode,
+    autoEnterEditMode: wrappedAutoEnterEditMode,
     updateDraftChanges,
     copyNodes: clipboard.copyNodes,
     pasteNodes: clipboard.pasteNodes,
@@ -216,7 +228,7 @@ function MagicFlowInner() {
   const importFlow = useCallback(
     (importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
       if (!isEditMode) {
-        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        wrappedAutoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
       }
       changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
       updateDraftChanges()
@@ -233,7 +245,7 @@ function MagicFlowInner() {
 
       toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
     },
-    [setNodes, setEdges, setPlatform, isEditMode, updateDraftChanges, autoEnterEditMode, nodes, edges, platform, nodeOps, clipboard]
+    [setNodes, setEdges, setPlatform, isEditMode, updateDraftChanges, wrappedAutoEnterEditMode, nodes, edges, platform, nodeOps, clipboard]
   )
 
   // --- Version initialization effects ---

@@ -112,6 +112,7 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
   function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {
     if (!sourceHandle) return null
     const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
     // Match by handle ID like "button-0", "button-1"
     const match = sourceHandle.match(/^button-(\d+)$/)
     if (match) {
@@ -120,12 +121,42 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
         return buttons[idx]?.text || buttons[idx]?.label || `Button ${idx}`
       }
     }
+    // Match by handle ID like "option-0", "option-1"
+    const optMatch = sourceHandle.match(/^option-(\d+)$/)
+    if (optMatch) {
+      const idx = parseInt(optMatch[1], 10)
+      if (idx < options.length) {
+        return options[idx]?.text || `Option ${idx}`
+      }
+    }
     // Also try matching by button.id
     const byId = buttons.find(b => b.id === sourceHandle)
     if (byId) return byId.text || byId.label || sourceHandle
+    // Also try matching by option.id
+    const byOptId = options.find(o => o.id === sourceHandle)
+    if (byOptId) return byOptId.text || sourceHandle
     // Handle "next-step" or other named handles
     if (sourceHandle === "next-step") return null
     return null
+  }
+
+  function getButtonIndex(node: Node, sourceHandle: string | undefined): number {
+    if (!sourceHandle) return Infinity
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    // Check button-N index handles
+    const btnMatch = sourceHandle.match(/^button-(\d+)$/)
+    if (btnMatch) return parseInt(btnMatch[1], 10)
+    // Check option-N index handles
+    const optMatch = sourceHandle.match(/^option-(\d+)$/)
+    if (optMatch) return buttons.length + parseInt(optMatch[1], 10)
+    // Check by button.id
+    const btnIdx = buttons.findIndex(b => b.id === sourceHandle)
+    if (btnIdx !== -1) return btnIdx
+    // Check by option.id (offset by buttons length to avoid collisions)
+    const optIdx = options.findIndex(o => o.id === sourceHandle)
+    if (optIdx !== -1) return buttons.length + optIdx
+    return Infinity
   }
 
   function dfs(nodeId: string, prefix: string, connector: string) {
@@ -140,7 +171,7 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
 
     // Already visited — convergence
     if (visited.has(nodeId)) {
-      lines.push(`${prefix}${connector} [${nodeId}] (see above)`)
+      lines.push(`${prefix}${connector} ${getNodeSummary(node)} (see above)`)
       return
     }
 
@@ -158,9 +189,24 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
 
     if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
-      const items = buttons.length > 0
-        ? buttons.map((b, i) => `"${b.text || b.label || "?"}" (handle: ${b.id || `button-${i}`})`)
-        : options.map((o, i) => `"${o.text || "?"}" (handle: ${o.id || `button-${i}`})`)
+      const seen = new Set<string>()
+      const items: string[] = []
+      for (let i = 0; i < buttons.length; i++) {
+        const b = buttons[i]
+        const handle = b.id || `button-${i}`
+        if (!seen.has(handle)) {
+          seen.add(handle)
+          items.push(`"${b.text || b.label || "?"}" (handle: ${handle})`)
+        }
+      }
+      for (let i = 0; i < options.length; i++) {
+        const o = options[i]
+        const handle = o.id || `option-${i}`
+        if (!seen.has(handle)) {
+          seen.add(handle)
+          items.push(`"${o.text || "?"}" (handle: ${handle})`)
+        }
+      }
       const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
       lines.push(`${childPrefix}│ Buttons: [${items.join(", ")}]`)
     }
@@ -172,8 +218,32 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
 
     const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
 
-    children.forEach((child, idx) => {
-      const isLast = idx === children.length - 1
+    // For button nodes: sort by button order, filter out redundant unlabeled edges
+    // (stale edges whose target is already reached by a labeled button edge)
+    let sortedChildren = children
+    if (isButtonNode) {
+      const labeledTargets = new Set(
+        children
+          .filter(c => getButtonLabel(node, c.sourceHandle) !== null)
+          .map(c => c.target)
+      )
+      sortedChildren = children
+        .filter(c => {
+          // Keep all labeled edges; drop unlabeled edges to targets already covered
+          if (getButtonLabel(node, c.sourceHandle) !== null) return true
+          return !labeledTargets.has(c.target)
+        })
+        .sort((a, b) => {
+          const aLabel = getButtonLabel(node, a.sourceHandle)
+          const bLabel = getButtonLabel(node, b.sourceHandle)
+          const aIdx = aLabel ? getButtonIndex(node, a.sourceHandle) : Infinity
+          const bIdx = bLabel ? getButtonIndex(node, b.sourceHandle) : Infinity
+          return aIdx - bIdx
+        })
+    }
+
+    sortedChildren.forEach((child, idx) => {
+      const isLast = idx === sortedChildren.length - 1
       const childConnector = isLast ? "└→ " : "├→ "
       const buttonLabel = getButtonLabel(node, child.sourceHandle)
       if (buttonLabel) {

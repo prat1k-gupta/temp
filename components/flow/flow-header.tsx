@@ -34,6 +34,7 @@ import {
   Trash2,
   Copy,
   Link,
+  Network,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -82,6 +83,8 @@ interface FlowHeaderProps {
   waAccountId?: string
   waPhoneNumber?: string
   onPublished?: (flowId: string, waPhoneNumber?: string) => void
+  isFlowGraphPanelOpen?: boolean
+  onToggleFlowGraph?: () => void
 }
 
 export function FlowHeader({
@@ -129,6 +132,8 @@ export function FlowHeader({
   waAccountId,
   waPhoneNumber,
   onPublished,
+  isFlowGraphPanelOpen,
+  onToggleFlowGraph,
 }: FlowHeaderProps) {
   return (
     <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
@@ -350,6 +355,16 @@ export function FlowHeader({
               {getPlatformDisplayName(platform)}
             </span>
           </div>
+
+          <Button
+            variant={isFlowGraphPanelOpen ? "secondary" : "ghost"}
+            size="sm"
+            onClick={onToggleFlowGraph}
+            className="h-9 w-9 p-0"
+            title="Flow Graph"
+          >
+            <Network className="w-4 h-4" />
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

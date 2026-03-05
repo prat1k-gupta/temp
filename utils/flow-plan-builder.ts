@@ -185,14 +185,26 @@ export function buildEditFlowFromPlan(
     }
   }
 
+  // Build a map of updated node data so chains can see newly-added buttons
+  const updatedNodeDataMap = new Map<string, Record<string, unknown>>()
+  for (const u of nodeUpdates) {
+    updatedNodeDataMap.set(u.nodeId, u.data)
+  }
+
   // Process chains — each chain attaches to an existing node
   for (const chain of plan.chains || []) {
-    const anchorNode = existingNodes.find((n) => n.id === chain.attachTo)
+    let anchorNode = existingNodes.find((n) => n.id === chain.attachTo)
     if (!anchorNode) {
       const msg = `Chain attachTo node "${chain.attachTo}" not found — skipped`
       console.warn(`[buildEditFlowFromPlan] ${msg}`)
       warnings.push(msg)
       continue
+    }
+
+    // Merge pending nodeUpdates into anchor so handle resolution sees new buttons
+    const pendingData = updatedNodeDataMap.get(chain.attachTo)
+    if (pendingData) {
+      anchorNode = { ...anchorNode, data: { ...anchorNode.data, ...pendingData } }
     }
 
     // Calculate starting position: to the right of the anchor

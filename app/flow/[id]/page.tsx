@@ -51,6 +51,7 @@ import { useClipboard } from "@/hooks/use-clipboard"
 import { useFlowAI } from "@/hooks/use-flow-ai"
 import { useFlowInteractions } from "@/hooks/use-flow-interactions"
 import { FlowHeader } from "@/components/flow/flow-header"
+import { FlowGraphPanel } from "@/components/flow/flow-graph-panel"
 import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
@@ -77,6 +78,7 @@ function MagicFlowInner() {
   const [isVersionHistoryModalOpen, setIsVersionHistoryModalOpen] = useState(false)
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false)
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
+  const [isFlowGraphPanelOpen, setIsFlowGraphPanelOpen] = useState(false)
 
   // Version loading state
   const [draftStateLoaded, setDraftStateLoaded] = useState(false)
@@ -422,6 +424,8 @@ function MagicFlowInner() {
           setIsVersionHistoryModalOpen={setIsVersionHistoryModalOpen}
           setIsScreenshotModalOpen={setIsScreenshotModalOpen}
           setShowDeleteDialog={persistence.setShowDeleteDialog}
+          isFlowGraphPanelOpen={isFlowGraphPanelOpen}
+          onToggleFlowGraph={() => setIsFlowGraphPanelOpen((prev) => !prev)}
           flowName={persistence.currentFlow?.name}
           flowDescription={persistence.currentFlow?.description}
           triggerIds={persistence.currentFlow?.triggerIds}
@@ -584,7 +588,8 @@ function MagicFlowInner() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <div className="h-full pt-20">
+        <div className="h-full flex flex-col pt-20">
+        <div className="flex-1 relative">
           <ReactFlow
             ref={flowElementRef}
             key={`flow-${currentVersion?.id || "default"}`}
@@ -673,6 +678,15 @@ function MagicFlowInner() {
               />
             </Panel>
           </ReactFlow>
+        </div>
+          {isFlowGraphPanelOpen && (
+            <FlowGraphPanel
+              nodes={nodes}
+              edges={edges}
+              isOpen={isFlowGraphPanelOpen}
+              onClose={() => setIsFlowGraphPanelOpen(false)}
+            />
+          )}
         </div>
 
         <PaneContextMenu

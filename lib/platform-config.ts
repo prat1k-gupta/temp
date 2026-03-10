@@ -3,8 +3,6 @@ import type { Platform } from "@/types"
 export interface PlatformConfig {
   name: Platform
   displayName: string
-  messageMaxLength: number
-  buttonTextMaxLength: number
   colors: {
     primary: string
     secondary: string
@@ -12,12 +10,12 @@ export interface PlatformConfig {
   }
 }
 
+// Node-specific limits (text, buttons, options) are resolved via getNodeLimits()
+// from constants/node-limits/config.ts — do NOT duplicate them here.
 export const PLATFORM_CONFIGS: Record<Platform, PlatformConfig> = {
   whatsapp: {
     name: "whatsapp",
     displayName: "WhatsApp",
-    messageMaxLength: 160,
-    buttonTextMaxLength: 20,
     colors: {
       primary: "#25d366",
       secondary: "#128c7e",
@@ -27,8 +25,6 @@ export const PLATFORM_CONFIGS: Record<Platform, PlatformConfig> = {
   instagram: {
     name: "instagram",
     displayName: "Instagram",
-    messageMaxLength: 100,
-    buttonTextMaxLength: 15,
     colors: {
       primary: "#E1306C",
       secondary: "#C13584",
@@ -38,8 +34,6 @@ export const PLATFORM_CONFIGS: Record<Platform, PlatformConfig> = {
   web: {
     name: "web",
     displayName: "Web",
-    messageMaxLength: 500,
-    buttonTextMaxLength: 20,
     colors: {
       primary: "#3b82f6",
       secondary: "#2563eb",

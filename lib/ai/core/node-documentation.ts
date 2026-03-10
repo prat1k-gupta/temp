@@ -123,8 +123,8 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
   lines.push(`Button limits: web=${BUTTON_LIMITS.web}, whatsapp=${BUTTON_LIMITS.whatsapp}, instagram=${BUTTON_LIMITS.instagram}`)
 
   const charLimits = CHARACTER_LIMITS[platform]
-  lines.push(`Character limits for ${platform}: question/text max=${charLimits.question} chars, button text max=${charLimits.button} chars`)
-  lines.push(`IMPORTANT: All generated text MUST fit within these character limits. Keep messages concise.`)
+  lines.push(`Default character limits for ${platform}: question max=${charLimits.question} chars, button text max=${charLimits.button} chars`)
+  lines.push(`IMPORTANT: When a node shows [max N chars] above, use that limit instead of the default. All generated text MUST fit within these character limits.`)
 
   return lines.join("\n")
 }

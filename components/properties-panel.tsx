@@ -56,6 +56,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { createButtonData, createOptionData } from "@/utils"
 import { collectFlowVariables } from "@/utils/flow-variables"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
+import { getNodeLimits } from "@/constants/node-limits/config"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -77,11 +78,7 @@ interface PropertiesPanelProps {
   allNodes?: Node[] // All nodes in the flow for variable mapping
 }
 
-const PLATFORM_LIMITS = {
-  web: { question: 200, button: 24 },
-  whatsapp: { question: 160, button: 24 },
-  instagram: { question: 100, button: 24 },
-}
+// Limits are resolved dynamically from getNodeLimits() per-node, not hardcoded.
 
 const NODE_ICONS = {
   start: Play,
@@ -554,7 +551,10 @@ export function PropertiesPanel({
     return null
   }
 
-  const limits = PLATFORM_LIMITS[platform]
+  const nodeLimits = getNodeLimits(selectedNode.type || "", platform)
+  const textMax = nodeLimits.text?.max ?? nodeLimits.question?.max ?? 500
+  const buttonTextMax = nodeLimits.buttons?.textMaxLength ?? nodeLimits.options?.textMaxLength ?? 20
+  const limits = { question: textMax, button: buttonTextMax }
   const isOverLimit = (text: string, type: "question" | "button") => {
     return text.length > limits[type]
   }

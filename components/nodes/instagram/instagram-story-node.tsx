@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Edit2, Check, X, Camera } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
-import { getPlatformConfig } from "@/lib/platform-config"
+import { getNodeLimits } from "@/constants"
 
 interface InstagramStoryNodeData {
   text: string
@@ -20,8 +20,8 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
   const [isEditing, setIsEditing] = useState(false)
   const [editingValue, setEditingValue] = useState(data.text)
 
-  const platformConfig = getPlatformConfig(data.platform)
-  const maxLength = platformConfig.messageMaxLength
+  const nodeLimits = getNodeLimits("instagramStory", data.platform)
+  const maxLength = nodeLimits.text?.max ?? 500
 
   useEffect(() => {
     setEditingValue(data.text)

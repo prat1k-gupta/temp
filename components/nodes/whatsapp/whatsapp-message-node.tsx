@@ -12,7 +12,6 @@ import { AIToolbar } from "@/components/ai"
 import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
-import { getPlatformConfig } from "@/lib/platform-config"
 
 export function WhatsAppMessageNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -22,8 +21,8 @@ export function WhatsAppMessageNode({ data, selected }: { data: any; selected?: 
   const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "whatsapp") as Platform
-  const platformConfig = getPlatformConfig(platform)
-  const maxLength = platformConfig.messageMaxLength || 160
+  const nodeLimits = getNodeLimits("whatsappMessage", platform)
+  const maxLength = nodeLimits.text?.max ?? 4096
 
   useEffect(() => {
     if (!isEditingLabel) {

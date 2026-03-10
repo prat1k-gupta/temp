@@ -12,7 +12,6 @@ import { AIToolbar } from "@/components/ai"
 import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
 import type { Platform } from "@/types"
-import { getPlatformConfig } from "@/lib/platform-config"
 
 export function InstagramDMNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -22,8 +21,8 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
   const editingContainerRef = useRef<HTMLDivElement>(null)
 
   const platform = (data.platform || "instagram") as Platform
-  const platformConfig = getPlatformConfig(platform)
-  const maxLength = platformConfig.messageMaxLength || 100
+  const nodeLimits = getNodeLimits("instagramDM", platform)
+  const maxLength = nodeLimits.text?.max ?? 1000
 
   useEffect(() => {
     if (!isEditingLabel) {

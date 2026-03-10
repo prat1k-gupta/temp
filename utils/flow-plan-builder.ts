@@ -172,6 +172,7 @@ export function buildEditFlowFromPlan(
           const convertedData: Record<string, unknown> = {
             ...restData,
             options,
+            buttons: undefined, // explicitly clear stale buttons so merged data doesn't have both
             listTitle: (restData as any).listTitle || "Select an option",
             label: conversion.newLabel,
           }

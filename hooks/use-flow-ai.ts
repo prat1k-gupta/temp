@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
-import type { Platform, ButtonData } from "@/types"
+import type { Platform, ButtonData, OptionData } from "@/types"
 import type { EditFlowPlan, NodeContent } from "@/types/flow-plan"
 import { getBaseNodeType, isMultiOutputType } from "@/utils/platform-helpers"
 import { createNode, createCommentNode } from "@/utils/node-factory"
@@ -592,13 +592,15 @@ export function useFlowAI({
           let changed = false
           const normalized = eds.map((e) => {
             if (!e.sourceHandle && nodesWithButtonEdges.has(e.source)) {
-              // Try to assign to an unoccupied button handle using node data
+              // Try to assign to an unoccupied button/option handle using node data
               const sourceNode = nodes.find((n) => n.id === e.source)
               const buttons = (sourceNode?.data?.buttons as ButtonData[]) || []
+              const options = (sourceNode?.data?.options as OptionData[]) || []
               const occupied = occupiedHandles.get(e.source) || new Set()
 
               const freeButton = buttons.find((btn) => btn.id && !occupied.has(btn.id))
-              const resolvedHandle = freeButton?.id || "next-step"
+              const freeOption = !freeButton ? options.find((opt) => opt.id && !occupied.has(opt.id)) : undefined
+              const resolvedHandle = freeButton?.id || freeOption?.id || "next-step"
 
               console.log(`[handleUpdateFlow] Resolving handleless edge: ${e.source} → ${e.target} → handle "${resolvedHandle}"`)
               changed = true

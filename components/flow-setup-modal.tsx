@@ -154,7 +154,8 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }
 
-  const canComplete = flowName.trim().length > 0 && selectedTrigger.length > 0 && !isCreating
+  const needsKeywords = selectedTrigger === "whatsapp-message" || selectedTrigger === "instagram-message"
+  const canComplete = flowName.trim().length > 0 && selectedTrigger.length > 0 && !isCreating && (!needsKeywords || triggerKeywords.length > 0)
 
   // Prevent closing dialog while creating
   const handleOpenChange = (open: boolean) => {

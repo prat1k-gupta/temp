@@ -417,7 +417,10 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                 <Button variant="ghost" onClick={() => setIsEditingTriggers(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleSaveTriggers}>
+                <Button
+                  onClick={handleSaveTriggers}
+                  disabled={selectedTriggers.some(id => id === "whatsapp-message" || id === "instagram-message") && triggerKeywords.length === 0}
+                >
                   Save
                 </Button>
               </div>

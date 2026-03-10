@@ -254,15 +254,15 @@ export function PublishModal({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5" />
             Publish Version
           </DialogTitle>
         </DialogHeader>
-        
-        <div className="flex-1 flex flex-col gap-4">
+
+        <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-1">
           {/* Publish Mode Selection */}
           <div className="space-y-2">
             <Label>Publish Mode</Label>
@@ -315,7 +315,7 @@ export function PublishModal({
                   value={versionDescription}
                   onChange={(e) => setVersionDescription(e.target.value)}
                   placeholder="Describe the changes in this version..."
-                  rows={3}
+                  rows={2}
                   disabled={isPublishing}
                 />
               </div>
@@ -382,7 +382,7 @@ export function PublishModal({
                 <p>No changes to publish</p>
               </div>
             ) : (
-              <ScrollArea className="h-48 border rounded-lg p-3">
+              <ScrollArea className="h-32 border rounded-lg p-3">
                 <div className="space-y-2">
                   {changes.map((change) => (
                     <div key={change.id} className="flex items-start gap-3 p-2 rounded hover:bg-gray-50">
@@ -415,7 +415,7 @@ export function PublishModal({
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4 border-t">
+          <div className="flex justify-end gap-2 pt-3 border-t flex-shrink-0 sticky bottom-0 bg-background">
             <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isPublishing}>
               Cancel
             </Button>

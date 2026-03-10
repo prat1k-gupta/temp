@@ -46,7 +46,7 @@ describe("getNodeLimits", () => {
       expect(limits.options!.max).toBe(10)
       expect(limits.options!.descriptionMaxLength).toBe(72)
       expect(limits.listTitle).toBeDefined()
-      expect(limits.listTitle!.max).toBe(60)
+      expect(limits.listTitle!.max).toBe(20)
       expect(limits.maxConnections).toBe(10)
       expect(limits.allowMultipleOutputs).toBe(true)
     })

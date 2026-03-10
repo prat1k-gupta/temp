@@ -1,6 +1,6 @@
 import type { Platform } from "@/types"
 import type { NodeLimits } from "./types"
-import { BUTTON_LIMITS, CHARACTER_LIMITS } from "../platform-limits"
+import { BUTTON_LIMITS, CHARACTER_LIMITS, OPTION_LIMITS } from "../platform-limits"
 import { getBaseNodeType } from "@/utils/platform-helpers"
 import { NODE_TEMPLATES } from "../node-categories"
 import type { NodeTemplateLimits } from "../node-categories"
@@ -78,7 +78,7 @@ function resolveTemplateLimits(cfg: NodeTemplateLimits | undefined, platform: Pl
     result.options = {
       min: 1,
       max: 10,
-      textMaxLength: CHARACTER_LIMITS[platform].button,
+      textMaxLength: OPTION_LIMITS.titleMaxLength,
       descriptionMaxLength: 72,
     }
   }

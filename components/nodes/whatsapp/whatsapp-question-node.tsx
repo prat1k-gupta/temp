@@ -30,8 +30,9 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
   const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappQuestion"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxLength = nodeLimits.question?.max || 160
-  const maxButtons = nodeLimits.buttons?.max || 10
+  const maxLength = nodeLimits.question?.max ?? 250
+  const maxButtons = nodeLimits.buttons?.max ?? 3
+  const maxButtonTextLength = nodeLimits.buttons?.textMaxLength ?? 20
 
   useEffect(() => {
     if (!isEditingLabel) {
@@ -318,13 +319,13 @@ export function WhatsAppQuestionNode({ data, selected }: { data: any; selected?:
           </div>
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && manualButtons.length < 10 && (
+          {(data.question || editingQuestionValue) && manualButtons.length < maxButtons && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
               buttons={manualButtons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
               onUpdateButtons={handleUpdateButtons}
-              maxButtons={10}
-              maxButtonLength={20}
+              maxButtons={maxButtons}
+              maxButtonLength={maxButtonTextLength}
               nodeType={nodeType}
               platform={platform}
             />

@@ -28,8 +28,9 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
   const platform = (data.platform || "web") as Platform
   const nodeType = "webQuestion"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxLength = nodeLimits.question?.max || 500
-  const maxButtons = nodeLimits.buttons?.max || 10
+  const maxLength = nodeLimits.question?.max ?? 500
+  const maxButtons = nodeLimits.buttons?.max ?? 10
+  const maxButtonTextLength = nodeLimits.buttons?.textMaxLength ?? 20
 
   useEffect(() => {
     if (!isEditingLabel) {
@@ -300,13 +301,13 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && manualButtons.length < 10 && (
+          {(data.question || editingQuestionValue) && manualButtons.length < maxButtons && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
               buttons={manualButtons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
               onUpdateButtons={handleUpdateButtons}
-              maxButtons={10}
-              maxButtonLength={20}
+              maxButtons={maxButtons}
+              maxButtonLength={maxButtonTextLength}
               nodeType={nodeType}
               platform={platform}
             />

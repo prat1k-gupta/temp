@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { User, Edit3, Check, X, Sparkles } from "lucide-react"
 import type { Platform } from "@/types"
-import { CHARACTER_LIMITS } from "@/constants/platform-limits"
+import { getNodeLimits } from "@/constants"
 
 export function NameNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -18,7 +18,8 @@ export function NameNode({ data, selected }: { data: any; selected?: boolean }) 
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
 
   const platform = (data.platform || "web") as Platform
-  const maxLength = CHARACTER_LIMITS[platform].question
+  const nodeLimits = getNodeLimits("name", platform)
+  const maxLength = nodeLimits.text?.max ?? nodeLimits.question?.max ?? 500
   const validationRules = data.validationRules || {
     minLength: 2,
     maxLength: 50,

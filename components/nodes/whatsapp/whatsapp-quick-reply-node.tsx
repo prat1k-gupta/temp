@@ -33,9 +33,9 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
   const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappQuickReply"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxQuestionLength = nodeLimits.question?.max || 160
-  const maxButtonLength = nodeLimits.buttons?.textMaxLength || 20
-  const maxButtons = nodeLimits.buttons?.max || 10
+  const maxQuestionLength = nodeLimits.question?.max ?? 250
+  const maxButtonLength = nodeLimits.buttons?.textMaxLength ?? 20
+  const maxButtons = nodeLimits.buttons?.max ?? 3
 
   // AI hook for button generation and improvement
   const ai = useAIButtonGenerator(nodeType, platform)

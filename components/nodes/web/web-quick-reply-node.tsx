@@ -30,9 +30,9 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
   const platform = (data.platform || "web") as Platform
   const nodeType = "webQuickReply"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxQuestionLength = nodeLimits.question?.max || 500
-  const maxButtonLength = nodeLimits.buttons?.textMaxLength || 20
-  const maxButtons = nodeLimits.buttons?.max || 3
+  const maxQuestionLength = nodeLimits.question?.max ?? 500
+  const maxButtonLength = nodeLimits.buttons?.textMaxLength ?? 20
+  const maxButtons = nodeLimits.buttons?.max ?? 10
 
   // AI hook for button generation and improvement
   const ai = useAIButtonGenerator(nodeType, platform)

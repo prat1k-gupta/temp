@@ -19,7 +19,7 @@ export function CommentNode({ data, selected }: { data: any; selected?: boolean 
   const currentUser = "You" // In a real app, this would come from auth context
   const platform: Platform = data.platform || "web"
   const nodeLimits = getNodeLimits("comment", platform)
-  const maxLength = nodeLimits.question?.max || 200
+  const maxLength = nodeLimits.comment?.max ?? 200
 
   useEffect(() => {
     if (!isEditing) {

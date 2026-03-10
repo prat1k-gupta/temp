@@ -15,11 +15,6 @@ import type { Platform, ButtonData } from "@/types"
 import { toast } from "sonner"
 import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
-const INSTAGRAM_LIMITS = {
-  question: 100,
-  button: 15,
-}
-
 export function InstagramQuestionNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
@@ -33,8 +28,9 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const platform = (data.platform || "instagram") as Platform
   const nodeType = "instagramQuestion"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxLength = nodeLimits.question?.max || INSTAGRAM_LIMITS.question
-  const maxButtons = nodeLimits.buttons?.max || 10
+  const maxLength = nodeLimits.question?.max ?? 250
+  const maxButtons = nodeLimits.buttons?.max ?? 3
+  const maxButtonTextLength = nodeLimits.buttons?.textMaxLength ?? 20
 
   useEffect(() => {
     if (!isEditingLabel) {
@@ -49,7 +45,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   }, [data.question, isEditingQuestion])
 
   const isOverLimit = (text: string, type: "question" | "button") => {
-    return type === "question" ? text.length > maxLength : text.length > INSTAGRAM_LIMITS.button
+    return type === "question" ? text.length > maxLength : text.length > maxButtonTextLength
   }
 
   const startEditingLabel = () => {
@@ -305,13 +301,13 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && manualButtons.length < 10 && (
+          {(data.question || editingQuestionValue) && manualButtons.length < maxButtons && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
               buttons={manualButtons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
               onUpdateButtons={handleUpdateButtons}
-              maxButtons={10}
-              maxButtonLength={INSTAGRAM_LIMITS.button}
+              maxButtons={maxButtons}
+              maxButtonLength={maxButtonTextLength}
               nodeType={nodeType}
               platform={platform}
             />

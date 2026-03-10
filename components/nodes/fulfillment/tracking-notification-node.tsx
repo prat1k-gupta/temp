@@ -19,7 +19,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
   const platform = (data.platform || "web") as Platform
   const nodeType = "trackingNotification"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxLength = nodeLimits.text?.max || 500
+  const maxLength = nodeLimits.text?.max ?? 500
 
   // Generate formatted message from template
   const generateFormattedMessage = () => {

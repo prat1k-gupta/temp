@@ -17,11 +17,6 @@ import { convertButtonsToOptions } from "@/utils/node-operations"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
-const INSTAGRAM_LIMITS = {
-  question: 100,
-  button: 15,
-}
-
 export function InstagramQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
   const buttons = data.buttons || []
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -36,9 +31,9 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   const platform = (data.platform || "instagram") as Platform
   const nodeType = "instagramQuickReply"
   const nodeLimits = getNodeLimits(nodeType, platform)
-  const maxQuestionLength = nodeLimits.question?.max || INSTAGRAM_LIMITS.question
-  const maxButtonLength = nodeLimits.buttons?.textMaxLength || INSTAGRAM_LIMITS.button
-  const maxButtons = nodeLimits.buttons?.max || 10
+  const maxQuestionLength = nodeLimits.question?.max ?? 250
+  const maxButtonLength = nodeLimits.buttons?.textMaxLength ?? 20
+  const maxButtons = nodeLimits.buttons?.max ?? 3
 
   // AI hook for button generation and improvement
   const ai = useAIButtonGenerator(nodeType, platform)

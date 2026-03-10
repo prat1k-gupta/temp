@@ -1,25 +1,8 @@
-import type { Platform } from "@/types"
+// Node/platform limits have moved to node-categories.ts (single source of truth).
+// Re-exported here for backwards compatibility.
+export { BUTTON_LIMITS, OPTION_LIMITS, CHARACTER_LIMITS } from "./node-categories"
 
-// Platform-specific button limits
-export const BUTTON_LIMITS: Record<Platform, number> = {
-  web: 10,
-  whatsapp: 3,
-  instagram: 3,
-} as const
-
-// Platform-specific option limits
-export const OPTION_LIMITS = {
-  all: 10,
-} as const
-
-// Platform-specific character limits
-export const CHARACTER_LIMITS: Record<Platform, { question: number; button: number; comment: number }> = {
-  web: { question: 500, button: 20, comment: 200 },
-  whatsapp: { question: 250, button: 28, comment: 200 },
-  instagram: { question: 250, button: 28, comment: 100 },
-} as const
-
-// UI interaction thresholds
+// UI interaction thresholds (not node limits)
 export const INTERACTION_THRESHOLDS = {
   doubleClick: {
     time: 300, // milliseconds

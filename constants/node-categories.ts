@@ -2,7 +2,58 @@ import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Packa
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
+// ═══════════════════════════════════════════════════════════════════
+// ALL NODE & PLATFORM LIMITS — Single source of truth
+// Everything resolves through getNodeLimits() in node-limits/config.ts.
+//
+// HOW LIMITS RESOLVE:
+//
+// 1. Platform defaults (below) are the FALLBACK for all nodes.
+//    BUTTON_LIMITS      → max button count per platform (wa: 3, web: 10)
+//    CHARACTER_LIMITS   → default text limits (question, button text, comment)
+//    OPTION_LIMITS      → list row count and title length
+//
+// 2. NODE_TEMPLATES[].limits (further below) are PER-NODE OVERRIDES:
+//    - Flags tell config.ts to pull from platform defaults:
+//        textField: "question"  → question.max = CHARACTER_LIMITS[platform].question
+//        hasButtons: true       → buttons.max = BUTTON_LIMITS[platform]
+//                                 buttons.textMaxLength = CHARACTER_LIMITS[platform].button
+//        hasOptions: true       → options.max = OPTION_LIMITS.all
+//                                 options.textMaxLength = OPTION_LIMITS.titleMaxLength
+//    - Overrides BYPASS platform defaults entirely:
+//        textMax: 4096          → text.max = 4096 (ignores CHARACTER_LIMITS)
+//        listTitleMax: 20       → listTitle.max = 20
+//
+// EXAMPLES:
+//   question:        { textField: "question" }         → max = 250 (wa) / 500 (web)
+//   quickReply:      { textField: "question", hasButtons: true } → max = 250, buttons = 3 (wa)
+//   whatsappMessage: { textMax: 4096 }                 → max = 4096 (override)
+//   interactiveList: { hasOptions: true, listTitleMax: 20 }     → options.title = 24, CTA = 20
+//
+// TO CHANGE A LIMIT:
+//   - Platform-wide default (e.g. all WA button text) → edit CHARACTER_LIMITS/BUTTON_LIMITS
+//   - Single node type (e.g. whatsappMessage text)    → edit that NODE_TEMPLATE's limits
+// ═══════════════════════════════════════════════════════════════════
 
+/** Max number of buttons per platform (Meta API) */
+export const BUTTON_LIMITS: Record<Platform, number> = {
+  web: 10,
+  whatsapp: 3,
+  instagram: 3,
+} as const
+
+/** List/option limits (Meta API) */
+export const OPTION_LIMITS = {
+  all: 10,
+  titleMaxLength: 24, // WhatsApp list row title
+} as const
+
+/** Default character limits per platform (Meta API). Per-node overrides below take precedence. */
+export const CHARACTER_LIMITS: Record<Platform, { question: number; button: number; comment: number }> = {
+  web: { question: 500, button: 20, comment: 200 },
+  whatsapp: { question: 250, button: 20, comment: 200 },
+  instagram: { question: 250, button: 20, comment: 100 },
+} as const
 
 export interface NodeTemplateLimits {
   /** "question" → result.question with platform limits. Default: result.text with platform limits. */
@@ -165,7 +216,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Interactive list menu",
     category: "interaction",
     platforms: ["whatsapp"],
-    limits: { textField: "question", hasOptions: true, listTitleMax: 60, multiOutput: true, maxConnections: 10 },
+    limits: { textField: "question", hasOptions: true, listTitleMax: 20, multiOutput: true, maxConnections: 10 },
     ai: {
       description: "Interactive list menu with options. Each option can have a title and description.",
       whenToUse: "ONLY when there are 4 or more choices. Never use for 3 or fewer options — use quickReply instead. Renders as a scrollable list menu on WhatsApp (up to 10 options).",

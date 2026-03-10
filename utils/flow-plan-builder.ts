@@ -704,7 +704,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
   if (!parentId) return // no parent to branch from
 
   const buttonLimit = BUTTON_LIMITS[ctx.platform]
-  if (step.buttonIndex >= buttonLimit) return // exceeds platform limit
+  if (step.buttonIndex < 0 || step.buttonIndex >= buttonLimit) return // invalid or exceeds platform limit
 
   // Find the parent node to determine branch layout
   const parentNode = ctx.nodes.find((n) => n.id === parentId)

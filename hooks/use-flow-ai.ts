@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
 import type { Platform, ButtonData, OptionData } from "@/types"
@@ -98,6 +98,7 @@ export function useFlowAI({
   setCurrentFlow,
 }: UseFlowAIParams) {
   const [isAISuggestionsPanelOpen, setIsAISuggestionsPanelOpen] = useState(false)
+  const aiUndoStackRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([])
 
   const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
 
@@ -108,40 +109,44 @@ export function useFlowAI({
     }
   }, [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform])
 
-  // Fetch suggestions when node is selected
+  // Fetch suggestions when node is selected (debounced)
   useEffect(() => {
     if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
       setIsAISuggestionsPanelOpen(true)
-      fetchSuggestions({
-        currentNodeType: selectedNode.type,
-        currentNodeId: selectedNode.id,
-        platform,
-        flowContext: currentFlow?.description,
-        existingNodes: nodes
-          .filter((n) => n.type)
-          .map((n) => ({
-            id: n.id,
-            type: n.type!,
-            label: n.data.label as string | undefined,
-            question: n.data.question as string | undefined,
-            text: n.data.text as string | undefined,
-            buttons: n.data.buttons as Array<{ text?: string; id?: string }> | undefined,
-            options: n.data.options as Array<{ text?: string; id?: string }> | undefined,
-            storeAs: n.data.storeAs as string | undefined,
+
+      const timer = setTimeout(() => {
+        fetchSuggestions({
+          currentNodeType: selectedNode.type!,
+          currentNodeId: selectedNode.id,
+          platform,
+          flowContext: currentFlow?.description,
+          existingNodes: nodes
+            .filter((n) => n.type)
+            .map((n) => ({
+              id: n.id,
+              type: n.type!,
+              label: n.data.label as string | undefined,
+              question: n.data.question as string | undefined,
+              text: n.data.text as string | undefined,
+              buttons: n.data.buttons as Array<{ text?: string; id?: string }> | undefined,
+              options: n.data.options as Array<{ text?: string; id?: string }> | undefined,
+              storeAs: n.data.storeAs as string | undefined,
+            })),
+          edges: edges.map((e) => ({
+            source: e.source,
+            target: e.target,
+            sourceHandle: e.sourceHandle || undefined,
           })),
-        edges: edges.map((e) => ({
-          source: e.source,
-          target: e.target,
-          sourceHandle: e.sourceHandle || undefined,
-        })),
-        maxSuggestions: 2,
-      })
+          maxSuggestions: 2,
+        })
+      }, 350)
+
+      return () => {
+        clearTimeout(timer)
+        clearSuggestions()
+      }
     } else {
       setIsAISuggestionsPanelOpen(false)
-      clearSuggestions()
-    }
-
-    return () => {
       clearSuggestions()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,6 +210,8 @@ export function useFlowAI({
         // Snapshot current state for undo
         const preApplyNodes = [...nodes]
         const preApplyEdges = [...edges]
+        if (aiUndoStackRef.current.length >= 10) aiUndoStackRef.current.shift()
+        aiUndoStackRef.current.push({ nodes: preApplyNodes, edges: preApplyEdges })
 
         withEditTracking()
 
@@ -313,6 +320,8 @@ export function useFlowAI({
         // Snapshot current state for undo
         const preUpdateNodes = [...nodes]
         const preUpdateEdges = [...edges]
+        if (aiUndoStackRef.current.length >= 10) aiUndoStackRef.current.shift()
+        aiUndoStackRef.current.push({ nodes: preUpdateNodes, edges: preUpdateEdges })
 
         withEditTracking()
 
@@ -799,6 +808,17 @@ export function useFlowAI({
     [selectedNode, platform, nodes, edges, handleUpdateFlow, clearSuggestions, setNodeToFocus]
   )
 
+  const undoLastAIAction = useCallback(() => {
+    const snapshot = aiUndoStackRef.current.pop()
+    if (snapshot) {
+      setNodes(snapshot.nodes)
+      setEdges(snapshot.edges)
+      toast.success("Changes undone")
+      return true
+    }
+    return false
+  }, [setNodes, setEdges])
+
   return {
     isAISuggestionsPanelOpen,
     setIsAISuggestionsPanelOpen,
@@ -809,5 +829,6 @@ export function useFlowAI({
     onAddNode,
     handleApplyFlow,
     handleUpdateFlow,
+    undoLastAIAction,
   }
 }

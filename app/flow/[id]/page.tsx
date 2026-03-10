@@ -669,12 +669,14 @@ function MagicFlowInner() {
 
             <Panel position="bottom-center" className="mb-4">
               <AIAssistant
+                flowId={flowId}
                 platform={platform}
                 flowContext={persistence.currentFlow?.description}
                 existingFlow={{ nodes, edges }}
                 selectedNode={nodeOps.selectedNode}
                 onApplyFlow={flowAI.handleApplyFlow}
                 onUpdateFlow={flowAI.handleUpdateFlow}
+                onUndo={flowAI.undoLastAIAction}
               />
             </Panel>
           </ReactFlow>

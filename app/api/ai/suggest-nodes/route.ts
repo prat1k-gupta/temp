@@ -23,9 +23,18 @@ export async function POST(request: NextRequest) {
       maxSuggestions = 2,
     } = body
 
+    const validPlatforms: Platform[] = ["web", "whatsapp", "instagram"]
+
     if (!currentNodeType || !platform) {
       return NextResponse.json(
         { error: "Missing required fields: currentNodeType, platform" },
+        { status: 400 }
+      )
+    }
+
+    if (!validPlatforms.includes(platform)) {
+      return NextResponse.json(
+        { error: `Invalid platform: "${platform}". Must be one of: ${validPlatforms.join(", ")}` },
         { status: 400 }
       )
     }

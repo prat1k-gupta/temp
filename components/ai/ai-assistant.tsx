@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Send, ChevronDown, Sparkles, Loader2 } from "lucide-react"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check, Undo2 } from "lucide-react"
 
 interface Message {
   id: string
@@ -15,39 +14,81 @@ interface Message {
   flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
   updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }
   isAutoApplied?: boolean
+  isError?: boolean
   warnings?: string[]
   debugData?: Record<string, unknown>
 }
 
 interface AIAssistantProps {
+  flowId?: string
   platform: "web" | "whatsapp" | "instagram"
   flowContext?: string
   existingFlow?: { nodes: any[]; edges: any[] }
   selectedNode?: any
   onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
+  onUndo?: () => boolean
+}
+
+const CHAT_STORAGE_PREFIX = "magic-flow-chat-"
+const GREETING_MESSAGE: Message = {
+  id: "1",
+  role: "assistant",
+  content: "Hi! I'm your Freestand AI Assistant. I can help you create or edit flows. What would you like to do?",
+  timestamp: new Date(),
+}
+
+function renderNodePreview(
+  nodes: any[] | undefined,
+  edges: any[] | undefined,
+  nodeLabel: string,
+  edgeLabel: string
+) {
+  if (!nodes?.length && !edges?.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+      {nodes && nodes.length > 0 && (
+        <span>
+          <span className="font-medium text-foreground/70">{nodes.length}</span> {nodeLabel.toLowerCase()}
+        </span>
+      )}
+      {edges && edges.length > 0 && (
+        <span>
+          <span className="font-medium text-foreground/70">{edges.length}</span> {edgeLabel.toLowerCase()}
+        </span>
+      )}
+    </div>
+  )
 }
 
 export function AIAssistant({
+  flowId,
   platform,
   flowContext,
   existingFlow,
   selectedNode,
   onApplyFlow,
   onUpdateFlow,
+  onUndo,
 }: AIAssistantProps) {
   const [isFocused, setIsFocused] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: `Hi! I'm your Freestand AI Assistant. I can help you create or edit flows. What would you like to do?`,
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (flowId && typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`${CHAT_STORAGE_PREFIX}${flowId}`)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+        }
+      } catch { /* ignore corrupted storage */ }
+    }
+    return [GREETING_MESSAGE]
+  })
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set())
   const [seenMessageIds, setSeenMessageIds] = useState<Set<string>>(new Set())
+  const lastFailedInputRef = useRef<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
@@ -55,17 +96,26 @@ export function AIAssistant({
   const inputBarRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
 
-  const scrollToBottom = () => {
+  // Persist messages to localStorage (strip large data fields)
+  useEffect(() => {
+    if (flowId && typeof window !== "undefined" && messages.length > 1) {
+      const toStore = messages.map(({ flowData, updates, debugData, ...rest }) => rest)
+      try {
+        localStorage.setItem(`${CHAT_STORAGE_PREFIX}${flowId}`, JSON.stringify(toStore))
+      } catch { /* storage full — ignore */ }
+    }
+  }, [messages, flowId])
+
+  const scrollToBottom = useCallback(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
     }
-  }
+  }, [])
 
+  // Auto-scroll on new messages or loading state change
   useEffect(() => {
-    if (isFocused) {
-      scrollToBottom()
-    }
-  }, [messages, isFocused])
+    scrollToBottom()
+  }, [messages, isLoading, scrollToBottom])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -82,13 +132,11 @@ export function AIAssistant({
     }
   }, [isFocused])
 
-  // Measure and lock width of container, apply to both chat and input
+  // Measure and lock width of container
   useEffect(() => {
     if (chatContainerRef.current && !containerWidth) {
       const width = chatContainerRef.current.offsetWidth
-      if (width > 0) {
-        setContainerWidth(width)
-      }
+      if (width > 0) setContainerWidth(width)
     }
   }, [containerWidth])
 
@@ -97,36 +145,25 @@ export function AIAssistant({
     const handleResize = () => {
       if (chatContainerRef.current) {
         const width = chatContainerRef.current.offsetWidth
-        if (width > 0) {
-          setContainerWidth(width)
-        }
+        if (width > 0) setContainerWidth(width)
       }
     }
 
-    // Initial measurement after a short delay to ensure layout is complete
-    const timeoutId = setTimeout(() => {
-      if (chatContainerRef.current) {
-        const width = chatContainerRef.current.offsetWidth
-        if (width > 0) {
-          setContainerWidth(width)
-        }
-      }
-    }, 100)
-
-    window.addEventListener('resize', handleResize)
+    const timeoutId = setTimeout(handleResize, 100)
+    window.addEventListener("resize", handleResize)
     return () => {
       clearTimeout(timeoutId)
-      window.removeEventListener('resize', handleResize)
+      window.removeEventListener("resize", handleResize)
     }
   }, [])
 
-  // Auto-expand for new messages with updates (but not auto-applied creates)
+  // Auto-expand for new messages with non-auto-applied flow data
   useEffect(() => {
     const lastMessage = messages[messages.length - 1]
     if (
       lastMessage &&
       lastMessage.role === "assistant" &&
-      (lastMessage.flowData || lastMessage.updates) &&
+      lastMessage.flowData &&
       !lastMessage.isAutoApplied &&
       !seenMessageIds.has(lastMessage.id) &&
       !isFocused
@@ -140,36 +177,28 @@ export function AIAssistant({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement
-      
-      // Don't collapse if clicking inside the chat container
-      if (chatContainerRef.current && chatContainerRef.current.contains(target)) {
-        return
-      }
 
-      // Check if clicking on React Flow canvas or related elements
-      const isReactFlowElement = 
-        target.closest('.react-flow') ||
-        target.closest('.react-flow__pane') ||
-        target.closest('.react-flow__viewport') ||
-        target.closest('[data-id]') // React Flow nodes have data-id
-      
-      // Also check for other UI elements that shouldn't close the chat
-      const isUIElement = 
-        target.closest('[role="dialog"]') || // Modals
-        target.closest('[role="menu"]') || // Menus
-        target.closest('[role="tooltip"]') // Tooltips
+      if (chatContainerRef.current && chatContainerRef.current.contains(target)) return
 
-      // Collapse if clicking on React Flow canvas or other areas (but not UI elements)
+      const isReactFlowElement =
+        target.closest(".react-flow") ||
+        target.closest(".react-flow__pane") ||
+        target.closest(".react-flow__viewport") ||
+        target.closest("[data-id]")
+
+      const isUIElement =
+        target.closest('[role="dialog"]') ||
+        target.closest('[role="menu"]') ||
+        target.closest('[role="tooltip"]')
+
       if (isReactFlowElement && !isUIElement) {
         setIsFocused(false)
-      } else if (!isUIElement && !target.closest('button') && !target.closest('input') && !target.closest('textarea')) {
-        // Collapse on other clicks (but not on interactive elements)
+      } else if (!isUIElement && !target.closest("button") && !target.closest("input") && !target.closest("textarea")) {
         setIsFocused(false)
       }
     }
 
     if (isFocused) {
-      // Use a small delay to ensure React Flow events have processed
       setTimeout(() => {
         document.addEventListener("mousedown", handleClickOutside, true)
       }, 0)
@@ -180,36 +209,36 @@ export function AIAssistant({
     }
   }, [isFocused])
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+  const handleSend = async (overrideInput?: string) => {
+    const text = overrideInput ?? input
+    if (!text.trim() || isLoading) return
 
-    if (!isFocused) {
-      setIsFocused(true)
-    }
+    if (!isFocused) setIsFocused(true)
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: text.trim(),
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
+    lastFailedInputRef.current = null
 
     try {
       const response = await fetch("/api/ai/flow-assistant", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage.content,
           platform,
           flowContext,
           existingFlow,
-          selectedNode: selectedNode ? { id: selectedNode.id, type: selectedNode.type, data: selectedNode.data, position: selectedNode.position } : undefined,
+          selectedNode: selectedNode
+            ? { id: selectedNode.id, type: selectedNode.type, data: selectedNode.data, position: selectedNode.position }
+            : undefined,
           conversationHistory: messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -218,44 +247,48 @@ export function AIAssistant({
       })
 
       if (!response.ok) {
-        throw new Error("Failed to get AI response")
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Request failed (${response.status})`)
       }
 
       const data = await response.json()
-
-      const isAutoApply = data.action === "create" && data.flowData && onApplyFlow
-
       const meta = { warnings: data.warnings, debugData: data.debugData, userPrompt: userMessage.content }
+      const isAutoApplyCreate = data.action === "create" && data.flowData && onApplyFlow
+      const isAutoApplyEdit = data.updates && onUpdateFlow
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.message || "I'm processing your request...",
+        content: data.message || "I've processed your request.",
         timestamp: new Date(),
         flowData: data.flowData,
         updates: data.updates,
-        isAutoApplied: !!isAutoApply,
+        isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
         warnings: data.warnings,
         debugData: data.debugData,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      if (isAutoApply) {
-        // Auto-apply: collapse chat and apply flow immediately
+      if (isAutoApplyCreate) {
         setIsFocused(false)
         onApplyFlow(data.flowData, meta)
-      } else if (data.flowData || data.updates) {
-        // Edit/suggest mode: keep chat open, show buttons
+      } else if (isAutoApplyEdit) {
+        onUpdateFlow(data.updates, meta)
+      } else if (data.flowData) {
         setIsFocused(true)
       }
     } catch (error) {
       console.error("[AI Assistant] Error:", error)
+      lastFailedInputRef.current = userMessage.content
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "Sorry, I encountered an error. Please try again.",
+        content: error instanceof Error && error.message !== "Request failed (500)"
+          ? `Something went wrong: ${error.message}`
+          : "Sorry, I encountered an error. Please try again.",
         timestamp: new Date(),
+        isError: true,
       }
       setMessages((prev) => [...prev, errorMessage])
     } finally {
@@ -263,35 +296,33 @@ export function AIAssistant({
     }
   }
 
+  const handleRetry = () => {
+    if (lastFailedInputRef.current) {
+      const retryText = lastFailedInputRef.current
+      lastFailedInputRef.current = null
+      handleSend(retryText)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+    // Enter sends, Shift+Enter inserts newline
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-  }
-
-  const handleInputFocus = () => {
-    setIsFocused(true)
-  }
-
-  const handleTextareaInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
-    const target = e.target as HTMLTextAreaElement
-    target.style.height = "auto"
-    target.style.height = `${Math.min(target.scrollHeight, 120)}px`
+  const handleApplyClick = (messageId: string, fn: () => void) => {
+    if (appliedMessageIds.has(messageId) || isLoading) return
+    setAppliedMessageIds((prev) => new Set([...prev, messageId]))
+    fn()
   }
 
   return (
-    <div
-      ref={chatContainerRef}
-      className="flex flex-col w-full max-w-2xl"
-    >
-      {/* Chat window - appears above input when focused */}
+    <div ref={chatContainerRef} className="flex flex-col w-full max-w-3xl">
+      {/* Chat window */}
       {isFocused && (
-        <Card 
+        <Card
           className="mb-2 flex flex-col rounded-2xl border border-border/50 bg-card/95 backdrop-blur-xl shadow-2xl min-w-0 shrink-0"
           style={containerWidth ? { width: `${containerWidth}px` } : undefined}
         >
@@ -299,14 +330,14 @@ export function AIAssistant({
           <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 flex-shrink-0">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#2872F4]" />
-              <h3 className="font-semibold text-sm text-card-foreground">Freestand AI Assistant</h3>
+              <h3 className="font-semibold text-sm text-card-foreground">Freestand AI</h3>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setIsFocused(false)
-                setSeenMessageIds(new Set(messages.map(m => m.id)))
+                setSeenMessageIds(new Set(messages.map((m) => m.id)))
               }}
               className="h-8 w-8 p-0"
               aria-label="Collapse chat"
@@ -318,127 +349,120 @@ export function AIAssistant({
           {/* Messages Area */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 space-y-4 overflow-y-auto p-4"
-            style={{ height: "400px" }}
+            className="flex-1 space-y-3 overflow-y-auto px-4 py-3 max-h-[50vh] min-h-[200px]"
+            role="log"
+            aria-live="polite"
           >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === "user"
-                      ? "bg-gradient-to-br from-[#052762] via-[#0A49B7] to-[#2872F4] text-white shadow-lg shadow-blue-500/30"
-                      : "bg-muted text-foreground"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+            {messages.map((message) => {
+              const isApplied = appliedMessageIds.has(message.id)
+              const msgIdx = messages.indexOf(message)
+              const precedingUserMsg = messages.slice(0, msgIdx).reverse().find((m) => m.role === "user")
+              const buttonMeta = { warnings: message.warnings, debugData: message.debugData, userPrompt: precedingUserMsg?.content }
+              const isUndoable = message.isAutoApplied && onUndo && !appliedMessageIds.has(`undo-${message.id}`)
+              const isUndone = appliedMessageIds.has(`undo-${message.id}`)
+              const hasActions = message.role === "assistant" && (
+                (message.flowData && onApplyFlow && !message.isAutoApplied) ||
+                isUndoable || isUndone ||
+                (message.isError && lastFailedInputRef.current)
+              )
 
-                  {/* Preview of changes */}
-                  {message.role === "assistant" && (message.flowData || message.updates) && (
-                    <div className="mt-3 pt-3 border-t border-border/50">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Preview:</div>
-                      <div className="space-y-1.5 text-xs">
-                        {message.flowData && (
-                          <>
-                            {message.flowData.nodes && message.flowData.nodes.length > 0 && (
-                              <div className="text-foreground">
-                                <span className="font-medium">Nodes:</span> {message.flowData.nodes.length}
-                                <div className="mt-1 space-y-0.5 pl-2">
-                                  {message.flowData.nodes.slice(0, 3).map((node: any, idx: number) => (
-                                    <div key={idx} className="text-muted-foreground">
-                                      • {node.data?.label || node.type || `Node ${idx + 1}`}
-                                    </div>
-                                  ))}
-                                  {message.flowData.nodes.length > 3 && (
-                                    <div className="text-muted-foreground">
-                                      • +{message.flowData.nodes.length - 3} more
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+              return (
+                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 overflow-hidden ${
+                      message.role === "user"
+                        ? "bg-gradient-to-br from-[#052762] via-[#0A49B7] to-[#2872F4] text-white shadow-md"
+                        : message.isError
+                          ? "bg-destructive/10 text-foreground border border-destructive/20"
+                          : "bg-muted/70 text-foreground"
+                    }`}
+                  >
+                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+
+                    {/* Compact preview of changes */}
+                    {message.role === "assistant" && (message.flowData || message.updates) && (
+                      <div className="mt-2 pt-2 border-t border-border/30">
+                        {message.flowData && renderNodePreview(message.flowData.nodes, message.flowData.edges, "Nodes", "Connections")}
+                        {message.updates && renderNodePreview(message.updates.nodes, message.updates.edges, "New/Updated Nodes", "New Connections")}
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    {hasActions && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        {/* Manual Apply Flow button (only for non-auto-applied creates) */}
+                        {message.flowData && onApplyFlow && !message.isAutoApplied && (
+                          <Button
+                            onClick={() => handleApplyClick(message.id, () => onApplyFlow(message.flowData!, buttonMeta))}
+                            disabled={isApplied || isLoading}
+                            className={`h-7 text-xs px-3 rounded-lg transition-all ${
+                              isApplied
+                                ? "bg-green-600/90 hover:bg-green-600/90 text-white cursor-default"
+                                : "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white shadow-sm hover:shadow-md"
+                            }`}
+                            size="sm"
+                          >
+                            {isApplied ? (
+                              <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Applied</span>
+                            ) : (
+                              "Apply Flow"
                             )}
-                            {message.flowData.edges && message.flowData.edges.length > 0 && (
-                              <div className="text-foreground">
-                                <span className="font-medium">Connections:</span> {message.flowData.edges.length}
-                              </div>
-                            )}
-                          </>
+                          </Button>
                         )}
-                        {message.updates && (
-                          <>
-                            {message.updates.nodes && message.updates.nodes.length > 0 && (
-                              <div className="text-foreground">
-                                <span className="font-medium">New/Updated Nodes:</span> {message.updates.nodes.length}
-                                <div className="mt-1 space-y-0.5 pl-2">
-                                  {message.updates.nodes.slice(0, 3).map((node: any, idx: number) => (
-                                    <div key={idx} className="text-muted-foreground">
-                                      • {node.data?.label || node.type || `Node ${idx + 1}`}
-                                    </div>
-                                  ))}
-                                  {message.updates.nodes.length > 3 && (
-                                    <div className="text-muted-foreground">
-                                      • +{message.updates.nodes.length - 3} more
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {message.updates.edges && message.updates.edges.length > 0 && (
-                              <div className="text-foreground">
-                                <span className="font-medium">New Connections:</span> {message.updates.edges.length}
-                              </div>
-                            )}
-                          </>
+
+                        {/* Undo button for auto-applied messages */}
+                        {isUndoable && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-3 rounded-lg"
+                            onClick={() => {
+                              onUndo()
+                              setAppliedMessageIds((prev) => new Set([...prev, `undo-${message.id}`]))
+                            }}
+                            disabled={isLoading}
+                          >
+                            <Undo2 className="w-3 h-3 mr-1" /> Undo
+                          </Button>
+                        )}
+                        {isUndone && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Undo2 className="w-3 h-3" /> Undone
+                          </span>
+                        )}
+
+                        {message.isError && lastFailedInputRef.current && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-3 rounded-lg"
+                            onClick={handleRetry}
+                            disabled={isLoading}
+                          >
+                            <RotateCcw className="w-3 h-3 mr-1" /> Retry
+                          </Button>
                         )}
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Apply buttons */}
-                  {message.role === "assistant" && (() => {
-                    // Find the user message that triggered this assistant response (look backwards)
-                    const msgIdx = messages.indexOf(message)
-                    const precedingUserMsg = messages.slice(0, msgIdx).reverse().find(m => m.role === "user")
-                    const buttonMeta = { warnings: message.warnings, debugData: message.debugData, userPrompt: precedingUserMsg?.content }
-                    return (
-                    <div className="mt-3 space-y-2">
-                      {message.flowData && onApplyFlow && !message.isAutoApplied && (
-                        <Button
-                          onClick={() => onApplyFlow(message.flowData!, buttonMeta)}
-                          className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
-                          size="sm"
-                        >
-                          Apply Flow
-                        </Button>
-                      )}
-                      {message.updates && onUpdateFlow && (
-                        <Button
-                          onClick={() => onUpdateFlow(message.updates!, buttonMeta)}
-                          className="w-full bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white text-xs shadow-md hover:shadow-lg transition-all"
-                          size="sm"
-                        >
-                          Apply Updates
-                        </Button>
-                      )}
-                    </div>
-                    )
-                  })()}
-
-                  <p className="text-xs opacity-70 mt-1">
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+                    <p className={`text-[10px] mt-1.5 ${message.role === "user" ? "text-white/40" : "text-muted-foreground/50"}`}>
+                      {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
+
+            {/* Loading indicator */}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-lg p-3">
-                  Thinking...
+                <div className="bg-muted/70 rounded-2xl px-3.5 py-2 flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Thinking</span>
+                  <span className="flex gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+                  </span>
                 </div>
               </div>
             )}
@@ -447,37 +471,38 @@ export function AIAssistant({
         </Card>
       )}
 
-      {/* Input Bar - Always visible at bottom */}
-      <div 
+      {/* Input Bar */}
+      <div
         ref={inputBarRef}
-        className="flex items-center gap-2 rounded-full border border-border/50 bg-card/95 backdrop-blur-xl px-4 py-2 shadow-xl min-w-0"
-        style={containerWidth ? { width: `${containerWidth}px` } : { width: '100%' }}
+        onClick={() => { if (!isFocused) setIsFocused(true) }}
+        className="flex items-center gap-2 rounded-full border border-border/50 bg-card/95 backdrop-blur-xl px-4 py-2 shadow-xl min-w-0 cursor-text"
+        style={containerWidth ? { width: `${containerWidth}px` } : { width: "100%" }}
       >
         <Sparkles className="w-4 h-4 text-[#2872F4] flex-shrink-0" />
         <Textarea
           ref={inputRef}
           value={input}
-          onChange={handleInputChange}
+          onChange={(e) => { if (!isLoading) setInput(e.target.value) }}
           onKeyDown={handleKeyDown}
-          onFocus={handleInputFocus}
-          placeholder="Ask Freestand AI to create or edit your flow... (Shift+Enter to send)"
+          onFocus={() => setIsFocused(true)}
+          placeholder={isLoading ? "AI is thinking..." : "Ask AI to create or edit your flow..."}
           className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
-          disabled={isLoading}
+          readOnly={isLoading}
           rows={1}
-          onInput={handleTextareaInput}
+          onInput={(e) => {
+            const target = e.target as HTMLTextAreaElement
+            target.style.height = "auto"
+            target.style.height = `${Math.min(target.scrollHeight, 120)}px`
+          }}
         />
         <Button
-          onClick={handleSend}
+          onClick={() => handleSend()}
           size="sm"
           disabled={!input.trim() || isLoading}
           className="h-8 w-8 p-0 bg-gradient-to-br from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] flex-shrink-0 rounded-md shadow-md hover:shadow-lg transition-all"
           aria-label="Send message"
         >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>
     </div>

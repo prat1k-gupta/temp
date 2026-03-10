@@ -90,21 +90,19 @@ export const nodeStepSchema = z.object({
   content: nodeContentSchema.optional(),
 })
 
-// Recursive schema using z.lazy for BranchStep → FlowStep → BranchStep
-export const flowStepSchema: z.ZodType<FlowStep> = z.discriminatedUnion("step", [
-  nodeStepSchema,
-  z.object({
-    step: z.literal("branch"),
-    buttonIndex: z.number().int().min(0),
-    steps: z.lazy(() => z.array(flowStepSchema)),
-  }),
-])
-
+// Non-recursive schema: branches contain only node steps (no nested branches).
+// This avoids z.lazy recursion which causes "Recursive reference detected" warnings
+// and degrades to `any` in the Anthropic API JSON schema output.
 export const branchStepSchema = z.object({
   step: z.literal("branch"),
-  buttonIndex: z.number().int().min(0),
-  steps: z.lazy(() => z.array(flowStepSchema)),
+  buttonIndex: z.number().int(),
+  steps: z.array(nodeStepSchema),
 })
+
+export const flowStepSchema: z.ZodType<FlowStep> = z.discriminatedUnion("step", [
+  nodeStepSchema,
+  branchStepSchema,
+]) as z.ZodType<FlowStep>
 
 export const flowPlanSchema = z.object({
   message: z.string(),
@@ -171,7 +169,7 @@ export const editChainSchema = z.object({
 export const newEdgeSchema = z.object({
   source: z.string(),
   target: z.string(),
-  sourceButtonIndex: z.number().int().min(0).optional(),
+  sourceButtonIndex: z.number().int().optional(),
   sourceHandle: z.string().optional(),
 })
 

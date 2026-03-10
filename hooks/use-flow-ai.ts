@@ -566,11 +566,11 @@ export function useFlowAI({
           })
         }
 
-        // Resolve handleless edges from multi-output nodes to actual button handles.
+        // Resolve handleless edges from multi-output nodes to actual button/option handles.
         // ReactFlow renders handleless edges from the first available handle, causing
         // the "two edges from one button" visual bug. We resolve each handleless edge
-        // to the first unoccupied button handle, falling back to "next-step" only if
-        // all buttons are already taken.
+        // to the first unoccupied button/option handle. If all are occupied, leave
+        // the edge handleless (no "next-step" for multi-output nodes).
         setEdges((eds) => {
           // Collect which source nodes have button-specific edges
           const nodesWithButtonEdges = new Set<string>()
@@ -600,7 +600,13 @@ export function useFlowAI({
 
               const freeButton = buttons.find((btn) => btn.id && !occupied.has(btn.id))
               const freeOption = !freeButton ? options.find((opt) => opt.id && !occupied.has(opt.id)) : undefined
-              const resolvedHandle = freeButton?.id || freeOption?.id || "next-step"
+              const resolvedHandle = freeButton?.id || freeOption?.id
+
+              if (!resolvedHandle) {
+                // All button/option handles occupied — leave edge as-is rather than using "next-step"
+                console.warn(`[handleUpdateFlow] No free button/option handle for ${e.source} → ${e.target}, leaving handleless`)
+                return e
+              }
 
               console.log(`[handleUpdateFlow] Resolving handleless edge: ${e.source} → ${e.target} → handle "${resolvedHandle}"`)
               changed = true

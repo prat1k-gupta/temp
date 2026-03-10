@@ -289,7 +289,7 @@ export function buildEditFlowFromPlan(
       }
     } else {
       // No attachHandle — check if anchor is a multi-output node (quickReply/list)
-      // If so, use "next-step" handle to avoid creating ambiguous handleless edges
+      // If so, auto-resolve to a free button/option handle (never use "next-step")
       const anchorType = anchorNode.type || ""
       const anchorIsMultiOutput = isMultiOutputType(anchorType)
 
@@ -317,12 +317,18 @@ export function buildEditFlowFromPlan(
         newNodes.push(node)
         nodeOrder.push(nodeId)
 
-        // Use "next-step" handle for multi-output nodes to avoid handleless ambiguity
-        console.log(`[buildEditFlow] Using "next-step" handle for chain from multi-output node ${chain.attachTo}`)
+        // Resolve to a free button/option handle — never use "next-step" for multi-output nodes
+        const freeHandle = findFreeHandle(anchorNode, existingEdges, newEdges)
+        if (freeHandle) {
+          console.log(`[buildEditFlow] Auto-resolved free handle "${freeHandle}" for chain from multi-output node ${chain.attachTo}`)
+        } else {
+          console.warn(`[buildEditFlow] No free button/option handle on multi-output node ${chain.attachTo} — all handles occupied`)
+          warnings.push(`Chain from "${chain.attachTo}": all button/option handles occupied, edge may be misplaced`)
+        }
         newEdges.push({
-          id: `e-${chain.attachTo}-${nodeId}-next`,
+          id: `e-${chain.attachTo}-${nodeId}-${freeHandle || "default"}`,
           source: chain.attachTo,
-          sourceHandle: "next-step",
+          sourceHandle: freeHandle,
           target: nodeId,
           type: "default",
           style: { stroke: "#6366f1", strokeWidth: 2 },
@@ -347,11 +353,13 @@ export function buildEditFlowFromPlan(
       const lastNodeId = ctx.previousNodeId
       // Don't connect back to the anchor itself
       if (lastNodeId !== chain.attachTo && lastNodeId !== chain.connectTo) {
-        // If the last node in the chain is a multi-output node, use "next-step" handle
-        // to avoid ambiguous handleless edges (which cause "two edges from one button" bugs)
+        // If the last node in the chain is a multi-output node, resolve to a free
+        // button/option handle — never use "next-step" for quickReply/interactiveList
         const lastNode = newNodes.find(n => n.id === lastNodeId)
         const lastNodeIsMultiOutput = lastNode?.type ? isMultiOutputType(lastNode.type) : false
-        const connectHandle = lastNodeIsMultiOutput ? "next-step" : undefined
+        const connectHandle = lastNodeIsMultiOutput && lastNode
+          ? findFreeHandle(lastNode, existingEdges, newEdges)
+          : undefined
 
         newEdges.push({
           id: `e-${lastNodeId}-${chain.connectTo}${connectHandle ? `-${connectHandle}` : ""}`,
@@ -871,6 +879,37 @@ function maybeAutoConvertToList(
 
   warnings.push(`quickReply auto-converted to interactiveList: ${buttons.length} buttons exceeds ${platform} limit of ${limit}`)
   return "interactiveList"
+}
+
+/**
+ * For multi-output nodes (quickReply / interactiveList), find the first
+ * button or option handle that doesn't already have an outgoing edge.
+ * Returns undefined if all handles are occupied (caller should skip the edge
+ * or fall back to a warning — never use "next-step").
+ */
+function findFreeHandle(
+  anchorNode: Node,
+  existingEdges: Edge[],
+  newEdges: Edge[]
+): string | undefined {
+  const buttons = (anchorNode.data?.buttons as ButtonData[] | undefined) || []
+  const options = (anchorNode.data?.options as OptionData[] | undefined) || []
+  const allHandles = [
+    ...buttons.map(b => b.id).filter(Boolean),
+    ...options.map(o => o.id).filter(Boolean),
+  ] as string[]
+  if (allHandles.length === 0) return undefined
+
+  // Collect handles already occupied by existing + new edges from this node
+  const occupied = new Set<string>()
+  for (const e of existingEdges) {
+    if (e.source === anchorNode.id && e.sourceHandle) occupied.add(e.sourceHandle)
+  }
+  for (const e of newEdges) {
+    if (e.source === anchorNode.id && e.sourceHandle) occupied.add(e.sourceHandle)
+  }
+
+  return allHandles.find(h => !occupied.has(h))
 }
 
 /** Count the number of node steps in a chain (including nested branches) */

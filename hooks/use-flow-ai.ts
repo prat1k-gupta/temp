@@ -522,6 +522,16 @@ export function useFlowAI({
             })
           }
 
+          // Force edge re-render after node type changes (e.g., quickReply → interactiveList).
+          // New Handle components register via useEffect (async), so edges referencing
+          // newly created handles may not render in the first paint. A deferred setEdges
+          // ensures ReactFlow picks up the registered handles.
+          if (updatedExisting.length > 0) {
+            setTimeout(() => {
+              setEdges((eds) => [...eds])
+            }, 50)
+          }
+
           const allProcessed = [...updatedExisting, ...brandNewNodes]
           allProcessed.forEach((node) => {
             if (!nodes.find((n) => n.id === node.id)) {

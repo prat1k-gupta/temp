@@ -6,9 +6,12 @@ import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 import type { Platform } from "@/types"
 import type { Node, Edge } from "@xyflow/react"
 import { z } from "zod"
+import { generateText, tool, stepCountIs } from "ai"
+import { getModel } from "../core/models"
 import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
+import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import { isMultiOutputType } from "@/utils/platform-helpers"
 import { collectFlowVariables } from "@/utils/flow-variables"
 
@@ -515,41 +518,155 @@ export async function generateFlow(
     // Try structured output first, fallback to text generation
     try {
       if (isEditRequest) {
-        // EDIT MODE: LLM outputs an edit plan, code builds the new nodes
-        const editPlan = await aiClient.generateJSON<EditFlowPlan>({
-          systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
-          userPrompt,
-          schema: editFlowPlanSchema,
-          model: 'claude-sonnet',
-        })
-
-        console.log("[generate-flow] Edit plan from AI:", JSON.stringify({
-          chains: editPlan.chains?.length || 0,
-          nodeUpdates: editPlan.nodeUpdates?.length || 0,
-          removeNodeIds: editPlan.removeNodeIds?.length || 0,
-          removeEdges: editPlan.removeEdges?.length || 0,
-          addEdges: editPlan.addEdges?.length || 0,
-        }))
-
+        // EDIT MODE: Use tool-use so the AI can inspect nodes/edges before editing
         const existingNodes = request.existingFlow?.nodes || []
-        const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, positionShifts, warnings } = buildEditFlowFromPlan(
-          editPlan,
-          request.platform,
-          existingNodes
-        )
+        const existingEdges = request.existingFlow?.edges || []
+        let finalEditResult: BuildEditFlowResult | null = null as BuildEditFlowResult | null
 
-        console.log("[generate-flow] Built edit result:", {
-          newNodes: newNodes.length,
-          newEdges: newEdges.map(e => `${e.source} → ${e.target} (handle: ${e.sourceHandle || "default"})`),
-          nodeUpdates: nodeUpdates.length,
-          removeNodeIds,
-          removeEdges,
-          positionShifts: positionShifts.length,
-          warnings,
+        const result = await generateText({
+          model: getModel('claude-sonnet'),
+          system: systemPrompt,
+          prompt: userPrompt,
+          tools: {
+            get_node_details: tool({
+              description: 'Get full details of a node including button/option handle IDs, storeAs, and content. Call this before editing nodes with buttons/options to get exact handle IDs for attachHandle and removeEdges.',
+              inputSchema: z.object({
+                nodeId: z.string().describe('The node ID (e.g. "plan-quickReply-2-x7f3")'),
+              }),
+              execute: async ({ nodeId }) => {
+                const node = existingNodes.find(n => n.id === nodeId)
+                if (!node) return { error: `Node "${nodeId}" not found` }
+                const data = node.data as Record<string, any>
+                const details: Record<string, any> = {
+                  id: node.id,
+                  type: node.type,
+                  label: data?.label,
+                }
+                if (data?.question) details.question = data.question
+                if (data?.text) details.text = data.text
+                if (data?.storeAs) details.storeAs = data.storeAs
+                if (data?.buttons) {
+                  details.buttons = (data.buttons as any[]).map((b: any, i: number) => ({
+                    index: i, text: b.text || b.label, id: b.id, handleId: b.id || `button-${i}`,
+                  }))
+                }
+                if (data?.options) {
+                  details.options = (data.options as any[]).map((o: any, i: number) => ({
+                    index: i, text: o.text, id: o.id, handleId: o.id || `option-${i}`,
+                  }))
+                }
+                return details
+              },
+            }),
+
+            get_node_connections: tool({
+              description: 'Get all edges connected to a node (incoming and outgoing with handle IDs). Use this to know which edges to remove when rewiring.',
+              inputSchema: z.object({
+                nodeId: z.string().describe('The node ID to get connections for'),
+              }),
+              execute: async ({ nodeId }) => {
+                const outgoing = existingEdges
+                  .filter(e => e.source === nodeId)
+                  .map(e => ({ target: e.target, sourceHandle: e.sourceHandle || 'default' }))
+                const incoming = existingEdges
+                  .filter(e => e.target === nodeId)
+                  .map(e => ({ source: e.source, sourceHandle: e.sourceHandle || 'default' }))
+                return { nodeId, outgoing, incoming }
+              },
+            }),
+
+            apply_edit: tool({
+              description: 'Apply an edit plan to the flow. Include ALL operations (chains, nodeUpdates, addEdges, removeNodeIds, removeEdges) in a SINGLE call. Do NOT split across multiple calls or call with an empty plan.',
+              inputSchema: editFlowPlanSchema,
+              execute: async (plan) => {
+                try {
+                  // Reject empty plans — prevents the AI from wasting a step
+                  const hasOperations = (plan.chains && plan.chains.length > 0) ||
+                    (plan.nodeUpdates && plan.nodeUpdates.length > 0) ||
+                    (plan.addEdges && plan.addEdges.length > 0) ||
+                    (plan.removeNodeIds && plan.removeNodeIds.length > 0) ||
+                    (plan.removeEdges && plan.removeEdges.length > 0)
+                  if (!hasOperations) {
+                    return {
+                      success: false,
+                      error: 'Empty plan — no operations provided. If your edit is complete, just respond with your message. Do NOT call apply_edit again.',
+                    }
+                  }
+
+                  const editResult = buildEditFlowFromPlan(
+                    plan as EditFlowPlan,
+                    request.platform,
+                    existingNodes,
+                    existingEdges
+                  )
+                  finalEditResult = editResult
+
+                  console.log("[generate-flow] Tool apply_edit result:", {
+                    newNodes: editResult.newNodes.length,
+                    newEdges: editResult.newEdges.map(e => `${e.source} → ${e.target} (handle: ${e.sourceHandle || "default"})`),
+                    nodeUpdates: editResult.nodeUpdates.length,
+                    removeNodeIds: editResult.removeNodeIds,
+                    removeEdges: editResult.removeEdges,
+                    warnings: editResult.warnings,
+                  })
+
+                  return {
+                    success: true,
+                    summary: {
+                      newNodes: editResult.newNodes.length,
+                      newEdges: editResult.newEdges.length,
+                      nodeUpdates: editResult.nodeUpdates.length,
+                      removedNodes: editResult.removeNodeIds.length,
+                      removedEdges: editResult.removeEdges.length,
+                    },
+                    warnings: editResult.warnings.length > 0 ? editResult.warnings : undefined,
+                  }
+                } catch (error) {
+                  console.error("[generate-flow] Tool apply_edit error:", error)
+                  return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Unknown error building edit',
+                  }
+                }
+              },
+            }),
+          },
+          stopWhen: stepCountIs(8),
+          temperature: 0.3,
+          onStepFinish: (step) => {
+            const calls = step.toolCalls?.map((tc: any) => ({
+              tool: tc.toolName,
+              input: tc.toolName === 'apply_edit'
+                ? { chains: tc.args?.chains?.length, nodeUpdates: tc.args?.nodeUpdates?.length, removeNodeIds: tc.args?.removeNodeIds?.length, addEdges: tc.args?.addEdges?.length }
+                : tc.args,
+            }))
+            const results = step.toolResults?.map((tr: any) => ({
+              tool: tr.toolName,
+              result: tr.result,
+            }))
+            console.log(`[generate-flow] Step (${step.finishReason}):`, JSON.stringify({ calls, results }, null, 2))
+          },
         })
+
+        // Extract the AI's conversational message
+        const aiMessage = result.text || 'Flow updated successfully'
+
+        console.log("[generate-flow] Tool-use edit completed:", {
+          steps: result.steps.length,
+          hasEditResult: !!finalEditResult,
+          message: aiMessage.substring(0, 100),
+        })
+
+        if (!finalEditResult) {
+          // AI didn't call apply_edit — return message only
+          return {
+            message: aiMessage,
+            action: "edit",
+          }
+        }
 
         // Convert nodeUpdates to full node objects for handleUpdateFlow
-        const updatedNodes: Node[] = nodeUpdates.map((update) => {
+        const updatedNodes: Node[] = finalEditResult.nodeUpdates.map((update) => {
           const existing = existingNodes.find((n) => n.id === update.nodeId)
           if (!existing) return null
           return {
@@ -560,18 +677,24 @@ export async function generateFlow(
         }).filter(Boolean) as Node[]
 
         return {
-          message: editPlan.message || "Flow updated successfully",
+          message: aiMessage,
           updates: {
-            nodes: [...updatedNodes, ...newNodes],
-            edges: newEdges,
-            description: editPlan.description,
-            removeNodeIds: removeNodeIds.length > 0 ? removeNodeIds : undefined,
-            removeEdges: removeEdges.length > 0 ? removeEdges : undefined,
-            positionShifts: positionShifts.length > 0 ? positionShifts : undefined,
+            nodes: [...updatedNodes, ...finalEditResult.newNodes],
+            edges: finalEditResult.newEdges,
+            removeNodeIds: finalEditResult.removeNodeIds.length > 0 ? finalEditResult.removeNodeIds : undefined,
+            removeEdges: finalEditResult.removeEdges.length > 0 ? finalEditResult.removeEdges : undefined,
+            positionShifts: finalEditResult.positionShifts.length > 0 ? finalEditResult.positionShifts : undefined,
           },
           action: "edit",
-          warnings: warnings.length > 0 ? warnings : undefined,
-          debugData: { rawPlan: editPlan },
+          warnings: finalEditResult.warnings.length > 0 ? finalEditResult.warnings : undefined,
+          debugData: {
+            toolSteps: result.steps.length,
+            toolTrace: result.steps.map((s: any) => ({
+              finishReason: s.finishReason,
+              toolCalls: s.toolCalls?.map((tc: any) => tc.toolName),
+              warnings: s.toolResults?.flatMap((tr: any) => tr.result?.warnings || []),
+            })),
+          },
         }
       } else {
         // CREATE MODE: LLM outputs a semantic plan, code builds the flow
@@ -705,7 +828,7 @@ ${dependencyRules ? `\n${dependencyRules}` : ""}
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}
 
-**Response Format (JSON):**
+**${isEdit ? "apply_edit Tool Input Format (examples)" : "Response Format (JSON)"}:**
 ${isEdit ? getEditResponseFormat() : getCreateResponseFormat()}`
 
   return prompt
@@ -813,9 +936,10 @@ function getCreateInstructions(): string {
     '- Only include nodes directly relevant to the user\'s request — do NOT add name, email, dob, or address unless the flow logically needs that data',
     '- **After a quickReply/interactiveList:**',
     '  - If ALL buttons lead to the SAME follow-up: place node steps directly after the quickReply (no branches needed) — every button will connect to the same node.',
-    '  - If buttons lead to DIFFERENT paths: use branch steps for the differing parts.',
+    '  - If buttons lead to DIFFERENT paths: create a branch step for EVERY button (one per buttonIndex). **Every button MUST have a branch — buttons without branches become dead ends with no outgoing edge.**',
     '  - If branches converge to shared follow-up steps: place the shared steps AFTER all branch steps — they\'ll be created once and all branches will connect to them.',
     '  - Do NOT duplicate identical nodes inside every branch.',
+    '  - **Do NOT nest quickReply/interactiveList inside a branch.** Keep flows flat — a branch should end with a message or simple node, not another quickReply that needs its own branches.',
     '- Include integrations (metaAudience, shopify, etc.) only when relevant',
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
@@ -827,104 +951,44 @@ function getCreateInstructions(): string {
 function getEditInstructions(): string {
   // NOTE: Using array join to avoid esbuild template literal parse issues with { } chars
   return [
-    'Output a semantic edit PLAN (not raw nodes/edges). The system will build the actual nodes.',
+    '**You have tools to inspect and edit the flow.** Follow this workflow:',
+    '1. Call `get_node_details` / `get_node_connections` to inspect relevant nodes',
+    '2. Call `apply_edit` ONCE with your COMPLETE edit plan — include ALL chains, edges, removals, and updates in a single call',
+    '3. If apply_edit returns warnings, you may call it again with corrections — otherwise you are DONE, just respond with your message',
     '',
-    '**CRITICAL: Only use nodeType values from the "AVAILABLE NODE TYPES" list. Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.**',
+    '**CRITICAL RULES:**',
+    '- **ONE apply_edit call** — put everything in a single call. Do NOT split across multiple calls.',
+    '- **NEVER call apply_edit with an empty plan** — it will return an error.',
+    '- **NEVER create disconnected nodes** — every new node MUST connect to the existing flow via chains (with connectTo) or addEdges.',
+    '- Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.',
     '',
-    '**Edit Plan Structure:**',
+    '**apply_edit Plan Structure:**',
+    '- **chains**: add new nodes. Each: \\{ "attachTo": "<node-id>", "attachHandle": "<handle-id>", "steps": [...], "connectTo": "<node-id>" \\}',
+    '  - attachHandle: use exact handle ID from get_node_details (required for quickReply/list nodes)',
+    '  - connectTo: link last new node to an existing node. **Pair with removeEdges** to cut the old direct edge.',
+    '- **nodeUpdates**: modify content on existing nodes (question, buttons, text, etc.). Use for text/button changes — do NOT recreate the node.',
+    '- **addEdges**: new edges. \\{ "source": "<id>", "target": "<id>", "sourceButtonIndex": <n> \\}',
+    '- **removeNodeIds**: delete nodes (also removes all their edges)',
+    '- **removeEdges**: disconnect specific edges by source+target+sourceHandle',
     '',
-    '1. **chains** — add new nodes attached to existing nodes',
-    '   - Each chain: \\{ "attachTo": "<existing-node-id>", "steps": [...] \\}',
-    '   - attachTo: the ID of an existing node to connect from',
-    '   - attachHandle: e.g. "button-0" to branch from a specific button. **REQUIRED when attachTo is a quickReply or interactiveList node** — without it, the connection goes to the "next-step" handle instead of a button, which is usually wrong.',
-    '   - connectTo: optional, connect the LAST node in this chain to an existing node (for inserting between nodes)',
-    '   - steps: same as create mode (NodeStep and BranchStep objects)',
+    '**When to use what:**',
+    '- Update text/buttons → nodeUpdates. **NEVER removeNodeIds + chain just to change content — that deletes all existing connections.**',
+    '- Add more buttons to existing quickReply → nodeUpdates with FULL button list (system auto-converts to interactiveList if needed)',
+    '- Change node type (e.g. question → quickReply) → removeNodeIds + chain (this is a REPLACE — only when type actually changes)',
+    '- Insert node between A→C → removeEdges A→C + chain with connectTo',
+    '- Rewire buttons to existing node → removeEdges + addEdges (no chains needed)',
     '',
-    '2. **removeNodeIds** — array of existing node IDs to delete from the canvas',
+    '**Content fields:** question, buttons[], options[], listTitle, text, label, message, storeAs',
+    '- storeAs: ALWAYS set for question/quickReply/interactiveList. Use snake_case (e.g. "delivery_slot").',
     '',
-    '3. **removeEdges** — array of edges to disconnect: \\{ "source": "node-id", "target": "node-id", "sourceHandle": "optional" \\}',
+    '**Variables:** Use {{var_name}} for text inputs, {{var_name_title}} for button/list selections. Super nodes: {{user_name}}, {{user_email}}, {{user_dob}}, {{user_address}}.',
     '',
-    '4. **nodeUpdates** — modify existing node content without replacing them',
-    '   - Each: \\{ "nodeId": "<existing-node-id>", "content": \\{ question?, text?, buttons?, label?, ... \\} \\}',
-    '',
-    '5. **addEdges** — create new edges between existing or newly-created nodes',
-    '   - Each: \\{ "source": "<node-id>", "target": "<node-id>", "sourceButtonIndex": <n> \\}',
-    '   - sourceButtonIndex: which button on the source node (0-based) — used when connecting from a quickReply/interactiveList button',
-    '   - sourceHandle: direct handle ID (use "next-step" for default sequential connection from quickReply/list bottom handle)',
-    '',
-    '**Inserting a node between two existing nodes (connectTo + removeEdges):**',
-    'To insert node B between existing A → C:',
-    '1. removeEdges: [\\{ "source": "A-id", "target": "C-id" \\}]  ← REQUIRED: cut the old A→C edge first',
-    '2. chains: [\\{ "attachTo": "A-id", "steps": [\\{ "step": "node", ... \\}], "connectTo": "C-id" \\}]',
-    '**connectTo almost always requires a matching removeEdges entry** — otherwise the old direct edge and the new chain both exist, creating a fork.',
-    '',
-    '**Replacing a node:**',
-    'To replace node X with a new node:',
-    '1. removeNodeIds: ["X-id"] (this also removes all edges to/from X)',
-    '2. chains: [\\{ "attachTo": "previous-node-id", "steps": [new node], "connectTo": "next-node-id" \\}]',
-    '',
-    '**Converting a node type (e.g., question → quickReply to "add options"):**',
-    'When the user says "add options" or "add buttons" to a question node, they want to REPLACE it with a quickReply:',
-    '1. removeNodeIds: ["question-node-id"]',
-    '2. chains: [\\{ "attachTo": "previous-node-id", "steps": [\\{ "step": "node", "nodeType": "quickReply", "content": \\{ "question": "same question text", "buttons": ["Option A", "Option B"] \\} \\}], "connectTo": "next-node-id" \\}]',
-    'Do NOT add a new quickReply AFTER the existing question — that creates a redundant extra step.',
-    '',
-    '**Adding more buttons/options to an EXISTING quickReply or interactiveList (CRITICAL — use nodeUpdates, NOT replace):**',
-    'When the user says "add more options" or "add more buttons" to an existing quickReply or interactiveList:',
-    '- Use `nodeUpdates` with the FULL updated buttons/options list (existing + new ones)',
-    '- Do NOT use removeNodeIds + chains — that DELETES the node and ALL its existing connections',
-    '- The system auto-converts quickReply → interactiveList if button count exceeds the platform limit (3 for WhatsApp/Instagram)',
-    '- Existing button connections are preserved automatically when using nodeUpdates',
-    '- Example: To add "View Products" and "Check Status" to a quickReply that already has ["Get Started", "Learn More", "Contact Us"]:',
-    '  nodeUpdates: [\\{ "nodeId": "existing-quickReply-id", "content": \\{ "buttons": ["Get Started", "Learn More", "Contact Us", "View Products", "Check Status"] \\} \\}]',
-    '',
-    '**Redirecting buttons to an existing node (IMPORTANT — no new nodes needed):**',
-    'When the user wants to point buttons at an EXISTING node, use removeEdges + addEdges. Do NOT create new chains/nodes.',
-    'Example: Make buttons 0, 1, 2 all point to the same existing question node:',
-    '1. removeEdges: remove edges from buttons that currently go elsewhere',
-    '2. addEdges: connect those buttons to the target existing node using sourceButtonIndex',
-    '3. removeNodeIds: delete any orphaned nodes that are no longer needed',
-    'This is a REWIRE, not a rebuild. Never create duplicate nodes when an existing node already has the right content.',
-    '',
-    '**Content fields (all optional — factory provides defaults):**',
-    '- question, buttons[], options[], listTitle, text, label, message',
-    '- storeAs: string — variable name for storing user response. ALWAYS provide for question/quickReply/interactiveList nodes.',
-    '',
-    '**MINIMAL CHANGE RULES (critical):**',
-    '- Make the MINIMUM changes needed. One new node = one chain or one nodeUpdate. That\'s it.',
-    '- **NEVER create a new node when an existing node already has the right content.** To rewire a button to an existing node, use removeEdges + addEdges. chains create NEW nodes — only use chains when you actually need a new node on the canvas.',
-    '- NEVER remove or rewire edges not directly related to your change.',
-    '- NEVER create edges pointing backward in the flow (toward earlier nodes).',
-    '- When updating content (question text, button labels): use nodeUpdates ONLY. Do NOT recreate the node.',
-    '- When changing a node\'s TYPE (e.g., question → quickReply): use removeNodeIds + chain. This is a REPLACE, not an ADD.',
-    '- NEVER add a new node after an existing node when the user asked to modify the existing node.',
-    '- "chains" can be empty [] if you\'re only doing nodeUpdates or addEdges.',
-    '- Do NOT touch nodes or edges the user didn\'t ask about.',
-    '- If a Focus Area node is specified, apply changes relative to that node.',
-    '',
-    '**CRITICAL — quickReply vs interactiveList:**',
-    '- **≤3 choices → ALWAYS use quickReply** (with buttons[]). NEVER use interactiveList for 3 or fewer options.',
-    '- **4+ choices → use interactiveList** (with options[] and listTitle).',
-    '- This rule is absolute and has no exceptions.',
-    '',
-    '**VARIABLE INTERPOLATION (referencing previous answers):**',
-    '- Nodes that collect input store the user\'s response in a variable (shown as {storeAs: "var_name"} in the flow graph).',
-    '- ALWAYS set `storeAs` in the content field for new question, quickReply, and interactiveList nodes. Use short, descriptive snake_case names.',
-    '- To reference a stored value in later messages/questions, use double curly braces: {{variable_name}}',
-    '- **Button/list responses store TWO variables:** {{storeAs}} holds the internal ID, {{storeAs_title}} holds the display text. ALWAYS use {{storeAs_title}} when showing the user\'s choice in messages.',
-    '- Example: If a node has {storeAs: "selected_flavor"}, use {{selected_flavor_title}} in messages: "Great! We\'ll send you {{selected_flavor_title}}."',
-    '- For text input nodes (question, super nodes), just use {{storeAs}} directly — there is no _title variant.',
-    '- Super nodes have fixed variables: name→user_name, email→user_email, dob→user_dob, address→user_address.',
-    '- NEVER use square brackets like [flavor] or [selected_flavor]. ALWAYS use {{variable_name}} with double curly braces.',
-    '- Only reference variables from nodes that appear EARLIER in the flow.',
-    '',
-    '**Key Rules:**',
-    '- When restructuring, always remove old edges/nodes THEN add new ones',
-    '- Only add information nodes (name, email, dob, address) when the flow logically needs them',
-    '- Steps after branch steps become shared nodes — do not duplicate identical follow-ups in each branch',
-    '- Write full sentences for questions, not "Choose:" or "Select:"',
-    '- Each branch must have a unique buttonIndex',
-    '- Max branches per platform: web=10, whatsapp=3, instagram=3',
+    '**Rules:**',
+    '- ≤3 choices → quickReply. 4+ choices → interactiveList.',
+    '- Minimum changes only. Do NOT touch unrelated nodes/edges.',
+    '- Write full sentences for questions.',
+    '- Max branches: web=10, whatsapp=3, instagram=3.',
+    '- Use addEdges with sourceButtonIndex to connect new quickReply/list buttons to existing nodes (no chain needed).',
   ].join("\n")
 }
 
@@ -951,6 +1015,8 @@ function getCreateResponseFormat(): string {
     '- Only include information nodes (name, email, dob, address) when the flow needs that data — do NOT add them by default',
     "- Steps AFTER all branch steps become shared convergence nodes — all branches connect to them. Do NOT duplicate identical follow-up nodes inside every branch.",
     "- If ALL buttons lead to the same path, skip branches entirely and place steps directly after the quickReply.",
+    "- **If using branches: create one branch for EVERY button.** A quickReply with 3 buttons needs exactly 3 branch steps (buttonIndex 0, 1, 2). Missing branches = disconnected buttons.",
+    "- **Never nest a quickReply/interactiveList inside a branch.** Branches should end with simple nodes (message, question, etc.), not multi-button nodes that need their own sub-branches.",
     "- Add integrations only when relevant (metaAudience for WhatsApp/Instagram)",
     "- Write full, natural questions",
     "- Branches follow the last quickReply/interactiveList in the current scope",
@@ -959,6 +1025,7 @@ function getCreateResponseFormat(): string {
 
 function getEditResponseFormat(): string {
   // NOTE: Using JSON.stringify to avoid esbuild template literal parse issues
+  // 3 key examples covering the most common edit patterns
   const ex1 = JSON.stringify({
     message: "Inserted email collection before the feedback question",
     removeEdges: [{ source: "1", target: "plan-quickReply-1" }],
@@ -966,109 +1033,41 @@ function getEditResponseFormat(): string {
   }, null, 2)
 
   const ex2 = JSON.stringify({
-    message: "Added follow-up question after 'Needs improvement' and updated the main question",
+    message: "Added follow-up question after button and updated the main question",
     chains: [{
       attachTo: "plan-quickReply-2", attachHandle: "button-2",
-      steps: [
-        { step: "node", nodeType: "question", content: { question: "What improvements would you suggest?" } },
-        { step: "node", nodeType: "metaAudience" },
-      ],
+      steps: [{ step: "node", nodeType: "question", content: { question: "What improvements would you suggest?", storeAs: "improvement_feedback" } }],
     }],
     nodeUpdates: [{ nodeId: "plan-quickReply-2", content: { question: "How was your experience with our product?" } }],
   }, null, 2)
 
   const ex3 = JSON.stringify({
-    message: "Replaced the message node with a question node",
+    message: "Replaced the message node with a question and merged branches",
     removeNodeIds: ["plan-whatsappMessage-3"],
+    removeEdges: [{ source: "plan-quickReply-1", target: "plan-question-4" }],
     chains: [{
       attachTo: "plan-quickReply-2", attachHandle: "button-1",
-      steps: [{ step: "node", nodeType: "question", content: { question: "What could be better?" } }],
+      steps: [{ step: "node", nodeType: "question", content: { question: "What could be better?", storeAs: "feedback" } }],
       connectTo: "plan-metaAudience-4",
     }],
-  }, null, 2)
-
-  const ex4 = JSON.stringify({
-    message: "Added a new button and connected it",
-    nodeUpdates: [{ nodeId: "plan-quickReply-1", content: { buttons: ["Existing A", "Existing B", "New C"] } }],
-    addEdges: [{ source: "plan-quickReply-1", target: "plan-address-3", sourceButtonIndex: 2 }],
-  }, null, 2)
-
-  const ex5 = JSON.stringify({
-    message: "Converted open question to quickReply with fruit drink frequency options",
-    removeNodeIds: ["plan-question-4"],
-    chains: [{
-      attachTo: "plan-quickReply-3",
-      attachHandle: "button-0",
-      steps: [{ step: "node", nodeType: "quickReply", content: { question: "How often do you consume fruit-based drinks?", buttons: ["Daily", "Weekly", "Occasionally", "Never"] } }],
-      connectTo: "plan-quickReply-5",
-    }],
-  }, null, 2)
-
-  // Example 6: Redirect buttons to an existing node (merge/converge — NO new nodes)
-  const ex6 = JSON.stringify({
-    message: "All three buttons now point to the same dietary restriction question",
-    removeEdges: [
-      { source: "plan-quickReply-1", target: "plan-question-3" },
-      { source: "plan-quickReply-1", target: "plan-question-4" },
-    ],
-    removeNodeIds: ["plan-question-3", "plan-question-4"],
-    addEdges: [
-      { source: "plan-quickReply-1", target: "plan-question-2", sourceButtonIndex: 1 },
-      { source: "plan-quickReply-1", target: "plan-question-2", sourceButtonIndex: 2 },
-    ],
-  }, null, 2)
-
-  // Example 7: Multi-chain edit (two simultaneous insertions)
-  const ex7 = JSON.stringify({
-    message: "Added email after name and rating after address",
-    chains: [
-      { attachTo: "plan-name-1", steps: [{ step: "node", nodeType: "email" }], connectTo: "plan-quickReply-2" },
-      { attachTo: "plan-address-3", steps: [{ step: "node", nodeType: "quickReply", content: { question: "Rate delivery", buttons: ["Great", "OK", "Bad"] } }], connectTo: "plan-homeDelivery-4" },
-    ],
-    removeEdges: [
-      { source: "plan-name-1", target: "plan-quickReply-2" },
-      { source: "plan-address-3", target: "plan-homeDelivery-4" },
-    ],
+    addEdges: [{ source: "plan-quickReply-1", target: "plan-question-2", sourceButtonIndex: 2 }],
   }, null, 2)
 
   return [
-    "Example 1 — Insert email before an existing node:",
+    "Example 1 — Insert node between two existing nodes:",
     ex1,
     "",
     "Example 2 — Add nodes after a button + update existing content:",
     ex2,
     "",
-    "Example 3 — Replace a node:",
+    "Example 3 — Replace node + rewire edges + merge branches:",
     ex3,
     "",
-    "Example 4 — Add a new button and connect it to an existing node:",
-    ex4,
-    "",
-    "Example 5 — Convert question to quickReply (\"add options to a question\"):",
-    ex5,
-    "",
-    "Example 6 — Redirect buttons to an existing node (merge duplicate paths):",
-    ex6,
-    "",
-    "Example 7 — Multi-chain edit (two simultaneous insertions):",
-    ex7,
-    "",
-    "**IMPORTANT:**",
-    '- Use BASE node type names (question, quickReply, name, etc.) — NOT platform-prefixed',
-    '- "attachTo" MUST be an existing node ID from the flow',
-    '- "connectTo" links the last new node back to an existing node (for insertion/replacement). **When using connectTo, you almost always need removeEdges** to cut the old direct edge first — otherwise both old and new paths exist.',
-    '- "removeNodeIds" deletes nodes AND all their connected edges',
-    '- "removeEdges" disconnects specific edges by source+target',
-    '- "addEdges" creates new edges — use sourceButtonIndex to connect from a specific button (0-based)',
-    "- When restructuring: remove old edges/nodes first, then add new chains",
-    "- Only add information nodes (name, email, etc.) when the flow needs that data",
-    "- Write full, natural questions",
-    "",
-    "**Splitting a path into branches:**",
-    'When the user says "split X into two paths" or "make X branch":',
-    "1. Remove the edge from the current node to its downstream node",
-    "2. Either use nodeUpdates to add buttons to an existing quickReply, or replace the node with a quickReply using removeNodeIds + chain",
-    "3. Add branches after the quickReply using additional chains with attachHandle",
+    "**Key rules:**",
+    '- Use get_node_details and get_node_connections FIRST to get exact handle IDs and edges',
+    '- "connectTo" + "removeEdges" go together — cut old edge, then insert via chain',
+    '- "removeNodeIds" also removes all edges connected to those nodes',
+    '- "addEdges" uses sourceButtonIndex (0-based) for button connections',
   ].join("\n")
 }
 

@@ -64,7 +64,7 @@ export async function suggestNodes(
       })).optional().describe("List options (for list nodes)"),
       text: z.string().optional().describe("Message text (for message nodes)"),
       storeAs: z.string().optional().describe("Variable name to store the user response (for question/quickReply/list nodes)")
-    }).passthrough()
+    })
 
     const suggestionSchema = z.object({
       type: z.string().describe("Node type (use exact platform-specific types)"),
@@ -77,7 +77,7 @@ export async function suggestNodes(
     })
 
     const responseSchema = z.object({
-      suggestions: z.array(suggestionSchema).length(maxSuggestions).describe(`Array of exactly ${maxSuggestions} suggested nodes`)
+      suggestions: z.array(suggestionSchema).describe(`Array of exactly ${maxSuggestions} suggested nodes`)
     })
 
     // Get AI client

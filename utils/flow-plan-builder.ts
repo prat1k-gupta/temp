@@ -353,22 +353,42 @@ export function buildEditFlowFromPlan(
       const lastNodeId = ctx.previousNodeId
       // Don't connect back to the anchor itself
       if (lastNodeId !== chain.attachTo && lastNodeId !== chain.connectTo) {
-        // If the last node in the chain is a multi-output node, resolve to a free
-        // button/option handle — never use "next-step" for quickReply/interactiveList
+        // If the last node in the chain is a multi-output node, connect ALL free
+        // button/option handles to the target — connectTo means "all outputs → target"
         const lastNode = newNodes.find(n => n.id === lastNodeId)
         const lastNodeIsMultiOutput = lastNode?.type ? isMultiOutputType(lastNode.type) : false
-        const connectHandle = lastNodeIsMultiOutput && lastNode
-          ? findFreeHandle(lastNode, existingEdges, newEdges)
-          : undefined
 
-        newEdges.push({
-          id: `e-${lastNodeId}-${chain.connectTo}${connectHandle ? `-${connectHandle}` : ""}`,
-          source: lastNodeId,
-          sourceHandle: connectHandle,
-          target: chain.connectTo,
-          type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
-        } as Edge)
+        if (lastNodeIsMultiOutput && lastNode) {
+          const btns = (lastNode.data?.buttons as ButtonData[] | undefined) || []
+          const opts = (lastNode.data?.options as OptionData[] | undefined) || []
+          const handles = btns.length > 0 ? btns : opts
+          const occupied = new Set(
+            [...existingEdges, ...newEdges]
+              .filter(e => e.source === lastNodeId && e.sourceHandle)
+              .map(e => e.sourceHandle!)
+          )
+          for (let i = 0; i < handles.length; i++) {
+            const handleId = handles[i]?.id || `button-${i}`
+            if (!occupied.has(handleId)) {
+              newEdges.push({
+                id: `e-${lastNodeId}-${chain.connectTo}-btn${i}`,
+                source: lastNodeId,
+                sourceHandle: handleId,
+                target: chain.connectTo,
+                type: "default",
+                style: { stroke: "#6366f1", strokeWidth: 2 },
+              } as Edge)
+            }
+          }
+        } else {
+          newEdges.push({
+            id: `e-${lastNodeId}-${chain.connectTo}`,
+            source: lastNodeId,
+            target: chain.connectTo,
+            type: "default",
+            style: { stroke: "#6366f1", strokeWidth: 2 },
+          } as Edge)
+        }
 
         // Compute position shifts: count new nodes in this chain and shift
         // all existing nodes at or to the right of connectTo's position
@@ -600,13 +620,34 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
     }
     for (const endpointId of ctx.branchEndpoints) {
       if (endpointId === ctx.lastMultiOutputNodeId) continue
-      ctx.edges.push({
-        id: `e-${endpointId}-${nodeId}`,
-        source: endpointId,
-        target: nodeId,
-        type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
-      } as Edge)
+      // If the branch endpoint is a multi-output node (quickReply/list),
+      // create one edge per button/option handle so all buttons connect
+      const endpointNode = ctx.nodes.find(n => n.id === endpointId)
+      const endpointType = endpointNode?.type || ""
+      if (endpointNode && isMultiOutputType(endpointType)) {
+        const btns = (endpointNode.data?.buttons as ButtonData[] | undefined) || []
+        const opts = (endpointNode.data?.options as OptionData[] | undefined) || []
+        const handles = btns.length > 0 ? btns : opts
+        for (let i = 0; i < handles.length; i++) {
+          const handleId = handles[i]?.id || `button-${i}`
+          ctx.edges.push({
+            id: `e-${endpointId}-${nodeId}-btn${i}`,
+            source: endpointId,
+            sourceHandle: handleId,
+            target: nodeId,
+            type: "default",
+            style: { stroke: "#6366f1", strokeWidth: 2 },
+          } as Edge)
+        }
+      } else {
+        ctx.edges.push({
+          id: `e-${endpointId}-${nodeId}`,
+          source: endpointId,
+          target: nodeId,
+          type: "default",
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        } as Edge)
+      }
     }
     // Reset convergence state
     ctx.branchEndpoints = []

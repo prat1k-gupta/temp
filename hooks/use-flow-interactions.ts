@@ -7,7 +7,10 @@ import {
   isDoubleClick,
   createCommentNode,
   createNode,
+  createFlowTemplateNode,
 } from "@/utils"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
+import { getFlow } from "@/utils/flow-storage"
 import { INTERACTION_THRESHOLDS } from "@/constants"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
@@ -74,6 +77,7 @@ export function useFlowInteractions({
     nodeId: string | null
   }>({ isOpen: false, x: 0, y: 0, nodeId: null })
   const [draggedNodeType, setDraggedNodeType] = useState<string | null>(null)
+  const [draggedNodeMeta, setDraggedNodeMeta] = useState<{ templateId?: string } | null>(null)
   const [connectionMenu, setConnectionMenu] = useState<ConnectionMenuState>({
     isOpen: false,
     x: 0,
@@ -166,8 +170,9 @@ export function useFlowInteractions({
     [setEdges, edges, withEditTracking, updateDraftChanges, setNodes, setSelectedNode]
   )
 
-  const onNodeDragStart = useCallback((event: React.DragEvent, nodeType: string) => {
+  const onNodeDragStart = useCallback((event: React.DragEvent, nodeType: string, meta?: { templateId?: string }) => {
     setDraggedNodeType(nodeType)
+    setDraggedNodeMeta(meta || null)
     event.dataTransfer.effectAllowed = "move"
   }, [])
 
@@ -189,7 +194,46 @@ export function useFlowInteractions({
       let newNode: Node
 
       try {
-        if (draggedNodeType === "comment") {
+        if (draggedNodeType === "flowTemplate" && draggedNodeMeta?.templateId) {
+          // Resolve template data from default templates or user templates (localStorage)
+          const defaultTpl = DEFAULT_TEMPLATES.find((t) => t.id === draggedNodeMeta.templateId)
+          let templateNodes: Node[] = []
+          let templateEdges: import("@xyflow/react").Edge[] = []
+          let templateName = "Template"
+          let templateDescription: string | undefined
+          let templateAiMetadata: any | undefined
+
+          if (defaultTpl) {
+            templateNodes = defaultTpl.nodes
+            templateEdges = defaultTpl.edges
+            templateName = defaultTpl.name
+            templateDescription = defaultTpl.description
+            templateAiMetadata = defaultTpl.aiMetadata
+          } else {
+            const userTpl = getFlow(draggedNodeMeta.templateId!)
+            if (userTpl) {
+              templateNodes = userTpl.nodes.filter((n) => n.type !== "start")
+              templateEdges = userTpl.edges
+              templateName = userTpl.name
+              templateDescription = userTpl.description
+              templateAiMetadata = userTpl.aiMetadata
+            }
+          }
+
+          newNode = createFlowTemplateNode(
+            platform,
+            position,
+            {
+              sourceTemplateId: draggedNodeMeta.templateId,
+              templateName,
+              internalNodes: templateNodes,
+              internalEdges: templateEdges,
+              ...(templateDescription ? { description: templateDescription } : {}),
+              ...(templateAiMetadata ? { aiMetadata: templateAiMetadata } : {}),
+            },
+            newNodeId
+          )
+        } else if (draggedNodeType === "comment") {
           newNode = createCommentNode(
             platform,
             position,
@@ -215,15 +259,17 @@ export function useFlowInteractions({
 
         setNodes((nds) => [...nds, newNode])
         setDraggedNodeType(null)
+        setDraggedNodeMeta(null)
         if (draggedNodeType !== "comment") {
           setNodeToFocus(newNodeId)
         }
       } catch (error) {
         console.error(`[v0] Error creating dragged node ${draggedNodeType}:`, error)
         setDraggedNodeType(null)
+        setDraggedNodeMeta(null)
       }
     },
-    [draggedNodeType, setNodes, deleteNode, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, setNodeToFocus]
+    [draggedNodeType, draggedNodeMeta, setNodes, deleteNode, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, setNodeToFocus]
   )
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
@@ -326,6 +372,13 @@ export function useFlowInteractions({
   )
 
   const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (node.type === "flowTemplate") {
+      // Open template editor modal — handled via state in page.tsx
+      if (typeof (window as any).__openTemplateEditor === "function") {
+        (window as any).__openTemplateEditor(node.id)
+      }
+      return
+    }
     const superNodeTypes = ["name", "email", "address", "dob"]
     if (superNodeTypes.includes(node.type || "")) {
       toast.info(`Configure ${node.data?.label || node.type} validation rules`, {

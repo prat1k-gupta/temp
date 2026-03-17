@@ -84,11 +84,12 @@ describe("NODE_TEMPLATES", () => {
     expect(listTemplate!.platforms).toEqual(["whatsapp"])
   })
 
-  it("super nodes are marked with isSuperNode", () => {
-    const superTypes = ["name", "email", "dob", "address"]
-    superTypes.forEach((type) => {
+  it("name/email/dob/address are flow templates in 'template' category", () => {
+    const templateTypes = ["name", "email", "dob", "address"]
+    templateTypes.forEach((type) => {
       const template = NODE_TEMPLATES.find((t) => t.type === type)
-      expect(template?.isSuperNode).toBe(true)
+      expect(template).toBeDefined()
+      expect(template?.category).toBe("template")
     })
   })
 

@@ -1,9 +1,9 @@
 import { getAIClient } from "../core/ai-client"
 import { getPlatformGuidelines } from "../core/ai-context"
-import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies } from "../core/node-documentation"
+import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies, getUserTemplateDocumentation } from "../core/node-documentation"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
 import type { Node, Edge } from "@xyflow/react"
 import { z } from "zod"
 import { generateText, tool, stepCountIs } from "ai"
@@ -25,6 +25,7 @@ export interface GenerateFlowRequest {
     edges: Edge[]
   }
   selectedNode?: Node
+  userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
 }
 
 export interface GenerateFlowResponse {
@@ -101,14 +102,23 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
   const lines: string[] = ["Flow Graph:\n"]
 
   function getNodeSummary(node: Node): string {
-    const label = (node.data as any)?.label || ""
-    const question = typeof (node.data as any)?.question === "string" ? (node.data as any).question : ""
-    const text = typeof (node.data as any)?.text === "string" ? (node.data as any).text : ""
-    const storeAs = typeof (node.data as any)?.storeAs === "string" ? (node.data as any).storeAs : ""
+    const data = node.data as any
+    const label = data?.label || ""
+    const question = typeof data?.question === "string" ? data.question : ""
+    const text = typeof data?.text === "string" ? data.text : ""
+    const storeAs = typeof data?.storeAs === "string" ? data.storeAs : ""
     const displayText = question || text
     const labelPart = label ? ` ${label}` : ""
     const contentPart = displayText ? ` — "${displayText.substring(0, 60)}${displayText.length > 60 ? "..." : ""}"` : ""
     const storeAsPart = storeAs ? ` {storeAs: "${storeAs}"}` : ""
+
+    // Flow template nodes: show as collapsed with internal node count
+    if (node.type === "flowTemplate") {
+      const templateName = data?.templateName || label
+      const nodeCount = data?.nodeCount || data?.internalNodes?.length || 0
+      return `[${node.id}] [Template: ${templateName}] (flowTemplate) — ${nodeCount} internal nodes`
+    }
+
     return `[${node.id}]${labelPart} (${node.type})${contentPart}${storeAsPart}`
   }
 
@@ -698,11 +708,12 @@ export async function generateFlow(
         }
       } else {
         // CREATE MODE: LLM outputs a semantic plan, code builds the flow
+        // Use Haiku for speed — plan structure is simple and well-constrained by the schema
         const plan = await aiClient.generateJSON<FlowPlan>({
           systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
           userPrompt,
           schema: flowPlanSchema,
-          model: 'claude-sonnet',
+          model: 'claude-haiku',
         })
 
         // Convert plan → ReactFlow nodes + edges
@@ -725,7 +736,7 @@ export async function generateFlow(
         userPrompt,
         temperature: 0.7,
         maxTokens: 2000,
-        model: 'claude-sonnet',
+        model: isEditRequest ? 'claude-sonnet' : 'claude-haiku',
       })
 
       const content = response.text
@@ -808,8 +819,9 @@ function buildSystemPrompt(
 
   // Both modes are plan-based now — use compact docs
   const nodeDocs = getSimplifiedNodeDocumentation(request.platform)
+  const userTemplateDocs = getUserTemplateDocumentation(request.platform, request.userTemplates || [])
 
-  const selectionRules = getNodeSelectionRules(request.platform)
+  const selectionRules = getNodeSelectionRules(request.platform, request.userTemplates)
   const dependencyRules = getNodeDependencies(request.platform)
 
   let prompt = `You are an expert conversational flow designer for ${request.platform} platforms.
@@ -820,7 +832,7 @@ Your task is to ${action} a conversational flow based on user requirements.
 ${platformGuidelines}
 
 **${isEdit ? "COMPREHENSIVE NODE DOCUMENTATION" : "AVAILABLE NODE TYPES"}:**
-${nodeDocs}
+${nodeDocs}${userTemplateDocs}
 
 ${selectionRules}
 ${dependencyRules ? `\n${dependencyRules}` : ""}

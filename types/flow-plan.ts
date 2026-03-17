@@ -10,7 +10,7 @@ export const VALID_BASE_NODE_TYPES = [
   "whatsappMessage",
   "instagramDM",
   "instagramStory",
-  // Information (super nodes)
+  // Information (flow templates — created as super nodes, migrated to flowTemplate on load)
   "name",
   "email",
   "dob",
@@ -22,6 +22,10 @@ export const VALID_BASE_NODE_TYPES = [
   "trackingNotification",
   "event",
   "retailStore",
+  // Flow template
+  "flowTemplate",
+  // Flow terminator
+  "flowComplete",
   // Integration
   "shopify",
   "metaAudience",
@@ -49,6 +53,7 @@ export interface NodeContent {
   comment?: string
   message?: string
   storeAs?: string
+  templateId?: string // for flowTemplate nodes — references a template by ID
 }
 
 export interface NodeStep {
@@ -82,6 +87,7 @@ export const nodeContentSchema = z.object({
   comment: z.string().optional(),
   message: z.string().optional(),
   storeAs: z.string().optional(),
+  templateId: z.string().optional(),
 })
 
 export const nodeStepSchema = z.object({

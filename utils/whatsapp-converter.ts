@@ -90,7 +90,7 @@ function resolveNextStep(
   return nodeStepNames.get(targetId) ?? "__complete__"
 }
 
-const SKIP_NODE_TYPES = new Set(["start", "comment"])
+const SKIP_NODE_TYPES = new Set(["start", "comment", "flowTemplate", "flowComplete"])
 
 const WEB_ONLY_TYPES = new Set(["webQuestion", "webQuickReply"])
 
@@ -125,7 +125,7 @@ function makeRoute(rule: ConditionRule, target: string): ConditionalRoute {
   let value = rule.value || ""
   if (rule.operator === "isTrue") value = "true"
   if (rule.operator === "isFalse") value = "false"
-  return { operator: goOperator, value, target, variable: rule.field || "" }
+  return { default: false, operator: goOperator, value, target, variable: rule.field || "" }
 }
 
 // --- Forward Conversion: magicflow → fs-whatsapp ---
@@ -245,11 +245,16 @@ export function convertToFsWhatsApp(
       panelConfig[data.storeAs] = { step: stepName, input_type: inputType }
     }
 
-    // Apply validation presets
-    if (validation.regex) step.validation_regex = validation.regex
-    if (validation.errorMessage) step.validation_error = validation.errorMessage
-    if (validation.retryOnInvalid) step.retry_on_invalid = validation.retryOnInvalid
-    if (validation.maxRetries) step.max_retries = validation.maxRetries
+    // Apply validation: node-level overrides preset defaults
+    const nodeValidation = (data.validation || {}) as Record<string, any>
+    const mergedRegex = nodeValidation.regex !== undefined ? nodeValidation.regex : validation.regex
+    const mergedError = nodeValidation.errorMessage !== undefined ? nodeValidation.errorMessage : validation.errorMessage
+    const mergedRetry = nodeValidation.retryOnInvalid ?? validation.retryOnInvalid
+    const mergedMaxRetries = nodeValidation.maxRetries ?? validation.maxRetries
+    if (mergedRegex) step.validation_regex = mergedRegex
+    if (mergedError) step.validation_error = mergedError
+    if (mergedRetry !== undefined) step.retry_on_invalid = mergedRetry
+    if (mergedMaxRetries !== undefined) step.max_retries = mergedMaxRetries
 
     // Type-specific conversion
     switch (nodeType) {
@@ -323,15 +328,6 @@ export function convertToFsWhatsApp(
         break
       }
 
-      case "name":
-      case "email":
-      case "dob":
-      case "address": {
-        step.message_type = "text"
-        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
-        break
-      }
-
       case "condition": {
         step.message_type = "conditional_routing"
         step.input_type = "none"
@@ -349,7 +345,7 @@ export function convertToFsWhatsApp(
           if (!groupTarget) continue
 
           if (!group.rules || group.rules.length === 0) {
-            conditionalRoutes.push({ operator: "not_empty", value: "", target: groupTarget, variable: "_flow_id" })
+            conditionalRoutes.push({ default: false, operator: "not_empty", value: "", target: groupTarget, variable: "_flow_id" })
             continue
           }
 
@@ -389,7 +385,7 @@ export function convertToFsWhatsApp(
                   input_type: "none",
                   conditional_routes: [
                     makeRoute(rule, routeTarget),
-                    { default: true, target: elseTarget }, // catch-all → else
+                    { default: true, operator: "", value: "", target: elseTarget, variable: "" }, // catch-all → else
                   ],
                   next_step: elseTarget,
                 })
@@ -399,7 +395,7 @@ export function convertToFsWhatsApp(
         }
 
         // Add default route as catch-all → else path (Go checks "default": true)
-        conditionalRoutes.push({ default: true, target: elseTarget })
+        conditionalRoutes.push({ default: true, operator: "", value: "", target: elseTarget, variable: "" })
 
         step.conditional_routes = conditionalRoutes
         step.next_step = elseTarget
@@ -613,6 +609,28 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
 
     if (step.store_as) {
       data.storeAs = step.store_as
+    }
+
+    // Restore custom validation that differs from presets
+    const stepInputType = step.input_type || "none"
+    const preset = VALIDATION_PRESETS[stepInputType]
+    if (preset) {
+      const customValidation: Record<string, any> = {}
+      if (step.validation_regex && step.validation_regex !== preset.regex) {
+        customValidation.regex = step.validation_regex
+      }
+      if (step.validation_error && step.validation_error !== preset.errorMessage) {
+        customValidation.errorMessage = step.validation_error
+      }
+      if (step.retry_on_invalid !== undefined && step.retry_on_invalid !== preset.retryOnInvalid) {
+        customValidation.retryOnInvalid = step.retry_on_invalid
+      }
+      if (step.max_retries !== undefined && step.max_retries !== preset.maxRetries) {
+        customValidation.maxRetries = step.max_retries
+      }
+      if (Object.keys(customValidation).length > 0) {
+        data.validation = customValidation
+      }
     }
 
     switch (nodeType) {

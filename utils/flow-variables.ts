@@ -1,12 +1,5 @@
 import type { Node } from "@xyflow/react"
 
-const SUPER_NODE_DEFAULTS: Record<string, string> = {
-  name: "user_name",
-  email: "user_email",
-  dob: "user_dob",
-  address: "user_address",
-}
-
 const STORABLE_NODE_TYPES = new Set([
   "whatsappQuestion",
   "question",
@@ -14,10 +7,6 @@ const STORABLE_NODE_TYPES = new Set([
   "quickReply",
   "whatsappInteractiveList",
   "interactiveList",
-  "name",
-  "email",
-  "dob",
-  "address",
   "apiFetch",
 ])
 
@@ -35,26 +24,19 @@ export function slugify(text: string): string {
 
 /**
  * Derives a variable name from a node's question text.
- * Super nodes get fixed defaults (user_name, user_email, etc.).
  * Priority: question → label → nodeType fallback.
  */
 export function generateVariableName(node: Node): string {
-  const nodeType = node.type || ""
   const data = node.data as Record<string, any>
 
-  // Super nodes get fixed defaults
-  if (SUPER_NODE_DEFAULTS[nodeType]) {
-    return SUPER_NODE_DEFAULTS[nodeType]
-  }
-
   // Use question first, then label, then fallback
-  const text = data.question || data.label || nodeType
+  const text = data.question || data.label || node.type || ""
   const slug = slugify(text)
   return slug || `var_${node.id.slice(-6)}`
 }
 
 /**
- * Scans all storable nodes (question, quickReply, list, super),
+ * Scans all storable nodes (question, quickReply, list, apiFetch),
  * returns an array of storeAs values that are set.
  */
 export function collectFlowVariables(nodes: Node[]): string[] {

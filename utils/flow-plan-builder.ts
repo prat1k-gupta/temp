@@ -12,11 +12,12 @@ import type { Node, Edge } from "@xyflow/react"
 import type { Platform, ButtonData, OptionData } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
-import { createNode } from "./node-factory"
+import { createNode, createFlowTemplateNode } from "./node-factory"
 import { createButtonData, createOptionData, shouldConvertToList, convertButtonsToOptions } from "./node-operations"
 import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { isMultiOutputType, getBaseNodeType } from "./platform-helpers"
 import { autoStoreAs, collectFlowVariables } from "./flow-variables"
 
@@ -580,6 +581,40 @@ function walkSteps(steps: FlowStep[], ctx: WalkContext): void {
 function processNodeStep(step: NodeStep, ctx: WalkContext): void {
   const { platform } = ctx
 
+  // Handle flowTemplate nodes — look up the template by ID
+  if (step.nodeType === "flowTemplate" && step.content?.templateId) {
+    const templateId = step.content.templateId
+    // Look up in default templates
+    const defaultTpl = DEFAULT_TEMPLATES.find(t => t.id === templateId)
+    if (defaultTpl) {
+      let position = ctx.layout.getNextSequentialPosition()
+      const nodeId = `plan-flowTemplate-${ctx.nodes.length + 1}-${rand4()}`
+      const node = createFlowTemplateNode(platform, position, {
+        sourceTemplateId: defaultTpl.id,
+        templateName: defaultTpl.name,
+        internalNodes: defaultTpl.nodes,
+        internalEdges: defaultTpl.edges,
+      }, nodeId)
+
+      ctx.nodes.push(node)
+      ctx.nodeOrder.push(nodeId)
+
+      // Normal sequential edge from previous
+      const edgeId = `e-${ctx.previousNodeId}-${nodeId}`
+      ctx.edges.push({
+        id: edgeId,
+        source: ctx.previousNodeId,
+        target: nodeId,
+        type: "default",
+        style: { stroke: "#6366f1", strokeWidth: 2 },
+      } as Edge)
+
+      ctx.previousNodeId = nodeId
+      return
+    }
+    // If not found, fall through to regular createNode which will handle it gracefully
+  }
+
   // Validate type for platform
   if (!isNodeTypeValidForPlatform(step.nodeType, platform)) {
     ctx.warnings.push(`Node type "${step.nodeType}" not valid for ${platform} — skipped`)
@@ -806,6 +841,9 @@ export function isNodeTypeValidForPlatform(
   nodeType: string,
   platform: Platform
 ): boolean {
+  // flowTemplate is valid for all platforms
+  if (nodeType === "flowTemplate") return true
+
   // Check against NODE_TEMPLATES for platform support
   const template = NODE_TEMPLATES.find((t) => t.type === nodeType)
   if (template) {

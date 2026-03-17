@@ -22,6 +22,7 @@ import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import type { FlowChange } from "@/types"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
+import { flattenFlow } from "@/utils/flow-flattener"
 
 interface PublishModalProps {
   changes: FlowChange[]
@@ -126,9 +127,11 @@ export function PublishModal({
       // If WhatsApp platform, also publish to fs-whatsapp
       if (platform === "whatsapp" && nodes && edges && flowName) {
         try {
+          // Flatten template nodes before converting
+          const { nodes: flatNodes, edges: flatEdges } = flattenFlow(nodes, edges)
           const converted = convertToFsWhatsApp(
-            nodes,
-            edges,
+            flatNodes,
+            flatEdges,
             flowName,
             flowDescription,
             triggerIds,

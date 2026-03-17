@@ -50,6 +50,7 @@ import { useNodeOperations } from "@/hooks/use-node-operations"
 import { useClipboard } from "@/hooks/use-clipboard"
 import { useFlowAI } from "@/hooks/use-flow-ai"
 import { useFlowInteractions } from "@/hooks/use-flow-interactions"
+import { TemplateEditorModal } from "@/components/template-editor-modal"
 import { FlowHeader } from "@/components/flow/flow-header"
 import { FlowGraphPanel } from "@/components/flow/flow-graph-panel"
 import { PaneContextMenu } from "@/components/flow/pane-context-menu"
@@ -79,6 +80,7 @@ function MagicFlowInner() {
   const [isScreenshotModalOpen, setIsScreenshotModalOpen] = useState(false)
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
   const [isFlowGraphPanelOpen, setIsFlowGraphPanelOpen] = useState(false)
+  const [templateEditorNodeId, setTemplateEditorNodeId] = useState<string | null>(null)
 
   // Version loading state
   const [draftStateLoaded, setDraftStateLoaded] = useState(false)
@@ -214,6 +216,42 @@ function MagicFlowInner() {
     pasteNodes: clipboard.pasteNodes,
     selectAllNodes: clipboard.selectAllNodes,
   })
+
+  // Wire template editor double-click handler
+  useEffect(() => {
+    (window as any).__openTemplateEditor = (nodeId: string) => {
+      setTemplateEditorNodeId(nodeId)
+    }
+    return () => {
+      delete (window as any).__openTemplateEditor
+    }
+  }, [])
+
+  // Template editor save handler
+  const handleTemplateEditorSave = useCallback(
+    (nodeId: string, internalNodes: Node[], internalEdges: Edge[], aiMetadata?: import("@/types").TemplateAIMetadata) => {
+      nodeOps.updateNodeData(nodeId, {
+        internalNodes,
+        internalEdges,
+        nodeCount: internalNodes.length,
+        ...(aiMetadata ? { aiMetadata } : {}),
+      })
+      // Persist AI metadata to the source template in localStorage
+      const templateNode = nodes.find((n) => n.id === nodeId)
+      const sourceTemplateId = (templateNode?.data as any)?.sourceTemplateId
+      if (sourceTemplateId && aiMetadata) {
+        import("@/utils/flow-storage").then(({ updateTemplateMetadata }) => {
+          updateTemplateMetadata(sourceTemplateId, aiMetadata)
+        })
+      }
+    },
+    [nodeOps, nodes]
+  )
+
+  // Get template editor node data
+  const templateEditorNode = templateEditorNodeId
+    ? nodes.find((n) => n.id === templateEditorNodeId)
+    : null
 
   // --- Callbacks that stay in page.tsx ---
 
@@ -587,6 +625,19 @@ function MagicFlowInner() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Template Editor Modal */}
+        <TemplateEditorModal
+          isOpen={!!templateEditorNodeId && !!templateEditorNode}
+          onClose={() => setTemplateEditorNodeId(null)}
+          nodeId={templateEditorNodeId || ""}
+          internalNodes={(templateEditorNode?.data as any)?.internalNodes || []}
+          internalEdges={(templateEditorNode?.data as any)?.internalEdges || []}
+          templateName={(templateEditorNode?.data as any)?.templateName || "Template"}
+          platform={platform}
+          aiMetadata={(templateEditorNode?.data as any)?.aiMetadata}
+          onSave={handleTemplateEditorSave}
+        />
 
         <div className="h-full flex flex-col pt-20">
         <div className="flex-1 relative">

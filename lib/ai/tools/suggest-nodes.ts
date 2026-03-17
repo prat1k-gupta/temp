@@ -1,11 +1,11 @@
 import { getPlatformGuidelines } from "../core/ai-context"
-import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies } from "../core/node-documentation"
+import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies, getUserTemplateDocumentation } from "../core/node-documentation"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { getAIClient } from "../core/ai-client"
 import { buildFlowGraphString } from "./generate-flow"
 import { getBaseNodeType } from "@/utils/platform-helpers"
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
 import { z } from "zod"
 
 export interface SuggestNodesRequest {
@@ -25,6 +25,7 @@ export interface SuggestNodesRequest {
   }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
+  userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
 }
 
 import type { SuggestedNode } from "@/types"
@@ -174,10 +175,11 @@ export async function suggestNodes(
 function buildSystemPrompt(request: SuggestNodesRequest): string {
   const platform = request.platform
   const nodeDocs = getSimplifiedNodeDocumentation(platform)
+  const userTemplateDocs = getUserTemplateDocumentation(platform, request.userTemplates || [])
   const platformGuidelines = getPlatformGuidelines(platform)
   const n = request.maxSuggestions || 2
 
-  const selectionRules = getNodeSelectionRules(platform)
+  const selectionRules = getNodeSelectionRules(platform, request.userTemplates)
   const dependencyRules = getNodeDependencies(platform)
 
   return `You are an expert conversational flow designer for ${platform}.
@@ -185,7 +187,7 @@ function buildSystemPrompt(request: SuggestNodesRequest): string {
 ${platformGuidelines}
 
 **AVAILABLE NODE TYPES:**
-${nodeDocs}
+${nodeDocs}${userTemplateDocs}
 
 ${selectionRules}
 ${dependencyRules ? `\n${dependencyRules}` : ""}
@@ -204,7 +206,6 @@ ${dependencyRules ? `\n${dependencyRules}` : ""}
 - Button/list responses: use {{var_name_title}} to get the display text the user chose.
 - Text input responses: use {{var_name}} directly.
 - When generating message text, reference earlier variables using {{var_name}} or {{var_name_title}} — NEVER use [placeholder] syntax.
-- Super nodes: name→{{user_name}}, email→{{user_email}}, dob→{{user_dob}}, address→{{user_address}}.
 
 **OUTPUT FORMAT:**
 Return JSON with exactly ${n} suggestions:

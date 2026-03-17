@@ -329,11 +329,11 @@ describe("buildFlowFromPlan — factory defaults", () => {
     expect(nodes[0].data.platform).toBe("whatsapp")
   })
 
-  it("creates super nodes with factory defaults + validation rules", () => {
+  it("creates flowTemplate nodes for data collection types (name, email, etc.)", () => {
     const plan = linearPlan(["name"])
     const { nodes } = buildFlowFromPlan(plan, "web")
-    expect(nodes[0].type).toBe("name")
-    expect(nodes[0].data.validationRules).toBeDefined()
+    expect(nodes[0].type).toBe("flowTemplate")
+    expect(nodes[0].data.internalNodes).toBeDefined()
   })
 })
 

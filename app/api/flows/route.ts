@@ -12,24 +12,35 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       )
     }
-    
+
     // Load all flows from Redis
     const flows = await getAllFlowsFromRedis()
-    
+
+    // Support ?type=flow or ?type=template filter
+    const typeFilter = request.nextUrl.searchParams.get('type')
+
     // Convert to array and return metadata only (without full node/edge data for list view)
-    const flowsArray: FlowData[] = Object.values(flows)
+    let flowsArray: FlowData[] = Object.values(flows)
+
+    if (typeFilter === 'template') {
+      flowsArray = flowsArray.filter(f => f.type === 'template')
+    } else if (typeFilter === 'flow' || !typeFilter) {
+      flowsArray = flowsArray.filter(f => (f.type || 'flow') === 'flow')
+    }
+
     const flowsMetadata = flowsArray.map(flow => ({
       id: flow.id,
       name: flow.name,
       description: flow.description,
       platform: flow.platform,
+      type: (flow as any).type || 'flow',
       thumbnail: flow.thumbnail,
       createdAt: flow.createdAt,
       updatedAt: flow.updatedAt,
       nodeCount: flow.nodes?.length || 0,
       edgeCount: flow.edges?.length || 0,
     }))
-    
+
     return NextResponse.json(flowsMetadata)
   } catch (error) {
     console.error('Error fetching flows from database:', error)
@@ -73,6 +84,7 @@ export async function POST(request: NextRequest) {
       name: flowData.name,
       description: flowData.description || '',
       platform: flowData.platform,
+      type: flowData.type || 'flow',
       nodes: flowData.nodes || [
         {
           id: "1",

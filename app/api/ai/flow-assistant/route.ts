@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       conversationHistory,
       existingFlow,
       selectedNode,
+      userTemplates,
     } = body
 
     const validPlatforms: Platform[] = ["web", "whatsapp", "instagram"]
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       conversationHistory,
       existingFlow,
       selectedNode,
+      userTemplates,
     })
 
     if (!result) {

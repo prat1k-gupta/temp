@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Mail, Calendar, MapPin, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded, FileText } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded, FileText, Layers, CircleCheck } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -74,6 +74,18 @@ export interface NodeTemplateLimits {
   multiOutput?: boolean
   /** Accepts multiple input edges. Default: true. */
   allowMultipleInputs?: boolean
+  /**
+   * How source handles are derived for this node type.
+   * Used by the flattener to enumerate all possible exits from a node.
+   * - "none": terminal node, no source handles (e.g. transfer, flowComplete)
+   * - "default": single unnamed handle (e.g. question, message nodes)
+   * - "buttons": per-button handle from data.buttons[].id + "next-step" fallthrough
+   * - "options": per-option handle from data.options[].id + "next-step" fallthrough
+   * - "conditions": per-group handle from data.conditionGroups[].id + "else" fallback
+   *
+   * If omitted, inferred: maxConnections=0 → "none", otherwise "default".
+   */
+  sourceHandles?: "none" | "default" | "buttons" | "options" | "conditions"
 }
 
 export interface NodeTemplateAI {
@@ -102,8 +114,7 @@ export interface NodeTemplate {
   icon: any
   label: string
   description: string
-  category: "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
-  isSuperNode?: boolean // Can be double-clicked to see sub-nodes
+  category: "template" | "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
   platforms: Platform[] // Which platforms support this node
   badge?: string // Optional badge text
   limits?: NodeTemplateLimits
@@ -121,6 +132,11 @@ function makeIntegrationAI(name: string, desc: string): NodeTemplateAI {
 }
 
 export const NODE_CATEGORIES = {
+  template: {
+    label: "Templates",
+    description: "Reusable flow templates",
+    icon: Layers,
+  },
   information: {
     label: "Information",
     description: "Collect & validate data",
@@ -189,7 +205,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Question with button options",
     category: "interaction",
     platforms: ["web", "whatsapp", "instagram"],
-    limits: { textField: "question", hasButtons: true, multiOutput: true },
+    limits: { textField: "question", hasButtons: true, multiOutput: true, sourceHandles: "buttons" },
     ai: {
       description: "Question with button options. Supports branching - each button can connect to different nodes using sourceHandle (button-0, button-1, button-2).",
       whenToUse: "When the answer has finite/known options (1-3 choices). ALWAYS use this instead of interactiveList when there are 3 or fewer options — buttons are more tap-friendly. Max 3 buttons on WhatsApp/Instagram. Perfect for branching flows where different buttons lead to different paths.",
@@ -216,7 +232,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Interactive list menu",
     category: "interaction",
     platforms: ["whatsapp"],
-    limits: { textField: "question", hasOptions: true, listTitleMax: 20, multiOutput: true, maxConnections: 10 },
+    limits: { textField: "question", hasOptions: true, listTitleMax: 20, multiOutput: true, maxConnections: 10, sourceHandles: "options" },
     ai: {
       description: "Interactive list menu with options. Each option can have a title and description.",
       whenToUse: "ONLY when there are 4 or more choices. Never use for 3 or fewer options — use quickReply instead. Renders as a scrollable list menu on WhatsApp (up to 10 options).",
@@ -315,7 +331,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: "logic",
     platforms: ["web", "whatsapp", "instagram"],
     badge: "Logic",
-    limits: { maxConnections: 10, multiOutput: true },
+    limits: { maxConnections: 10, multiOutput: true, sourceHandles: "conditions" },
     ai: {
       description: "Branch flow based on conditions. Supports AND/OR logic. Context-aware - automatically detects connected nodes and offers relevant field options.",
       whenToUse: "When you need to branch the flow based on user data, responses, or conditions. Perfect for creating dynamic, personalized experiences.",
@@ -333,6 +349,25 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       contentFields: "(auto-configured)",
       requiredProperties: ["label", "platform", "conditionLogic", "conditionGroups"],
       optionalProperties: ["connectedNode"],
+    },
+  },
+
+  {
+    type: "flowComplete",
+    icon: CircleCheck,
+    label: "Complete",
+    description: "Explicitly end the flow at this point",
+    category: "logic",
+    platforms: ["web", "whatsapp", "instagram"],
+    badge: "Complete",
+    limits: { maxConnections: 0 },
+    ai: {
+      whenToUse: "When you need to explicitly terminate a flow path, especially inside templates where open nodes would otherwise continue to the parent flow.",
+      bestPractices: [
+        "Use inside templates to mark paths that should NOT continue in the parent flow",
+        "Not needed at the end of regular flows — leaving the last node unconnected works the same way",
+      ],
+      requiredProperties: ["label", "platform"],
     },
   },
 
@@ -391,7 +426,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Send a pre-approved WhatsApp template message",
     category: "action",
     platforms: ["whatsapp"],
-    limits: { maxConnections: 1 },
+    limits: { maxConnections: 1, sourceHandles: "buttons" },
     ai: {
       whenToUse: "When you need to send a pre-approved WhatsApp template message (e.g. outside the 24-hour window).",
       bestPractices: [
@@ -408,110 +443,102 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     },
   },
 
-  // INFORMATION NODES (Super Nodes)
+  // INFORMATION / TEMPLATE NODES
+  // These entries exist so the AI knows to generate name/email/dob/address nodes.
+  // They are created as legacy super nodes by the factory, then auto-migrated to
+  // flowTemplate nodes on load (see use-flow-persistence.ts migrateSuperNodesToTemplates).
+  // They do NOT appear in the sidebar (category "template" is filtered out there).
   {
     type: "name",
     icon: User,
     label: "Name",
-    description: "Collect and validate name",
-    category: "information",
-    isSuperNode: true,
+    description: "Collect and validate user's name (flow template with built-in validation)",
+    category: "template",
     platforms: ["web", "whatsapp", "instagram"],
-    badge: "Validation",
     ai: {
-      description: "Collect and validate user's name. Super node with built-in validation. Use this for name collection, NOT question nodes.",
+      description: "Collect and validate user's name. Flow template with built-in validation. Use this for name collection, NOT question nodes.",
       whenToUse: "ALWAYS use this node when you need to collect the user's name. Do NOT use question nodes for name collection.",
       bestPractices: [
         "Ask for name in a friendly, natural way",
         "The node handles validation automatically",
-        "Supports first name, last name, and full name collection",
       ],
       examples: [
         "What's your name?",
-        "Please tell us your name",
         "Hi! What should we call you?",
       ],
       contentFields: "question (optional override)",
-      requiredProperties: ["label", "question", "platform", "fieldLabel", "validationRules"],
+      requiredProperties: ["label", "question", "platform"],
+      selectionRule: "Always use for name collection. Never use question nodes for names.",
     },
   },
   {
     type: "email",
-    icon: Mail,
+    icon: User,
     label: "Email",
-    description: "Collect and validate email",
-    category: "information",
-    isSuperNode: true,
+    description: "Collect and validate user's email (flow template with built-in validation)",
+    category: "template",
     platforms: ["web", "whatsapp", "instagram"],
-    badge: "Validation",
     ai: {
-      description: "Collect and validate user's email address. Super node with built-in validation including format check, domain validation, and disposable email detection. Use this for email collection, NOT question nodes.",
+      description: "Collect and validate user's email address. Flow template with built-in validation including format check, domain validation, and disposable email detection.",
       whenToUse: "ALWAYS use this node when you need to collect the user's email. Do NOT use question nodes for email collection.",
       bestPractices: [
         "Explain why you need their email",
-        "The node handles all validation automatically (format, domain, disposable emails)",
-        "Use friendly, reassuring language",
+        "The node handles all validation automatically",
       ],
       examples: [
         "What's your email address?",
-        "We'll send your sample confirmation to your email. What's your email?",
         "Enter your email to receive updates",
       ],
       contentFields: "question (optional override)",
-      requiredProperties: ["label", "question", "platform", "fieldLabel", "validationRules"],
+      requiredProperties: ["label", "question", "platform"],
+      selectionRule: "Always use for email collection. Never use question nodes for emails.",
     },
   },
   {
     type: "dob",
-    icon: Calendar,
+    icon: User,
     label: "DOB",
-    description: "Collect and validate date of birth",
-    category: "information",
-    isSuperNode: true,
+    description: "Collect and validate date of birth (flow template with built-in validation)",
+    category: "template",
     platforms: ["web", "whatsapp", "instagram"],
-    badge: "Validation",
     ai: {
-      description: "Collect user's date of birth. Super node with built-in validation including age checks and format validation. Use this for DOB collection, NOT question nodes.",
+      description: "Collect user's date of birth. Flow template with built-in age checks and format validation.",
       whenToUse: "ALWAYS use this node when you need to collect the user's date of birth. Do NOT use question nodes for DOB collection.",
       bestPractices: [
         "Be clear about format and purpose",
         "The node handles age validation automatically (min 13 for COPPA)",
-        "Use friendly, non-intrusive language",
       ],
       examples: [
         "What's your date of birth?",
         "Please enter your date of birth (DD/MM/YYYY)",
-        "We need your date of birth to verify age requirements",
       ],
       contentFields: "question (optional override)",
-      requiredProperties: ["label", "question", "platform", "fieldLabel", "validationRules"],
+      requiredProperties: ["label", "question", "platform"],
+      selectionRule: "Always use for DOB collection. Never use question nodes for dates of birth.",
     },
   },
   {
     type: "address",
-    icon: MapPin,
+    icon: User,
     label: "Address",
-    description: "Collect and validate address",
-    category: "information",
-    isSuperNode: true,
+    description: "Collect and validate user's address (flow template with built-in validation)",
+    category: "template",
     platforms: ["web", "whatsapp", "instagram"],
-    badge: "Validation",
     ai: {
-      description: "Collect and validate user's address. Super node with built-in validation for all address components (street, city, state, ZIP, country). Use this for address collection, NOT question nodes.",
+      description: "Collect and validate user's address. Flow template with built-in validation for all address components.",
       whenToUse: "ALWAYS use this node when you need to collect the user's address (especially for delivery flows). Do NOT use question nodes for address collection.",
       bestPractices: [
-        "Break down address collection into clear steps",
         "The node handles all component validation automatically",
         "Required for homeDelivery flows",
-        "Supports postal code validation",
       ],
       examples: [
         "Please enter your address",
-        "We need your address for delivery. Please enter it below.",
         "Where should we deliver your sample?",
       ],
       contentFields: "question (optional override)",
-      requiredProperties: ["label", "question", "platform", "fieldLabel", "validationRules", "addressComponents"],
+      requiredProperties: ["label", "question", "platform"],
+      selectionRule: "Always use for address collection. Never use question nodes for addresses.",
+      dependencies: ["homeDelivery"],
     },
   },
 
@@ -723,4 +750,70 @@ export function getAllCategories() {
     key,
     ...value,
   }))
+}
+
+/**
+ * Resolve the source handle descriptor for a node type.
+ * Looks up NODE_TEMPLATES by base type (strips platform prefixes).
+ * Returns the sourceHandles descriptor or infers from limits.
+ */
+function resolveHandleDescriptor(nodeType: string): "none" | "default" | "buttons" | "options" | "conditions" {
+  // Strip platform prefixes to find the base template
+  const baseType = nodeType
+    .replace(/^whatsapp/, "").replace(/^web/, "").replace(/^instagram/, "")
+    // lowercase first char to match template types (e.g. "QuickReply" → "quickReply")
+    .replace(/^./, c => c.toLowerCase())
+
+  const template = NODE_TEMPLATES.find(t => t.type === nodeType)
+    || NODE_TEMPLATES.find(t => t.type === baseType)
+
+  if (template?.limits?.sourceHandles) return template.limits.sourceHandles
+  if (template?.limits?.maxConnections === 0) return "none"
+  return "default"
+}
+
+/**
+ * Enumerate all source handle IDs for a node instance based on its type and data.
+ * Returns undefined for the single default (unnamed) handle.
+ *
+ * This is the single source of truth for "what exits does a node have?"
+ * Used by the flattener to detect unconnected exits inside templates.
+ */
+export function getNodeSourceHandles(nodeType: string, data: any): (string | undefined)[] {
+  const descriptor = resolveHandleDescriptor(nodeType)
+
+  switch (descriptor) {
+    case "none":
+      return []
+
+    case "buttons": {
+      const buttons: any[] = data?.buttons || []
+      const handles: (string | undefined)[] = buttons
+        .map((b: any, i: number) => b.id || `button-${i}`)
+      // "next-step" is the fallthrough handle on quickReply/list/templateMessage
+      handles.push("next-step")
+      return handles
+    }
+
+    case "options": {
+      const options: any[] = data?.options || []
+      const handles: (string | undefined)[] = options
+        .map((o: any, i: number) => o.id || `option-${i}`)
+      handles.push("next-step")
+      return handles
+    }
+
+    case "conditions": {
+      const groups: any[] = data?.conditionGroups || []
+      const handles: string[] = groups
+        .filter((g: any) => g.id)
+        .map((g: any) => g.id)
+      handles.push("else")
+      return handles
+    }
+
+    case "default":
+    default:
+      return [undefined]
+  }
 }

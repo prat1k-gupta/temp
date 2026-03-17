@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react"
-import type { Platform, SuggestedNode } from "@/types"
+import type { Platform, SuggestedNode, TemplateAIMetadata } from "@/types"
 
 interface UseNodeSuggestionsOptions {
   currentNodeType: string
@@ -18,6 +18,7 @@ interface UseNodeSuggestionsOptions {
   }>
   edges?: Array<{ source: string; target: string; sourceHandle?: string }>
   maxSuggestions?: number
+  userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
 }
 
 export function useNodeSuggestions() {
@@ -53,6 +54,7 @@ export function useNodeSuggestions() {
           existingNodes: options.existingNodes,
           edges: options.edges,
           maxSuggestions: options.maxSuggestions || 2,
+          userTemplates: options.userTemplates,
         }),
       })
 

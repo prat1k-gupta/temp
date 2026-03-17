@@ -157,7 +157,6 @@ export function getNodeTypeGuidelines(nodeType: string, platform?: Platform): st
       return `Node Type: ${doc.type}
 Category: ${doc.category}
 Description: ${doc.description}
-${doc.isSuperNode ? '⚠️ SUPER NODE - Use this for data collection, NOT question nodes' : ''}
 
 Properties:
 - Required: ${doc.properties.required.join(", ") || "None"}

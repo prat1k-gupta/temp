@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       existingNodes,
       edges,
       maxSuggestions = 2,
+      userTemplates,
     } = body
 
     const validPlatforms: Platform[] = ["web", "whatsapp", "instagram"]
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
       existingNodes,
       edges,
       maxSuggestions,
+      userTemplates,
     })
 
     if (!result) {

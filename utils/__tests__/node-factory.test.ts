@@ -4,7 +4,6 @@ import {
   createQuickReplyNode,
   createListNode,
   createCommentNode,
-  createSuperNode,
   createFulfillmentNode,
   createIntegrationNode,
   createMessageNode,
@@ -97,58 +96,17 @@ describe("createCommentNode", () => {
   })
 })
 
-describe("createSuperNode", () => {
-  const superTypes = ["name", "email", "dob", "address"] as const
+describe("createNode creates flowTemplate for data collection types", () => {
+  const templateTypes = ["name", "email", "dob", "address"] as const
 
-  superTypes.forEach((type) => {
-    platforms.forEach((platform) => {
-      it(`creates ${type} node for ${platform}`, () => {
-        const node = createSuperNode(type, platform, position)
-        expect(node.type).toBe(type)
-        expect(node.data.platform).toBe(platform)
-        expect(node.data.question).toBeDefined()
-        expect(node.data.label).toBeDefined()
-      })
+  templateTypes.forEach((type) => {
+    it(`creates flowTemplate node for "${type}"`, () => {
+      const node = createNode(type, "whatsapp", position)
+      expect(node.type).toBe("flowTemplate")
+      expect(node.data.templateName).toBeDefined()
+      expect(node.data.internalNodes).toBeDefined()
+      expect((node.data.internalNodes as any[]).length).toBeGreaterThan(0)
     })
-  })
-
-  it("sets validation rules for name node", () => {
-    const node = createSuperNode("name", "web", position)
-    expect(node.data.validationRules).toBeDefined()
-    expect((node.data.validationRules as any).minLength).toBe(2)
-  })
-
-  it("sets validation rules for email node", () => {
-    const node = createSuperNode("email", "web", position)
-    expect((node.data.validationRules as any).format).toBe("RFC 5322")
-  })
-
-  it("sets validation rules for dob node", () => {
-    const node = createSuperNode("dob", "web", position)
-    expect((node.data.validationRules as any).minAge).toBe(13)
-  })
-
-  it("sets address components for address node", () => {
-    const node = createSuperNode("address", "web", position)
-    expect(node.data.addressComponents).toBeDefined()
-    expect((node.data.addressComponents as string[]).length).toBeGreaterThan(0)
-  })
-
-  it("enables autocomplete for web address node", () => {
-    const node = createSuperNode("address", "web", position)
-    expect((node.data.validationRules as any).autocomplete).toBe(true)
-  })
-
-  it("disables autocomplete for whatsapp address node", () => {
-    const node = createSuperNode("address", "whatsapp", position)
-    expect((node.data.validationRules as any).autocomplete).toBe(false)
-  })
-
-  it("auto-sets storeAs for each super node type", () => {
-    expect(createSuperNode("name", "whatsapp", position).data.storeAs).toBe("user_name")
-    expect(createSuperNode("email", "whatsapp", position).data.storeAs).toBe("user_email")
-    expect(createSuperNode("dob", "whatsapp", position).data.storeAs).toBe("user_dob")
-    expect(createSuperNode("address", "whatsapp", position).data.storeAs).toBe("user_address")
   })
 })
 
@@ -241,10 +199,10 @@ describe("createNode (factory function)", () => {
     expect(node.type).toBe("condition")
   })
 
-  it("creates super nodes", () => {
+  it("creates flowTemplate for data collection types (name, email, dob, address)", () => {
     ;(["name", "email", "dob", "address"] as const).forEach((type) => {
       const node = createNode(type, "web", position)
-      expect(node.type).toBe(type)
+      expect(node.type).toBe("flowTemplate")
     })
   })
 

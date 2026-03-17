@@ -128,27 +128,20 @@ describe("convertToFsWhatsApp", () => {
     expect(listStep.conditional_next!["opt-apple"]).toBeDefined()
   })
 
-  it("converts super nodes with correct input types", () => {
+  it("skips flowComplete nodes in conversion", () => {
     const nodes = [
       node("start-1", "start"),
-      node("n1", "name", { label: "Name", question: "Your name?", storeAs: "user_name" }),
-      node("e1", "email", { label: "Email", question: "Your email?", storeAs: "user_email" }),
-      node("d1", "dob", { label: "DOB", question: "Your DOB?", storeAs: "user_dob" }),
+      node("q1", "whatsappQuestion", { label: "Ask", question: "What?" }),
+      node("fc", "flowComplete", { label: "Done" }),
     ]
     const edges = [
-      edge("start-1", "n1"),
-      edge("n1", "e1"),
-      edge("e1", "d1"),
+      edge("start-1", "q1"),
+      edge("q1", "fc"),
     ]
 
-    const result = convertToFsWhatsApp(nodes, edges, "Super Nodes")
-    expect(result.steps).toHaveLength(3)
-    expect(result.steps[0].input_type).toBe("text")
-    expect(result.steps[0].store_as).toBe("user_name")
-    expect(result.steps[1].input_type).toBe("email")
-    expect(result.steps[1].store_as).toBe("user_email")
-    expect(result.steps[2].input_type).toBe("date")
-    expect(result.steps[2].store_as).toBe("user_dob")
+    const result = convertToFsWhatsApp(nodes, edges, "FlowComplete Skip")
+    expect(result.steps).toHaveLength(1)
+    expect(result.steps[0].message).toBe("What?")
   })
 
   it("converts condition node with groups and else", () => {

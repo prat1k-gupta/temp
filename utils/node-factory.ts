@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react"
+import type { Node, Edge } from "@xyflow/react"
 import type { Platform, NodeData } from "@/types"
 import { 
   getPlatformSpecificNodeType, 
@@ -6,6 +6,7 @@ import {
   getPlatformSpecificContent 
 } from "./platform-helpers"
 import { generateNodeId, createButtonData, createOptionData } from "./node-operations"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 
 interface NodePosition {
   x: number
@@ -107,82 +108,42 @@ export const createCommentNode = (
 }
 
 /**
- * Create a super node (Name, Email, DOB, Address)
+ * Create a flow template node from template data.
+ * Deep-clones internalNodes and internalEdges from the source template.
  */
-export const createSuperNode = (
-  nodeType: "name" | "email" | "dob" | "address",
+export const createFlowTemplateNode = (
   platform: Platform,
   position: NodePosition,
+  templateData: {
+    sourceTemplateId?: string
+    templateName: string
+    internalNodes: Node[]
+    internalEdges: Edge[]
+    description?: string
+    aiMetadata?: any
+  },
   customId?: string
 ): Node => {
-  const nodeId = customId || generateNodeId(nodeType)
-  
-  const superNodeConfig: Record<string, any> = {
-    name: {
-      label: "Name",
-      question: "What's your name?",
-      validationRules: {
-        minLength: 2,
-        maxLength: 50,
-        allowNumbers: false,
-        required: true
-      }
-    },
-    email: {
-      label: "Email",
-      question: "What's your email address?",
-      validationRules: {
-        format: "RFC 5322",
-        checkDomain: true,
-        blockDisposable: true,
-        required: true
-      }
-    },
-    dob: {
-      label: "DOB",
-      question: "What's your date of birth?",
-      validationRules: {
-        minAge: 13,
-        maxAge: 120,
-        format: "DD/MM/YYYY",
-        required: true
-      }
-    },
-    address: {
-      label: "Address",
-      question: "Please enter your address",
-      validationRules: {
-        geography: "pan-india",
-        required: true,
-        validatePostalCode: true,
-        autocomplete: false // Will be set based on platform below
-      },
-      addressComponents: ["House Number", "Society/Block", "Area", "City"]
-    }
-  }
+  const nodeId = customId || generateNodeId("flowTemplate")
 
-  const config = superNodeConfig[nodeType]
-
-  // For address nodes, set autocomplete based on platform
-  if (nodeType === "address" && config.validationRules) {
-    config.validationRules.autocomplete = platform === "web"
-  }
-
-  const superNodeStoreAs: Record<string, string> = {
-    name: "user_name",
-    email: "user_email",
-    dob: "user_dob",
-    address: "user_address",
-  }
+  // Deep-clone internal nodes and edges to ensure call-by-value
+  const internalNodes = JSON.parse(JSON.stringify(templateData.internalNodes))
+  const internalEdges = JSON.parse(JSON.stringify(templateData.internalEdges))
 
   return {
     id: nodeId,
-    type: nodeType,
+    type: "flowTemplate",
     position,
     data: {
       platform,
-      ...config,
-      storeAs: superNodeStoreAs[nodeType] || "",
+      label: templateData.templateName,
+      templateName: templateData.templateName,
+      sourceTemplateId: templateData.sourceTemplateId,
+      internalNodes,
+      internalEdges,
+      nodeCount: internalNodes.length,
+      ...(templateData.description ? { description: templateData.description } : {}),
+      ...(templateData.aiMetadata ? { aiMetadata: templateData.aiMetadata } : {}),
     } as NodeData,
   }
 }
@@ -426,6 +387,26 @@ export const createApiFetchNode = (
 }
 
 /**
+ * Create a Flow Complete node (explicit flow terminator)
+ */
+export const createFlowCompleteNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("flowComplete")
+  return {
+    id: nodeId,
+    type: "flowComplete",
+    position,
+    data: {
+      platform,
+      label: "Complete Flow",
+    } as NodeData,
+  }
+}
+
+/**
  * Create a Transfer node
  */
 export const createTransferNode = (
@@ -498,13 +479,50 @@ export const createNode = (
   else if (nodeType === "templateMessage") {
     node = createTemplateMessageNode(platform, position, customId)
   }
+  // Flow control nodes
+  else if (nodeType === "flowComplete") {
+    node = createFlowCompleteNode(platform, position, customId)
+  }
   // Logic nodes
   else if (nodeType === "condition") {
     node = createConditionNode(platform, position, customId)
   }
-  // Super nodes
+  // Flow template node (requires additionalData with template info)
+  else if (nodeType === "flowTemplate") {
+    node = createFlowTemplateNode(
+      platform,
+      position,
+      {
+        sourceTemplateId: (additionalData as any)?.sourceTemplateId,
+        templateName: (additionalData as any)?.templateName || "Template",
+        internalNodes: (additionalData as any)?.internalNodes || [],
+        internalEdges: (additionalData as any)?.internalEdges || [],
+        description: (additionalData as any)?.description,
+        aiMetadata: (additionalData as any)?.aiMetadata,
+      },
+      customId
+    )
+    return node // Return early; additionalData already consumed
+  }
+  // Template-backed data collection nodes (name, email, dob, address)
+  // These are created as flowTemplate nodes using DEFAULT_TEMPLATES
   else if (["name", "email", "dob", "address"].includes(nodeType)) {
-    node = createSuperNode(nodeType as "name" | "email" | "dob" | "address", platform, position, customId)
+    const template = DEFAULT_TEMPLATES.find(t => t.name.toLowerCase() === nodeType)
+    if (!template) throw new Error(`No default template found for: ${nodeType}`)
+    node = createFlowTemplateNode(
+      platform,
+      position,
+      {
+        sourceTemplateId: template.id,
+        templateName: template.name,
+        internalNodes: template.nodes,
+        internalEdges: template.edges,
+        description: template.description,
+        aiMetadata: template.aiMetadata,
+      },
+      customId
+    )
+    return node // Return early; template data already set
   }
   // Fulfillment nodes
   else if (["homeDelivery", "trackingNotification", "event", "retailStore"].includes(nodeType)) {

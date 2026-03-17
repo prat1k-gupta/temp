@@ -14,10 +14,7 @@ import { InstagramQuickReplyNode } from "@/components/nodes/instagram/instagram-
 import { InstagramDMNode } from "@/components/nodes/instagram/instagram-dm-node"
 import { InstagramStoryNode } from "@/components/nodes/instagram/instagram-story-node"
 import { ConditionNode } from "@/components/nodes/logic/condition-node"
-import { NameNode } from "@/components/nodes/super/name-node"
-import { EmailNode } from "@/components/nodes/super/email-node"
-import { AddressNode } from "@/components/nodes/super/address-node"
-import { DobNode } from "@/components/nodes/super/dob-node"
+import { FlowTemplateNode } from "@/components/nodes/template/flow-template-node"
 import { HomeDeliveryNode } from "@/components/nodes/fulfillment/home-delivery-node"
 import { TrackingNotificationNode } from "@/components/nodes/fulfillment/tracking-notification-node"
 import { EventNode } from "@/components/nodes/fulfillment/event-node"
@@ -26,6 +23,7 @@ import { GenericIntegrationNode } from "@/components/nodes/integration/generic-i
 import { ApiFetchNode } from "@/components/nodes/action/api-fetch-node"
 import { TransferNode } from "@/components/nodes/action/transfer-node"
 import { TemplateMessageNode } from "@/components/nodes/action/template-message-node"
+import { FlowCompleteNode } from "@/components/nodes/flow/flow-complete-node"
 
 export const nodeTypes = {
   start: StartNode,
@@ -50,16 +48,15 @@ export const nodeTypes = {
   instagramQuickReply: InstagramQuickReplyNode,
   instagramDM: InstagramDMNode,
   instagramStory: InstagramStoryNode,
-  // Super nodes (platform-agnostic)
-  name: NameNode,
-  email: EmailNode,
-  address: AddressNode,
-  dob: DobNode,
+  // Flow template node
+  flowTemplate: FlowTemplateNode,
   // Fulfillment nodes
   homeDelivery: HomeDeliveryNode,
   trackingNotification: TrackingNotificationNode,
   event: EventNode,
   retailStore: RetailStoreNode,
+  // Flow control nodes
+  flowComplete: FlowCompleteNode,
   // Action nodes
   apiFetch: ApiFetchNode,
   transfer: TransferNode,

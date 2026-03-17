@@ -4,6 +4,72 @@ import type { Platform } from "@/types"
 import { getFlow, updateFlow, createFlow, deleteSharedFlow, type FlowData } from "@/utils/flow-storage"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
+
+/**
+ * Migrate old super nodes (name, email, dob, address) to flowTemplate nodes.
+ * Wraps the super node data into internalNodes within a flowTemplate node.
+ */
+function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated: boolean } {
+  const SUPER_NODE_TYPES = new Set(["name", "email", "dob", "address"])
+  let migrated = false
+
+  const migratedNodes = nodes.map((node) => {
+    if (!SUPER_NODE_TYPES.has(node.type || "")) return node
+
+    migrated = true
+    const data = node.data as any
+    const nodeType = node.type as string
+
+    // Find matching default template for internal nodes
+    const defaultTemplate = DEFAULT_TEMPLATES.find(
+      (t) => t.name.toLowerCase() === nodeType
+    )
+
+    // Build internal nodes from the super node's data
+    const internalNodes: Node[] = defaultTemplate
+      ? JSON.parse(JSON.stringify(defaultTemplate.nodes)).map((n: Node) => ({
+          ...n,
+          data: {
+            ...n.data,
+            question: data.question || (n.data as any).question,
+            storeAs: data.storeAs || (n.data as any).storeAs,
+            validationRules: data.validationRules || (n.data as any).validationRules,
+            ...(data.addressComponents ? { addressComponents: data.addressComponents } : {}),
+          },
+        }))
+      : [
+          {
+            id: `int-${nodeType}-q`,
+            type: "whatsappQuestion",
+            position: { x: 100, y: 50 },
+            data: {
+              platform: data.platform || "whatsapp",
+              label: data.label || nodeType,
+              question: data.question || "",
+              storeAs: data.storeAs || "",
+              validationRules: data.validationRules || {},
+            },
+          },
+        ]
+
+    return {
+      ...node,
+      type: "flowTemplate",
+      data: {
+        platform: data.platform || "whatsapp",
+        label: data.label || nodeType.charAt(0).toUpperCase() + nodeType.slice(1),
+        templateName: data.label || nodeType.charAt(0).toUpperCase() + nodeType.slice(1),
+        sourceTemplateId: defaultTemplate?.id,
+        internalNodes,
+        internalEdges: [] as Edge[],
+        nodeCount: internalNodes.length,
+      },
+    }
+  })
+
+  return { nodes: migratedNodes, migrated }
+}
 
 interface UseFlowPersistenceParams {
   flowId: string
@@ -82,6 +148,12 @@ export function useFlowPersistence({
               edges: flowData.edges || [],
             }
 
+            // Migrate super nodes → flow template nodes
+            const { nodes: migratedNodes, migrated } = migrateSuperNodesToTemplates(formattedFlowData.nodes)
+            if (migrated) {
+              formattedFlowData.nodes = migratedNodes
+            }
+
             setCurrentFlow(formattedFlowData)
             setNodes(formattedFlowData.nodes)
             setEdges(formattedFlowData.edges)
@@ -106,6 +178,13 @@ export function useFlowPersistence({
               edges: flowData.edges.length,
               platform: flowData.platform,
             })
+
+            // Migrate super nodes → flow template nodes
+            const { nodes: migratedNodes, migrated } = migrateSuperNodesToTemplates(flowData.nodes)
+            if (migrated) {
+              flowData.nodes = migratedNodes
+              updateFlow(flowId, { nodes: migratedNodes })
+            }
 
             setCurrentFlow(flowData)
             setNodes(flowData.nodes)

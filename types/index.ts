@@ -1,5 +1,14 @@
+import type { Node, Edge } from "@xyflow/react"
+
 // Core platform and node types
 export type Platform = "web" | "whatsapp" | "instagram"
+
+export interface TemplateAIMetadata {
+  description: string        // What the template does (shown to AI)
+  whenToUse: string          // When AI should use this template
+  selectionRule?: string     // Short imperative rule for AI cheatsheet
+  contentFields?: string     // What content fields the template accepts
+}
 
 export type WhatsAppInputType = "none" | "text" | "number" | "email" | "phone" | "date" | "select" | "button"
 
@@ -37,18 +46,21 @@ export interface QuestionNodeData extends BaseNodeData {
   question?: string
   characterLimit?: number
   storeAs?: string
+  validation?: ValidationConfig
 }
 
 export interface QuickReplyNodeData extends BaseNodeData {
   question?: string
   buttons?: ButtonData[]
   storeAs?: string
+  validation?: ValidationConfig
 }
 
 export interface ListNodeData extends BaseNodeData {
   question?: string
   options?: OptionData[]
   storeAs?: string
+  validation?: ValidationConfig
 }
 
 export interface MessageNodeData extends BaseNodeData {
@@ -62,12 +74,15 @@ export interface CommentNodeData extends BaseNodeData {
   onUpdate?: (updates: any) => void
 }
 
-export interface SuperNodeData extends BaseNodeData {
-  question?: string
-  validationRules?: Record<string, unknown>
-  addressComponents?: string[]
-  storeAs?: string
+export interface FlowTemplateNodeData extends BaseNodeData {
+  sourceTemplateId?: string    // which template this was copied from
+  templateName: string         // display name on collapsed node
+  internalNodes: Node[]        // deep-copied internal nodes
+  internalEdges: Edge[]        // deep-copied internal edges
+  nodeCount: number            // count for badge display
 }
+
+export interface FlowCompleteNodeData extends BaseNodeData {}
 
 export interface FulfillmentNodeData extends BaseNodeData {
   description?: string
@@ -136,7 +151,8 @@ export type NodeData =
   | ListNodeData
   | MessageNodeData
   | CommentNodeData
-  | SuperNodeData
+  | FlowTemplateNodeData
+  | FlowCompleteNodeData
   | FulfillmentNodeData
   | IntegrationNodeData
   | ConditionNodeData

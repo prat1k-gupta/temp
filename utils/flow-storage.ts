@@ -1,13 +1,15 @@
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
 
 export interface FlowMetadata {
   id: string
   name: string
   description?: string
   platform: Platform
+  type?: "flow" | "template" // defaults to "flow" for backward compat
   triggerId?: string // Backwards compatibility
   triggerIds?: string[] // Multiple triggers support
+  aiMetadata?: TemplateAIMetadata // AI metadata for templates
   thumbnail?: string
   createdAt: string
   updatedAt: string
@@ -20,12 +22,14 @@ export interface FlowData {
   name: string
   description?: string
   platform: Platform
+  type?: "flow" | "template" // defaults to "flow" for backward compat
   triggerId?: string // Backwards compatibility
   triggerIds?: string[] // Multiple triggers support
   triggerKeywords?: string[] // Custom keywords that trigger this flow (WhatsApp)
   publishedFlowId?: string // fs-whatsapp flow ID after first publish
   waAccountId?: string // Selected WhatsApp Business account ID
   waPhoneNumber?: string // WhatsApp Business phone number for wa.me preview link
+  aiMetadata?: TemplateAIMetadata // AI metadata for templates
   nodes: Node[]
   edges: Edge[]
   thumbnail?: string
@@ -47,17 +51,20 @@ export function getAllFlows(): FlowMetadata[] {
     if (!stored) return []
     
     const flows: FlowData[] = JSON.parse(stored)
-    return flows.map(flow => ({
-      id: flow.id,
-      name: flow.name,
-      description: flow.description,
-      platform: flow.platform,
-      thumbnail: flow.thumbnail,
-      createdAt: flow.createdAt,
-      updatedAt: flow.updatedAt,
-      nodeCount: flow.nodes.length,
-      edgeCount: flow.edges.length,
-    }))
+    return flows
+      .filter(flow => (flow.type || "flow") === "flow")
+      .map(flow => ({
+        id: flow.id,
+        name: flow.name,
+        description: flow.description,
+        platform: flow.platform,
+        type: flow.type,
+        thumbnail: flow.thumbnail,
+        createdAt: flow.createdAt,
+        updatedAt: flow.updatedAt,
+        nodeCount: flow.nodes.length,
+        edgeCount: flow.edges.length,
+      }))
   } catch (error) {
     console.error("Error loading flows:", error)
     return []
@@ -307,6 +314,90 @@ export async function deleteSharedFlow(flowId: string): Promise<boolean> {
   } catch (error) {
     console.error('Error deleting shared flow:', error)
     return false
+  }
+}
+
+/**
+ * Create a new template
+ */
+export function createTemplate(
+  name: string,
+  description?: string,
+  platform: Platform = "whatsapp",
+  nodes: Node[] = [],
+  edges: Edge[] = [],
+  aiMetadata?: TemplateAIMetadata,
+): FlowData {
+  const newTemplate: FlowData = {
+    id: `template-${Date.now()}`,
+    name,
+    description,
+    platform,
+    type: "template",
+    nodes,
+    edges,
+    ...(aiMetadata ? { aiMetadata } : {}),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  saveFlow(newTemplate)
+  return newTemplate
+}
+
+/**
+ * Get all templates metadata
+ */
+export function getAllTemplates(): FlowMetadata[] {
+  if (typeof window === "undefined") return []
+
+  try {
+    const stored = localStorage.getItem(FLOWS_STORAGE_KEY)
+    if (!stored) return []
+
+    const flows: FlowData[] = JSON.parse(stored)
+    return flows
+      .filter(flow => flow.type === "template")
+      .map(flow => ({
+        id: flow.id,
+        name: flow.name,
+        description: flow.description,
+        platform: flow.platform,
+        type: flow.type,
+        aiMetadata: flow.aiMetadata,
+        thumbnail: flow.thumbnail,
+        createdAt: flow.createdAt,
+        updatedAt: flow.updatedAt,
+        nodeCount: flow.nodes.length,
+        edgeCount: flow.edges.length,
+      }))
+  } catch (error) {
+    console.error("Error loading templates:", error)
+    return []
+  }
+}
+
+/**
+ * Update AI metadata on a template
+ */
+export function updateTemplateMetadata(
+  templateId: string,
+  aiMetadata: TemplateAIMetadata
+): void {
+  if (typeof window === "undefined") return
+
+  try {
+    const stored = localStorage.getItem(FLOWS_STORAGE_KEY)
+    if (!stored) return
+
+    const flows: FlowData[] = JSON.parse(stored)
+    const idx = flows.findIndex(f => f.id === templateId && f.type === "template")
+    if (idx < 0) return
+
+    flows[idx] = { ...flows[idx], aiMetadata, updatedAt: new Date().toISOString() }
+    localStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(flows))
+  } catch (error) {
+    console.error("Error updating template metadata:", error)
   }
 }
 

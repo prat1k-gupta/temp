@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check, Undo2 } from "lucide-react"
+import { getAllTemplates } from "@/utils/flow-storage"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 
 interface Message {
   id: string
@@ -71,6 +73,15 @@ export function AIAssistant({
   onUpdateFlow,
   onUndo,
 }: AIAssistantProps) {
+  // Collect all templates (default + user-created) for AI context
+  const userTemplates = useMemo(() => {
+    try {
+      const defaults = DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
+      const userCreated = getAllTemplates().map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
+      return [...defaults, ...userCreated]
+    } catch { return [] }
+  }, [])
+
   const [isFocused, setIsFocused] = useState(false)
   const [messages, setMessages] = useState<Message[]>(() => {
     if (flowId && typeof window !== "undefined") {
@@ -243,6 +254,7 @@ export function AIAssistant({
             role: m.role,
             content: m.content,
           })),
+          userTemplates,
         }),
       })
 

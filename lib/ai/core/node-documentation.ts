@@ -3,7 +3,7 @@
  * Auto-generated from NODE_TEMPLATES — the single source of truth for all node types.
  */
 
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
 import { getNodeLimits } from "@/constants"
 import { BUTTON_LIMITS, CHARACTER_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES, type NodeTemplate } from "@/constants/node-categories"
@@ -11,10 +11,9 @@ import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 
 export interface NodeDocumentation {
   type: string
-  category: "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
+  category: "template" | "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
   platforms: Platform[]
   description: string
-  isSuperNode?: boolean
   properties: {
     required: string[]
     optional: string[]
@@ -97,7 +96,7 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
     byCategory.set(t.category, list)
   }
 
-  const categoryOrder = ["information", "interaction", "logic", "fulfillment", "integration"]
+  const categoryOrder = ["template", "information", "interaction", "logic", "action", "fulfillment", "integration"]
 
   for (const cat of categoryOrder) {
     const items = byCategory.get(cat)
@@ -133,13 +132,25 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
  * Compact "node selection cheatsheet" from NODE_TEMPLATES selectionRule fields.
  * Injected into AI prompts so the model knows when to pick each node type.
  */
-export function getNodeSelectionRules(platform: Platform): string {
+export function getNodeSelectionRules(
+  platform: Platform,
+  userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
+): string {
   const lines: string[] = ["NODE SELECTION RULES:"]
 
   for (const t of NODE_TEMPLATES) {
     if (!t.platforms.includes(platform)) continue
     if (!t.ai?.selectionRule) continue
     lines.push(`- ${t.type}: ${t.ai.selectionRule}`)
+  }
+
+  // Include selection rules from user templates
+  if (userTemplates) {
+    for (const t of userTemplates) {
+      if (t.aiMetadata?.selectionRule) {
+        lines.push(`- flowTemplate:${t.id}: ${t.aiMetadata.selectionRule}`)
+      }
+    }
   }
 
   return lines.join("\n")
@@ -163,6 +174,27 @@ export function getNodeDependencies(platform: Platform): string {
   return hasAny ? lines.join("\n") : ""
 }
 
+/**
+ * Build documentation string for user-created templates so the AI can suggest/place them.
+ */
+export function getUserTemplateDocumentation(
+  platform: Platform,
+  userTemplates: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
+): string {
+  if (!userTemplates || userTemplates.length === 0) return ""
+
+  const lines: string[] = ["\n[USER TEMPLATES]"]
+
+  for (const t of userTemplates) {
+    const desc = t.aiMetadata?.description || t.name
+    const whenToUse = t.aiMetadata?.whenToUse
+    const suffix = whenToUse ? ` | use: ${whenToUse}` : ""
+    lines.push(`  flowTemplate:${t.id} — ${desc} (${platform} only)${suffix}`)
+  }
+
+  return lines.join("\n")
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -182,7 +214,6 @@ function buildNodeDoc(template: NodeTemplate, platform: Platform): NodeDocumenta
     category: template.category,
     platforms: [platform],
     description: ai?.description || template.description,
-    isSuperNode: template.isSuperNode,
     properties: {
       required: ai?.requiredProperties || ["label", "platform"],
       optional: ai?.optionalProperties || [],
@@ -218,7 +249,7 @@ function buildDataStructure(
   const t = template.type
 
   // Question-based nodes
-  if (t === "question" || t === "quickReply" || t === "interactiveList" || template.isSuperNode) {
+  if (t === "question" || t === "quickReply" || t === "interactiveList") {
     base.question = "string (the question/prompt text)"
   }
 
@@ -238,15 +269,6 @@ function buildDataStructure(
   // Message nodes (text, not question)
   if (["whatsappMessage", "instagramDM", "instagramStory"].includes(t)) {
     base.text = "string (the message content)"
-  }
-
-  // Super node extras
-  if (template.isSuperNode) {
-    base.fieldLabel = `string (e.g., '${template.label}')`
-    base.validationRules = { required: true }
-  }
-  if (t === "address") {
-    base.addressComponents = ["House Number", "Society/Block", "Area", "City"]
   }
 
   // Condition
@@ -285,9 +307,7 @@ function buildDataStructure(
 
 function formatNodeDoc(doc: NodeDocumentation): string {
   const platformList = doc.platforms.join(", ")
-  const superNodeBadge = doc.isSuperNode ? " [SUPER NODE - Built-in Validation]" : ""
-
-  return `**${doc.type.toUpperCase()}** (${doc.category})${superNodeBadge}
+  return `**${doc.type.toUpperCase()}** (${doc.category})
 Platforms: ${platformList}
 Description: ${doc.description}
 

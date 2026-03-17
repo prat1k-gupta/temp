@@ -88,11 +88,11 @@ describe("getImplicitInputType", () => {
     expect(getImplicitInputType("message")).toBe("none")
   })
 
-  it("maps super nodes to correct input types", () => {
-    expect(getImplicitInputType("name")).toBe("text")
-    expect(getImplicitInputType("email")).toBe("email")
-    expect(getImplicitInputType("dob")).toBe("date")
-    expect(getImplicitInputType("address")).toBe("text")
+  it("returns none for removed super node types (now created as flowTemplate)", () => {
+    expect(getImplicitInputType("name")).toBe("none")
+    expect(getImplicitInputType("email")).toBe("none")
+    expect(getImplicitInputType("dob")).toBe("none")
+    expect(getImplicitInputType("address")).toBe("none")
   })
 
   it("maps condition to none", () => {

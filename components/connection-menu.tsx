@@ -220,9 +220,6 @@ export function ConnectionMenu({ isOpen, position, onClose, onSelectNodeType, pl
                               <span className="text-card-foreground font-medium text-[11px] sm:text-xs truncate">
                                 {node.label}
                               </span>
-                              {node.isSuperNode && (
-                                <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-yellow-500 flex-shrink-0" />
-                              )}
                               {node.badge && (
                                 <Badge variant="secondary" className="text-[7px] sm:text-[8px] h-3 sm:h-3.5 px-0.5 sm:px-1 hidden sm:inline-flex">
                                   {node.badge}

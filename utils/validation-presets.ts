@@ -67,14 +67,6 @@ export function getImplicitInputType(nodeType: string): WhatsAppInputType {
     case "whatsappMessage":
     case "message":
       return "none"
-    case "name":
-      return "text"
-    case "email":
-      return "email"
-    case "dob":
-      return "date"
-    case "address":
-      return "text"
     case "condition":
       return "none"
     case "apiFetch":

@@ -13,13 +13,6 @@ function makeNode(id: string, type: string, data: Record<string, any> = {}): Nod
 }
 
 describe("generateVariableName", () => {
-  it("returns fixed defaults for super nodes", () => {
-    expect(generateVariableName(makeNode("1", "name"))).toBe("user_name")
-    expect(generateVariableName(makeNode("2", "email"))).toBe("user_email")
-    expect(generateVariableName(makeNode("3", "dob"))).toBe("user_dob")
-    expect(generateVariableName(makeNode("4", "address"))).toBe("user_address")
-  })
-
   it("slugifies question for regular nodes", () => {
     const node = makeNode("q1", "whatsappQuestion", { question: "What is your favorite color?" })
     expect(generateVariableName(node)).toBe("what_is_your_favorite_color")
@@ -60,10 +53,9 @@ describe("collectFlowVariables", () => {
       makeNode("1", "whatsappQuestion", { storeAs: "user_color" }),
       makeNode("2", "whatsappQuickReply", { storeAs: "user_choice" }),
       makeNode("3", "whatsappInteractiveList", { storeAs: "user_option" }),
-      makeNode("4", "name", { storeAs: "user_name" }),
     ]
     const result = collectFlowVariables(nodes)
-    expect(result).toEqual(["user_color", "user_choice", "user_option", "user_name"])
+    expect(result).toEqual(["user_color", "user_choice", "user_option"])
   })
 
   it("skips nodes without storeAs", () => {
@@ -115,8 +107,6 @@ describe("isStorableNodeType", () => {
     expect(isStorableNodeType("question")).toBe(true)
     expect(isStorableNodeType("whatsappQuickReply")).toBe(true)
     expect(isStorableNodeType("whatsappInteractiveList")).toBe(true)
-    expect(isStorableNodeType("name")).toBe(true)
-    expect(isStorableNodeType("email")).toBe(true)
   })
 
   it("returns false for non-storable types", () => {
@@ -150,15 +140,6 @@ describe("autoStoreAs", () => {
     expect(autoStoreAs(node, ["what_is_your_name", "what_is_your_name_2"])).toBe("what_is_your_name_3")
   })
 
-  it("returns super node defaults without duplication", () => {
-    const node = makeNode("n1", "name", { label: "Name", storeAs: "user_name" })
-    expect(autoStoreAs(node)).toBe("user_name")
-  })
-
-  it("generates for super nodes without storeAs set", () => {
-    const node = makeNode("n1", "name", { label: "Name" })
-    expect(autoStoreAs(node)).toBe("user_name")
-  })
 })
 
 describe("autoPopulateStoreAs", () => {

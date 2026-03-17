@@ -17,12 +17,9 @@ import {
   MessageSquareText,
   Play,
   GripVertical,
-  User,
-  Mail,
   Calendar,
   MapPin,
   Sparkles,
-  Shield,
   CheckCircle2,
   GitBranch,
   Package,
@@ -36,6 +33,7 @@ import {
   Loader2,
   AlertCircle,
   ExternalLink,
+  ShieldCheck,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -57,6 +55,7 @@ import { createButtonData, createOptionData } from "@/utils"
 import { collectFlowVariables } from "@/utils/flow-variables"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
+import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -97,11 +96,6 @@ const NODE_ICONS = {
   instagramQuickReply: MessageSquare,
   instagramDM: MessageCircle,
   instagramStory: MessageCircle,
-  // Super nodes
-  name: User,
-  email: Mail,
-  dob: Calendar,
-  address: MapPin,
   // Logic nodes
   condition: GitBranch,
   // Fulfillment nodes
@@ -132,11 +126,6 @@ const NODE_COLORS = {
   instagramQuickReply: "bg-pink-600 text-white",
   instagramDM: "bg-pink-400 text-white",
   instagramStory: "bg-pink-500 text-white",
-  // Super nodes
-  name: "bg-[#052762] text-white",
-  email: "bg-[#052762] text-white",
-  dob: "bg-[#052762] text-white",
-  address: "bg-[#052762] text-white",
   // Logic nodes
   condition: "bg-[#0A49B7] text-white",
   // Fulfillment nodes
@@ -508,16 +497,6 @@ export function PropertiesPanel({
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
   
-  // Ensure autocomplete is disabled for non-web platforms when address node is selected
-  useEffect(() => {
-    if (selectedNode?.type === "address" && platform !== "web" && selectedNode.data.validationRules?.autocomplete) {
-      onNodeUpdate(selectedNode.id, {
-        ...selectedNode.data,
-        validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: false }
-      })
-    }
-  }, [selectedNode?.id, selectedNode?.type, platform, selectedNode?.data.validationRules?.autocomplete, onNodeUpdate])
-  
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -735,15 +714,6 @@ export function PropertiesPanel({
         return "Instagram DM Node"
       case "instagramStory":
         return "Instagram Story Node"
-      // Super nodes
-      case "name":
-        return "Name Validation Node"
-      case "email":
-        return "Email Validation Node"
-      case "dob":
-        return "DOB Validation Node"
-      case "address":
-        return "Address Validation Node"
       case "condition":
         return "Condition Node"
       // Fulfillment nodes
@@ -766,7 +736,6 @@ export function PropertiesPanel({
     }
   }
 
-  const isSuperNode = ["name", "email", "dob", "address"].includes(selectedNode.type || "")
   const isConditionNode = selectedNode.type === "condition"
   const isFulfillmentNode = ["homeDelivery", "trackingNotification", "event", "retailStore"].includes(selectedNode.type || "")
   const isApiFetchNode = selectedNode.type === "apiFetch"
@@ -845,12 +814,6 @@ export function PropertiesPanel({
             <h2 className="text-lg font-semibold text-foreground">{getNodeTitle()}</h2>
             <div className="flex flex-col items-start gap-2 mt-1">
               <div className="flex gap-1">
-              {isSuperNode && (
-                <Badge variant="secondary" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-[#052762] dark:text-blue-300 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  FS Optimized
-                </Badge>
-              )}
               <Badge variant="secondary" className="text-xs">
                 {selectedNode.type === "comment" ? "NOTE" : platform.toUpperCase()}
               </Badge>
@@ -983,10 +946,41 @@ export function PropertiesPanel({
                 </div>
               </div>
 
-              {/* Quick Reply Buttons */}
-              {(selectedNode.type === "quickReply" || 
+              {/* Store Response As — only for input-collecting nodes */}
+              {(selectedNode.type === "question" ||
+                selectedNode.type === "whatsappQuestion" ||
+                selectedNode.type === "instagramQuestion" ||
+                selectedNode.type === "webQuestion" ||
+                selectedNode.type === "quickReply" ||
+                selectedNode.type === "whatsappQuickReply" ||
+                selectedNode.type === "instagramQuickReply" ||
                 selectedNode.type === "webQuickReply" ||
-                selectedNode.type === "whatsappQuickReply" || 
+                selectedNode.type === "interactiveList" ||
+                selectedNode.type === "whatsappInteractiveList") && (
+                <>
+                  <Separator />
+                  <div>
+                    <Label htmlFor="store-as" className="text-sm font-medium">
+                      Store Response As
+                    </Label>
+                    <Input
+                      id="store-as"
+                      value={selectedNode.data.storeAs || ""}
+                      onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, storeAs: e.target.value })}
+                      placeholder="e.g. customer_name"
+                      className="mt-2 font-mono text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Variable name to store the user's response in the session.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Quick Reply Buttons */}
+              {(selectedNode.type === "quickReply" ||
+                selectedNode.type === "webQuickReply" ||
+                selectedNode.type === "whatsappQuickReply" ||
                 selectedNode.type === "instagramQuickReply") && (
                 <>
                   <Separator />
@@ -1064,6 +1058,121 @@ export function PropertiesPanel({
                   </div>
                 </>
               )}
+
+              {/* Validation & Retry — only for input-collecting nodes */}
+              {(selectedNode.type === "question" ||
+                selectedNode.type === "whatsappQuestion" ||
+                selectedNode.type === "instagramQuestion" ||
+                selectedNode.type === "webQuestion" ||
+                selectedNode.type === "quickReply" ||
+                selectedNode.type === "whatsappQuickReply" ||
+                selectedNode.type === "instagramQuickReply" ||
+                selectedNode.type === "webQuickReply" ||
+                selectedNode.type === "interactiveList" ||
+                selectedNode.type === "whatsappInteractiveList") && (() => {
+                const inputType = getImplicitInputType(selectedNode.type || "")
+                const preset = VALIDATION_PRESETS[inputType]
+                const nodeValidation = (selectedNode.data.validation || {}) as Record<string, any>
+                const isQuestionType = selectedNode.type === "question" ||
+                  selectedNode.type === "whatsappQuestion" ||
+                  selectedNode.type === "instagramQuestion"
+                const retryEnabled = nodeValidation.retryOnInvalid ?? preset.retryOnInvalid ?? true
+
+                return (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">Validation & Retry</Label>
+                      </div>
+
+                      {/* Retry on Invalid */}
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm">Retry on Invalid</Label>
+                          <p className="text-xs text-muted-foreground">Re-prompt when input fails validation</p>
+                        </div>
+                        <Switch
+                          checked={retryEnabled}
+                          onCheckedChange={(checked) =>
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              validation: { ...nodeValidation, retryOnInvalid: checked },
+                            })
+                          }
+                        />
+                      </div>
+
+                      {/* Max Retries — only when retry is enabled */}
+                      {retryEnabled && (
+                        <div>
+                          <Label htmlFor="max-retries" className="text-sm">Max Retries</Label>
+                          <Input
+                            id="max-retries"
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={nodeValidation.maxRetries ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value === "" ? undefined : Math.min(10, Math.max(1, parseInt(e.target.value) || 1))
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                validation: { ...nodeValidation, maxRetries: val },
+                              })
+                            }}
+                            placeholder={String(preset.maxRetries ?? 3)}
+                            className="mt-1 w-24"
+                          />
+                        </div>
+                      )}
+
+                      {/* Error Message */}
+                      <div>
+                        <Label htmlFor="validation-error" className="text-sm">Error Message</Label>
+                        <Textarea
+                          id="validation-error"
+                          value={nodeValidation.errorMessage || ""}
+                          onChange={(e) =>
+                            onNodeUpdate(selectedNode.id, {
+                              ...selectedNode.data,
+                              validation: { ...nodeValidation, errorMessage: e.target.value },
+                            })
+                          }
+                          placeholder={preset.errorMessage || "Please enter a valid response"}
+                          className="mt-1 min-h-[60px]"
+                          rows={2}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Leave blank to use the default message.
+                        </p>
+                      </div>
+
+                      {/* Validation Regex — only for question nodes */}
+                      {isQuestionType && (
+                        <div>
+                          <Label htmlFor="validation-regex" className="text-sm">Validation Regex</Label>
+                          <Input
+                            id="validation-regex"
+                            value={nodeValidation.regex || ""}
+                            onChange={(e) =>
+                              onNodeUpdate(selectedNode.id, {
+                                ...selectedNode.data,
+                                validation: { ...nodeValidation, regex: e.target.value },
+                              })
+                            }
+                            placeholder={preset.regex || "^.+$"}
+                            className="mt-1 font-mono text-xs"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Regular expression to validate the user's input. Leave blank for default.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )
+              })()}
             </>
           )}
 
@@ -1276,473 +1385,6 @@ export function PropertiesPanel({
                   </div>
                 </div>
               )}
-            </>
-          )}
-
-          {/* Super Nodes Configuration */}
-          {isSuperNode && (
-            <>
-              {/* Node Label */}
-              <div>
-                <Label htmlFor="node-label" className="text-sm font-medium">
-                  Node Label
-                </Label>
-                <Input
-                  id="node-label"
-                  value={selectedNode.data.label || ""}
-                  onChange={(e) => handleLabelChange(e.target.value)}
-                  placeholder="Enter node label..."
-                  className="mt-2"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  This label helps you identify the node in the flow.
-                </p>
-              </div>
-
-              <Separator />
-
-              {/* Question/Message */}
-              <div>
-                <Label htmlFor="super-question" className="text-sm font-medium">
-                  Question/Message
-                </Label>
-                <Textarea
-                  id="super-question"
-                  value={selectedNode.data.question || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, question: e.target.value })}
-                  placeholder={
-                    selectedNode.type === "name" ? "What's your name?" :
-                    selectedNode.type === "email" ? "What's your email address?" :
-                    selectedNode.type === "dob" ? "What's your date of birth?" :
-                    "Please enter your address in the below format:\n\n🏠 House Number\nSociety/Block\nArea\nCity"
-                  }
-                  className="mt-2 min-h-[100px]"
-                  rows={4}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  The message/question that users will receive when they reach this node.
-                </p>
-              </div>
-
-              <Separator />
-
-              {/* Validation Rules Header */}
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#2872F4]" />
-                <h3 className="text-sm font-semibold text-foreground">Validation Rules</h3>
-              </div>
-
-              {/* Name Validation */}
-              {selectedNode.type === "name" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Required Field</Label>
-                      <p className="text-xs text-muted-foreground">User must provide a name</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.required !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="min-length" className="text-sm">Minimum Length</Label>
-                      <Input
-                        id="min-length"
-                        type="number"
-                        min="1"
-                        value={selectedNode.data.validationRules?.minLength || 2}
-                        onChange={(e) => 
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), minLength: parseInt(e.target.value) }
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="max-length" className="text-sm">Maximum Length</Label>
-                      <Input
-                        id="max-length"
-                        type="number"
-                        min="1"
-                        value={selectedNode.data.validationRules?.maxLength || 50}
-                        onChange={(e) => 
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), maxLength: parseInt(e.target.value) }
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Allow Numbers</Label>
-                      <p className="text-xs text-muted-foreground">Permit numbers in name</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.allowNumbers === true}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), allowNumbers: checked }
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Email Validation */}
-              {selectedNode.type === "email" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Required Field</Label>
-                      <p className="text-xs text-muted-foreground">User must provide an email</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.required !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="format" className="text-sm">Format Validation</Label>
-                    <Select
-                      value={selectedNode.data.validationRules?.format || "RFC 5322"}
-                      onValueChange={(value) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), format: value }
-                        })
-                      }
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="RFC 5322">RFC 5322 (Standard)</SelectItem>
-                        <SelectItem value="Simple">Simple (Basic)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Check Domain</Label>
-                      <p className="text-xs text-muted-foreground">Verify domain exists</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.checkDomain !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), checkDomain: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Block Disposable Emails</Label>
-                      <p className="text-xs text-muted-foreground">Reject temporary email services</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.blockDisposable !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), blockDisposable: checked }
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* DOB Validation */}
-              {selectedNode.type === "dob" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Required Field</Label>
-                      <p className="text-xs text-muted-foreground">User must provide date of birth</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.required !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="date-format" className="text-sm">Date Format</Label>
-                    <Select
-                      value={selectedNode.data.validationRules?.format || "DD/MM/YYYY"}
-                      onValueChange={(value) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), format: value }
-                        })
-                      }
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                        <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                        <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="min-age" className="text-sm">Minimum Age</Label>
-                      <Input
-                        id="min-age"
-                        type="number"
-                        min="0"
-                        max="120"
-                        value={selectedNode.data.validationRules?.minAge || 13}
-                        onChange={(e) => 
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), minAge: parseInt(e.target.value) }
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="max-age" className="text-sm">Maximum Age</Label>
-                      <Input
-                        id="max-age"
-                        type="number"
-                        min="0"
-                        max="150"
-                        value={selectedNode.data.validationRules?.maxAge || 120}
-                        onChange={(e) => 
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), maxAge: parseInt(e.target.value) }
-                          })
-                        }
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Address Validation */}
-              {selectedNode.type === "address" && (
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="geography" className="text-sm mb-2 block">Service Geography</Label>
-                    <Select
-                      value={selectedNode.data.validationRules?.geography || "pan-india"}
-                      onValueChange={(value) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), geography: value }
-                        })
-                      }
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pan-india">Pan India</SelectItem>
-                        <SelectItem value="metro-cities">Metro Cities</SelectItem>
-                        <SelectItem value="tier-1-cities">Tier 1 Cities</SelectItem>
-                        <SelectItem value="tier-2-cities">Tier 2 Cities</SelectItem>
-                        <SelectItem value="tier-3-cities">Tier 3 Cities</SelectItem>
-                        <SelectItem value="specific-states">Specific States</SelectItem>
-                        <SelectItem value="specific-cities">Specific Cities</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Define the geographical coverage for address collection
-                    </p>
-                  </div>
-
-                  {(selectedNode.data.validationRules?.geography === "specific-states" || 
-                    selectedNode.data.validationRules?.geography === "specific-cities") && (
-                    <div>
-                      <Label className="text-sm mb-2 block">
-                        {selectedNode.data.validationRules?.geography === "specific-states" ? "Select States" : "Select Cities"}
-                      </Label>
-                      <Textarea
-                        value={(selectedNode.data.validationRules?.specificLocations || []).join(", ")}
-                        onChange={(e) => {
-                          const locations = e.target.value.split(",").map((loc: string) => loc.trim()).filter(Boolean)
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), specificLocations: locations }
-                          })
-                        }}
-                        placeholder={selectedNode.data.validationRules?.geography === "specific-states" 
-                          ? "Enter states separated by commas (e.g., Maharashtra, Karnataka, Delhi)" 
-                          : "Enter cities separated by commas (e.g., Mumbai, Bangalore, Delhi)"}
-                        className="min-h-[80px]"
-                        rows={3}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Enter {selectedNode.data.validationRules?.geography === "specific-states" ? "states" : "cities"} separated by commas
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Required Field</Label>
-                      <p className="text-xs text-muted-foreground">User must provide an address</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.required !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), required: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm">Validate Postal Code</Label>
-                      <p className="text-xs text-muted-foreground">Check ZIP/postal code format</p>
-                    </div>
-                    <Switch
-                      checked={selectedNode.data.validationRules?.validatePostalCode !== false}
-                      onCheckedChange={(checked) => 
-                        onNodeUpdate(selectedNode.id, {
-                          ...selectedNode.data,
-                          validationRules: { ...(selectedNode.data.validationRules || {}), validatePostalCode: checked }
-                        })
-                      }
-                    />
-                  </div>
-
-                  {platform === "web" && (
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label className="text-sm">Address Autocomplete</Label>
-                        <p className="text-xs text-muted-foreground">Enable Google Places autocomplete</p>
-                      </div>
-                      <Switch
-                        checked={selectedNode.data.validationRules?.autocomplete !== false}
-                        onCheckedChange={(checked) => 
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            validationRules: { ...(selectedNode.data.validationRules || {}), autocomplete: checked }
-                          })
-                        }
-                      />
-                    </div>
-                  )}
-                  {platform !== "web" && (
-                    <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-xs text-muted-foreground">
-                        Address autocomplete is only available for web forms. WhatsApp and Instagram use manual address entry.
-                      </p>
-                    </div>
-                  )}
-
-                  <div>
-                    <Label className="text-sm mb-2 block">Address Components</Label>
-                    <div className="space-y-2">
-                      {(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).map((component: string, index: number) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Input
-                            value={component}
-                            onChange={(e) => {
-                              const components = [...(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"])]
-                              components[index] = e.target.value
-                              onNodeUpdate(selectedNode.id, {
-                                ...selectedNode.data,
-                                addressComponents: components
-                              })
-                            }}
-                            placeholder="Component name..."
-                            className="flex-1"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const components = (selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]).filter((_: string, i: number) => i !== index)
-                              onNodeUpdate(selectedNode.id, {
-                                ...selectedNode.data,
-                                addressComponents: components
-                              })
-                            }}
-                            className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const components = [...(selectedNode.data.addressComponents || ["Street", "City", "State", "ZIP", "Country"]), ""]
-                          onNodeUpdate(selectedNode.id, {
-                            ...selectedNode.data,
-                            addressComponents: components
-                          })
-                        }}
-                        className="w-full cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Component
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Configure which address fields users need to provide.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Validation Summary */}
-              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-[#2872F4] mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-medium text-[#052762] dark:text-blue-100 mb-1">FS Optimized Node</h4>
-                    <p className="text-xs text-[#052762] dark:text-blue-300">
-                      This node includes built-in validation. Changes are applied in real-time and reflected in the node on the canvas.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </>
           )}
 
@@ -1969,29 +1611,6 @@ export function PropertiesPanel({
                     // Get fields available from a node type
                     const getNodeFields = (nodeType: string) => {
                       switch (nodeType) {
-                        case "name":
-                          return [
-                            { value: "fullName", label: "Full Name" },
-                            { value: "firstName", label: "First Name" },
-                            { value: "lastName", label: "Last Name" }
-                          ]
-                        case "email":
-                          return [
-                            { value: "email", label: "Email Address" }
-                          ]
-                        case "address":
-                          return [
-                            { value: "street", label: "Street" },
-                            { value: "city", label: "City" },
-                            { value: "state", label: "State" },
-                            { value: "zipCode", label: "ZIP Code" },
-                            { value: "country", label: "Country" }
-                          ]
-                        case "dob":
-                          return [
-                            { value: "age", label: "Age" },
-                            { value: "dateOfBirth", label: "Date of Birth" }
-                          ]
                         case "homeDelivery":
                           return [
                             { value: "trackingNumber", label: "Tracking Number" },

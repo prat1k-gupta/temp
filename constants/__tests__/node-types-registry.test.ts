@@ -47,11 +47,11 @@ describe("nodeTypes registry", () => {
     expect((nodeTypes as any).whatsappListSpecific).toBeUndefined()
   })
 
-  it("has all super nodes", () => {
-    expect(nodeTypes.name).toBeDefined()
-    expect(nodeTypes.email).toBeDefined()
-    expect(nodeTypes.address).toBeDefined()
-    expect(nodeTypes.dob).toBeDefined()
+  it("does NOT have legacy super nodes (removed — now created as flowTemplate)", () => {
+    expect((nodeTypes as any).name).toBeUndefined()
+    expect((nodeTypes as any).email).toBeUndefined()
+    expect((nodeTypes as any).address).toBeUndefined()
+    expect((nodeTypes as any).dob).toBeUndefined()
   })
 
   it("has condition node", () => {
@@ -76,7 +76,9 @@ describe("nodeTypes registry", () => {
   })
 
   // Registry completeness test — catches forgotten registrations
-  NODE_TEMPLATES.forEach((template) => {
+  // Skip "template" category (name, email, dob, address) — those are created as
+  // flowTemplate nodes by the factory, not registered as standalone components.
+  NODE_TEMPLATES.filter(t => t.category !== "template").forEach((template) => {
     template.platforms.forEach((platform) => {
       it(`resolves "${template.type}" on ${platform} to a registered component`, () => {
         const resolvedType = getPlatformSpecificNodeType(template.type, platform)

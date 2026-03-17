@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Plus, Edit3, X, Sparkles, Minimize2, Loader2 } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
@@ -498,7 +499,16 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium mr-2">Next</span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-[10px] text-muted-foreground font-medium mr-2 cursor-help border-b border-dotted border-muted-foreground/50">Sync Next</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[220px] text-xs">
+                <p>Sends a follow-up message immediately after buttons, before waiting for user input. Connect to a Message node.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Handle
             type="source"
             position={Position.Right}

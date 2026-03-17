@@ -318,7 +318,45 @@ describe("convertToFsWhatsApp", () => {
 
     const result = convertToFsWhatsApp(nodes, edges, "Fallthrough Test")
     const qrStep = result.steps[0]
-    expect(qrStep.next_step).toBeDefined()
+    expect(qrStep.synchronous_next).toBeDefined()
+    expect(qrStep.next_step).toBe("__complete__")
+  })
+
+  it("quick reply without next-step has no synchronous_next", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("qr1", "whatsappQuickReply", {
+        label: "QR",
+        question: "Pick one",
+        buttons: [{ id: "btn-a", text: "A" }],
+      }),
+    ]
+    const edges = [edge("start-1", "qr1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "No Sync Test")
+    const qrStep = result.steps[0]
+    expect(qrStep.synchronous_next).toBeUndefined()
+  })
+
+  it("interactiveList next-step maps to synchronous_next", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("list1", "whatsappInteractiveList", {
+        label: "List",
+        question: "Choose",
+        options: [{ id: "opt-a", text: "A" }],
+      }),
+      node("m1", "whatsappMessage", { label: "Next", text: "After list" }),
+    ]
+    const edges = [
+      edge("start-1", "list1"),
+      edge("list1", "m1", "next-step"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "List Sync Test")
+    const listStep = result.steps[0]
+    expect(listStep.synchronous_next).toBeDefined()
+    expect(listStep.next_step).toBe("__complete__")
   })
 })
 
@@ -551,8 +589,8 @@ describe("round-trip conversion", () => {
     expect(tplStep.input_config!.template_name).toBe("order_confirmation")
     expect(tplStep.input_config!.language).toBe("en")
     expect(tplStep.input_config!.body_parameters).toEqual(["{{customer_name}}", "{{order_id}}"])
-    expect(tplStep.next_step).toBeDefined()
-    expect(tplStep.next_step).not.toBe("__complete__")
+    expect(tplStep.synchronous_next).toBeDefined()
+    expect(tplStep.next_step).toBe("__complete__")
   })
 
   it("converts template message node with no params", () => {
@@ -617,5 +655,45 @@ describe("round-trip conversion", () => {
     // WhatsApp template quick reply responses send button text as payload
     expect(tplStep.conditional_next!["Yes"]).toBeDefined()
     expect(tplStep.conditional_next!["No"]).toBeDefined()
+  })
+
+  it("reverse converter restores synchronous_next as next-step edge", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Sync Next Flow",
+      steps: [
+        {
+          step_name: "pick_one",
+          step_order: 1,
+          message: "Pick one",
+          message_type: "buttons",
+          input_type: "button",
+          buttons: [{ id: "btn-a", title: "A" }],
+          conditional_next: { "btn-a": "after_a" },
+          synchronous_next: "follow_up",
+        },
+        {
+          step_name: "follow_up",
+          step_order: 2,
+          message: "Thanks for choosing!",
+          message_type: "text",
+          input_type: "none",
+          next_step: "__complete__",
+        },
+        {
+          step_name: "after_a",
+          step_order: 3,
+          message: "You picked A",
+          message_type: "text",
+          input_type: "none",
+          next_step: "__complete__",
+        },
+      ],
+    }
+
+    const { edges } = convertFromFsWhatsApp(flow)
+    const syncEdge = edges.find((e) => e.sourceHandle === "next-step")
+    expect(syncEdge).toBeDefined()
+    expect(syncEdge!.source).toBeDefined()
+    expect(syncEdge!.target).toBeDefined()
   })
 })

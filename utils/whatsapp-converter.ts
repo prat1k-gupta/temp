@@ -17,6 +17,7 @@ export interface FsWhatsAppFlowStep {
   retry_on_invalid?: boolean
   max_retries?: number
   next_step?: string
+  synchronous_next?: string
   conditional_next?: Record<string, string>
   conditional_routes?: Array<{
     operator?: string
@@ -288,8 +289,11 @@ export function convertToFsWhatsApp(
           step.conditional_next = conditionalNext
         }
 
-        // next-step handle → fallthrough next_step
-        step.next_step = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // next-step handle → synchronous follow-up (sent before waiting for button input)
+        const qrSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        if (qrSyncTarget !== "__complete__") {
+          step.synchronous_next = qrSyncTarget
+        }
         break
       }
 
@@ -315,8 +319,11 @@ export function convertToFsWhatsApp(
           step.conditional_next = conditionalNext
         }
 
-        // next-step handle → fallthrough next_step
-        step.next_step = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // next-step handle → synchronous follow-up (sent before waiting for button input)
+        const listSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        if (listSyncTarget !== "__complete__") {
+          step.synchronous_next = listSyncTarget
+        }
         break
       }
 
@@ -436,7 +443,11 @@ export function convertToFsWhatsApp(
           step.conditional_next = igConditionalNext
         }
 
-        step.next_step = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // next-step handle → synchronous follow-up (sent before waiting for button input)
+        const igSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        if (igSyncTarget !== "__complete__") {
+          step.synchronous_next = igSyncTarget
+        }
         break
       }
 
@@ -529,7 +540,11 @@ export function convertToFsWhatsApp(
           }
         }
 
-        step.next_step = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // next-step handle → synchronous follow-up (sent before waiting for button input)
+        const tplSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        if (tplSyncTarget !== "__complete__") {
+          step.synchronous_next = tplSyncTarget
+        }
         break
       }
 
@@ -754,6 +769,20 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           source: sourceId,
           sourceHandle: handleId,
           target: targetId,
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        })
+      }
+    }
+
+    // synchronous_next → "next-step" handle edge
+    if (step.synchronous_next && step.synchronous_next !== "__complete__") {
+      const syncTargetId = stepNodeMap.get(step.synchronous_next)
+      if (syncTargetId) {
+        edges.push({
+          id: `edge-${sourceId}-next-step-${syncTargetId}`,
+          source: sourceId,
+          sourceHandle: "next-step",
+          target: syncTargetId,
           style: { stroke: "#6366f1", strokeWidth: 2 },
         })
       }

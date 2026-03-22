@@ -58,20 +58,27 @@ export function generateVariableName(node: Node): string {
 export function collectFlowVariables(nodes: Node[]): string[] {
   const variables: string[] = []
 
-  for (const node of nodes) {
-    if (!node.type || !STORABLE_NODE_TYPES.has(node.type)) continue
-
-    const data = node.data as Record<string, any>
+  const scanNode = (node: { type?: string; data: Record<string, any> }) => {
+    if (!node.type || !STORABLE_NODE_TYPES.has(node.type)) return
+    const data = node.data
     if (data.storeAs && typeof data.storeAs === "string" && data.storeAs.trim()) {
       variables.push(data.storeAs.trim())
     }
-
-    // apiFetch nodes expose response mapping keys as variables
     if (node.type === "apiFetch" && data.responseMapping) {
       for (const varName of Object.keys(data.responseMapping)) {
-        if (varName.trim()) {
-          variables.push(varName.trim())
-        }
+        if (varName.trim()) variables.push(varName.trim())
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    const data = node.data as Record<string, any>
+    scanNode({ type: node.type, data })
+
+    // Scan inside flowTemplate nodes
+    if (node.type === "flowTemplate" && Array.isArray(data.templateNodes)) {
+      for (const innerNode of data.templateNodes) {
+        scanNode({ type: innerNode.type, data: innerNode.data || {} })
       }
     }
   }
@@ -129,15 +136,15 @@ export function deduplicateVariable(name: string, existing: string[]): string {
 export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
   const variables: FlowVariable[] = []
 
-  for (const node of nodes) {
-    if (!node.type || !STORABLE_NODE_TYPES.has(node.type)) continue
+  const scanNode = (node: { type?: string; data: Record<string, any> }, parentLabel?: string) => {
+    if (!node.type || !STORABLE_NODE_TYPES.has(node.type)) return
 
-    const data = node.data as Record<string, any>
+    const data = node.data
     if (data.storeAs && typeof data.storeAs === "string" && data.storeAs.trim()) {
       variables.push({
         name: data.storeAs.trim(),
         sourceNodeType: node.type,
-        sourceNodeLabel: data.label || data.question || node.type,
+        sourceNodeLabel: parentLabel || data.label || data.question || node.type,
         hasTitleVariant: TITLE_VARIANT_NODE_TYPES.has(node.type),
       })
     }
@@ -149,10 +156,25 @@ export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
           variables.push({
             name: varName.trim(),
             sourceNodeType: node.type,
-            sourceNodeLabel: data.label || "API Fetch",
+            sourceNodeLabel: parentLabel || data.label || "API Fetch",
             hasTitleVariant: false,
           })
         }
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    const data = node.data as Record<string, any>
+
+    // Scan top-level storable nodes
+    scanNode({ type: node.type, data })
+
+    // Scan inside flowTemplate nodes for their internal storable nodes
+    if (node.type === "flowTemplate" && Array.isArray(data.templateNodes)) {
+      const templateLabel = data.label || data.templateName || "Template"
+      for (const innerNode of data.templateNodes) {
+        scanNode({ type: innerNode.type, data: innerNode.data || {} }, templateLabel)
       }
     }
   }

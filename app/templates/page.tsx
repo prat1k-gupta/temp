@@ -73,6 +73,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [filterCategory, setFilterCategory] = useState<string>("all")
@@ -128,6 +129,8 @@ export default function TemplatesPage() {
   }
 
   const handleSubmitToMeta = async (id: string) => {
+    if (submittingId) return
+    setSubmittingId(id)
     try {
       const response = await fetch(`/api/templates/${id}/publish`, { method: "POST" })
       if (!response.ok) throw new Error("Submit failed")
@@ -135,6 +138,8 @@ export default function TemplatesPage() {
       loadTemplates()
     } catch {
       toast.error("Failed to submit template")
+    } finally {
+      setSubmittingId(null)
     }
   }
 
@@ -181,7 +186,14 @@ export default function TemplatesPage() {
       header_content: data.header_content || "",
       body_content: data.body || data.body_content || "",
       footer_content: data.footer || data.footer_content || "",
-      buttons: data.buttons || [],
+      buttons: (data.buttons || []).map((btn: any) => {
+        if (btn.type === "url" && btn.url && btn.url.includes("{{")) {
+          const urlVars = (btn.url.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
+          const example = urlVars.length > 0 ? (data.sample_values || {})[urlVars[0]] || "" : ""
+          return { ...btn, example }
+        }
+        return btn
+      }),
       sample_values: (() => {
         const bodyText = data.body || data.body_content || ""
         const headerText = data.header_content || ""
@@ -190,11 +202,25 @@ export default function TemplatesPage() {
         const result: any[] = []
         bodyVars.forEach((v: string, i: number) => {
           const val = (data.sample_values || {})[v]
-          if (val) result.push({ component: "body", index: i + 1, value: val })
+          if (val) {
+            const isPositional = /^\d+$/.test(v)
+            result.push({
+              component: "body",
+              ...(isPositional ? { index: i + 1 } : { param_name: v }),
+              value: val,
+            })
+          }
         })
         headerVars.forEach((v: string, i: number) => {
           const val = (data.sample_values || {})[v]
-          if (val) result.push({ component: "header", index: i + 1, value: val })
+          if (val) {
+            const isPositional = /^\d+$/.test(v)
+            result.push({
+              component: "header",
+              ...(isPositional ? { index: i + 1 } : { param_name: v }),
+              value: val,
+            })
+          }
         })
         return result
       })(),
@@ -208,7 +234,9 @@ export default function TemplatesPage() {
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
-      throw new Error(err.error || "Save failed")
+      const msg = err.error || err.message || "Save failed"
+      toast.error(msg)
+      return
     }
 
     toast.success(isUpdate ? "Template updated" : "Template created")
@@ -406,13 +434,14 @@ export default function TemplatesPage() {
                         variant="ghost"
                         size="sm"
                         className="h-8 px-3 text-xs gap-1.5"
+                        disabled={submittingId === template.id}
                         onClick={(e) => {
                           e.stopPropagation()
                           handleSubmitToMeta(template.id)
                         }}
                       >
-                        <Send className="w-3.5 h-3.5" />
-                        Submit
+                        {submittingId === template.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        {submittingId === template.id ? "Submitting..." : "Submit"}
                       </Button>
                     )}
                     <Button

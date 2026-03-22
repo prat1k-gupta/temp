@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { List, Plus, Edit3, X } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
 import { useState, useEffect } from "react"
@@ -170,9 +171,9 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
         <CardContent className="pt-0 space-y-3 pb-12 px-4">
           {isEditingQuestion ? (
             <div className="space-y-2">
-              <Textarea
+              <VariablePickerTextarea
                 value={editingQuestionValue}
-                onChange={(e) => setEditingQuestionValue(e.target.value)}
+                onValueChange={setEditingQuestionValue}
                 onBlur={finishEditingQuestion}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -186,6 +187,8 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                 }`}
                 placeholder="Choose an option:"
                 autoFocus
+                flowVariables={data.flowVariablesRich || []}
+                excludeVariable={data.storeAs || undefined}
               />
               <div className="flex justify-between items-center">
                 <span
@@ -207,7 +210,10 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-green-50/30 px-2 py-1.5 rounded border border-transparent hover:border-green-100 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Choose an option:"}
+              <VariableHighlightText
+                text={data.question || "Choose an option:"}
+                flowVariables={data.flowVariables || []}
+              />
             </div>
           )}
 

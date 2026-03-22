@@ -50,6 +50,7 @@ export interface FsWhatsAppFlow {
   completion_message?: string
   enabled?: boolean
   panel_config?: Record<string, any>
+  flow_slug?: string
   steps: FsWhatsAppFlowStep[]
 }
 
@@ -153,7 +154,8 @@ export function convertToFsWhatsApp(
   flowName: string,
   flowDescription?: string,
   triggerIds?: string[],
-  triggerKeywords?: string[]
+  triggerKeywords?: string[],
+  flowSlug?: string,
 ): FsWhatsAppFlow {
   const edgeMap = buildEdgeMap(edges)
 
@@ -499,7 +501,9 @@ export function convertToFsWhatsApp(
         // waits for user reply (needed to re-open 24h messaging window)
         step.message = data.templateName || ""
         const bodyParams: string[] = (data.parameterMappings || []).map(
-          (m: { templateVar: string; flowValue: string }) => m.flowValue
+          (m: { templateVar: string; flowValue: string }) =>
+            // If no explicit mapping, default to {{templateVar}} — resolves from session data
+            m.flowValue || `{{${m.templateVar}}}`
         )
         // Store all template buttons (with types) so the processor knows
         // the full button layout for correct Meta API indexing
@@ -574,6 +578,7 @@ export function convertToFsWhatsApp(
     description: flowDescription,
     trigger_keywords: customKeywords,
     enabled: true,
+    flow_slug: flowSlug || undefined,
     steps,
   }
 
@@ -698,13 +703,29 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         data.notes = step.transfer_config?.notes || ""
         data.teamName = step.transfer_config?.team_id === "_general" ? "General Queue" : step.transfer_config?.team_id || ""
         break
-      case "templateMessage":
+      case "templateMessage": {
         data.templateName = step.input_config?.template_name || step.message || ""
         data.language = step.input_config?.language || "en"
         data.bodyPreview = step.message || ""
-        data.parameterMappings = ((step.input_config?.body_parameters as string[]) || []).map(
-          (val: string, idx: number) => ({ templateVar: String(idx + 1), flowValue: val })
-        )
+
+        // Extract named variable names from body content if available
+        const tplBody = data.bodyPreview || ""
+        const tplNamedVars = (tplBody.match(/\{\{([a-zA-Z_]\w*)\}\}/g) || [])
+          .map((m: string) => m.slice(2, -2))
+        const tplBodyParams = (step.input_config?.body_parameters as string[]) || []
+
+        if (tplNamedVars.length > 0 && tplNamedVars.length === tplBodyParams.length) {
+          // Named template — use variable names from body content
+          data.parameterMappings = tplNamedVars.map((name: string, idx: number) => ({
+            templateVar: name,
+            flowValue: tplBodyParams[idx] || "",
+          }))
+        } else {
+          // Positional template — fallback to index-based (backward compat)
+          data.parameterMappings = tplBodyParams.map(
+            (val: string, idx: number) => ({ templateVar: String(idx + 1), flowValue: val })
+          )
+        }
         // Restore buttons from step (assign stable handle IDs for React Flow)
         if (step.buttons && step.buttons.length > 0) {
           data.buttons = step.buttons.map((btn: any, idx: number) => ({
@@ -715,6 +736,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           }))
         }
         break
+      }
     }
 
     nodes.push({ id: nodeId, type: nodeType, position, data })

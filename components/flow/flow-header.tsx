@@ -80,9 +80,11 @@ interface FlowHeaderProps {
   triggerIds?: string[]
   triggerKeywords?: string[]
   publishedFlowId?: string
+  flowSlug?: string
   waAccountId?: string
   waPhoneNumber?: string
-  onPublished?: (flowId: string, waPhoneNumber?: string) => void
+  onPublished?: (flowId: string, waPhoneNumber?: string, flowSlug?: string) => void
+  onValidationError?: (nodeIds: string[]) => void
   isFlowGraphPanelOpen?: boolean
   onToggleFlowGraph?: () => void
 }
@@ -129,9 +131,11 @@ export function FlowHeader({
   triggerIds,
   triggerKeywords,
   publishedFlowId,
+  flowSlug,
   waAccountId,
   waPhoneNumber,
   onPublished,
+  onValidationError,
   isFlowGraphPanelOpen,
   onToggleFlowGraph,
 }: FlowHeaderProps) {
@@ -223,6 +227,21 @@ export function FlowHeader({
                   <Copy className="w-3 h-3" />
                 </button>
               )}
+              {flowSlug && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(flowSlug)
+                    toast.success("Flow slug copied! Use as {{flow." + flowSlug + ".<var>}}")
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50 text-xs text-purple-700 dark:text-purple-300 transition-colors cursor-pointer"
+                  title={`Flow slug: ${flowSlug} — use in cross-flow references as {{flow.${flowSlug}.<var>}}`}
+                >
+                  <span className="font-medium">slug:</span>
+                  <span className="font-mono">{flowSlug}</span>
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
               {platform === "whatsapp" && waPhoneNumber && triggerKeywords && triggerKeywords.length > 0 && (
                 triggerKeywords.length === 1 ? (
                   <a
@@ -308,9 +327,11 @@ export function FlowHeader({
             triggerIds={triggerIds}
             triggerKeywords={triggerKeywords}
             publishedFlowId={publishedFlowId}
+            flowSlug={flowSlug}
             waAccountId={waAccountId}
             waPhoneNumber={waPhoneNumber}
             onPublished={onPublished}
+            onValidationError={onValidationError}
           >
             <Button
               variant="default"

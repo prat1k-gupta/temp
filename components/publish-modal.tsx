@@ -23,6 +23,7 @@ import type { Node, Edge } from "@xyflow/react"
 import type { FlowChange } from "@/types"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import { flattenFlow } from "@/utils/flow-flattener"
+import { validateFlowVariables } from "@/utils/flow-variables"
 
 interface PublishModalProps {
   changes: FlowChange[]
@@ -39,9 +40,11 @@ interface PublishModalProps {
   triggerIds?: string[]
   triggerKeywords?: string[]
   publishedFlowId?: string
+  flowSlug?: string
   waAccountId?: string
   waPhoneNumber?: string
-  onPublished?: (flowId: string, waPhoneNumber?: string) => void
+  onPublished?: (flowId: string, waPhoneNumber?: string, flowSlug?: string) => void
+  onValidationError?: (nodeIds: string[]) => void
 }
 
 export function PublishModal({
@@ -59,9 +62,11 @@ export function PublishModal({
   triggerIds,
   triggerKeywords,
   publishedFlowId,
+  flowSlug,
   waAccountId,
   waPhoneNumber: waPhoneNumberProp,
   onPublished,
+  onValidationError,
 }: PublishModalProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [versionName, setVersionName] = useState("")
@@ -114,6 +119,20 @@ export function PublishModal({
   }
 
   const handlePublish = async () => {
+    // Validate: block publish if any node has unknown variables
+    if (nodes) {
+      const varErrors = validateFlowVariables(nodes)
+      if (varErrors.length > 0) {
+        setIsOpen(false)
+        onValidationError?.(varErrors.map((e) => e.nodeId))
+        toast.error("Cannot publish: unknown variables found", {
+          description: `${varErrors.length} node${varErrors.length > 1 ? "s have" : " has"} unknown variables. They are highlighted on the canvas.`,
+          duration: 5000,
+        })
+        return
+      }
+    }
+
     const finalVersionName = versionName.trim() || generateDefaultVersionName()
 
     setIsPublishing(true)
@@ -136,6 +155,7 @@ export function PublishModal({
             flowDescription,
             triggerIds,
             triggerKeywords,
+            flowSlug,
           )
           const response = await fetch("/api/whatsapp/publish", {
             method: "POST",
@@ -167,8 +187,8 @@ export function PublishModal({
                 console.error("[PublishModal] Failed to fetch phone number:", err)
               }
             }
-            console.log("[PublishModal] Calling onPublished with flowId:", result.flowId, "phone:", phoneNumber)
-            onPublished(result.flowId, phoneNumber)
+            console.log("[PublishModal] Calling onPublished with flowId:", result.flowId, "phone:", phoneNumber, "slug:", result.flowSlug)
+            onPublished(result.flowId, phoneNumber, result.flowSlug)
           }
           toast.success(
             result.updated ? "Flow updated on WhatsApp!" : "Published to WhatsApp!",

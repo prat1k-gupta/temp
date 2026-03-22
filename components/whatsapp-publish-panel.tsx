@@ -18,22 +18,26 @@ interface WhatsAppPublishPanelProps {
   triggerIds?: string[]
   triggerKeywords?: string[]
   publishedFlowId?: string
-  onPublished?: (flowId: string) => void
+  flowSlug?: string
+  waAccountId?: string
+  onPublished?: (flowId: string, flowSlug?: string) => void
   onDisconnect?: () => void
+  onSync?: (updates: { flowSlug?: string; waPhoneNumber?: string; waAccountId?: string }) => void
 }
 
 type PublishStatus = "idle" | "publishing" | "success" | "error"
 
-export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, onPublished, onDisconnect }: WhatsAppPublishPanelProps) {
+export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, flowSlug, waAccountId, onPublished, onDisconnect, onSync }: WhatsAppPublishPanelProps) {
   const [showJson, setShowJson] = useState(false)
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
+  const [isSyncing, setIsSyncing] = useState(false)
 
   const isUpdate = !!publishedFlowId
 
   const converted = useMemo(
-    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords),
-    [nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords]
+    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, flowSlug),
+    [nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, flowSlug]
   )
 
   const jsonString = useMemo(() => JSON.stringify(converted, null, 2), [converted])
@@ -86,9 +90,9 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       const result = await response.json()
       setPublishStatus("success")
 
-      // Store the flow ID for future updates
+      // Store the flow ID and slug for future updates
       if (result.flowId && onPublished) {
-        onPublished(result.flowId)
+        onPublished(result.flowId, result.flowSlug)
       }
 
       toast.success(result.updated ? "Flow updated on WhatsApp!" : "Flow published to WhatsApp!", {
@@ -101,6 +105,59 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
     }
   }
 
+  const handleSync = async () => {
+    if (!publishedFlowId || !onSync) return
+    setIsSyncing(true)
+    try {
+      const updates: { flowSlug?: string; waPhoneNumber?: string; waAccountId?: string } = {}
+
+      // Fetch flow slug from fs-whatsapp
+      const flowRes = await fetch(`/api/whatsapp/flows/${publishedFlowId}`)
+      if (flowRes.ok) {
+        const flowData = await flowRes.json()
+        if (flowData.flowSlug) {
+          updates.flowSlug = flowData.flowSlug
+        }
+      }
+
+      // Fetch phone number from account
+      const accRes = await fetch("/api/accounts")
+      if (accRes.ok) {
+        const accData = await accRes.json()
+        const list = Array.isArray(accData) ? accData : accData.accounts || []
+        const acc = waAccountId
+          ? list.find((a: any) => a.id === waAccountId)
+          : list.find((a: any) => a.is_default_outgoing) || list[0]
+        if (acc) {
+          updates.waAccountId = acc.id
+          const tcRes = await fetch(`/api/accounts/${acc.id}/test`, { method: "POST" })
+          if (tcRes.ok) {
+            const tcData = await tcRes.json()
+            if (tcData.display_phone_number) {
+              updates.waPhoneNumber = tcData.display_phone_number.replace(/[^0-9]/g, "")
+            }
+          }
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        onSync(updates)
+        toast.success("Synced from WhatsApp", {
+          description: [
+            updates.flowSlug && `Slug: ${updates.flowSlug}`,
+            updates.waPhoneNumber && `Phone: ${updates.waPhoneNumber}`,
+          ].filter(Boolean).join(", "),
+        })
+      } else {
+        toast.info("Nothing new to sync")
+      }
+    } catch (err: any) {
+      toast.error("Sync failed", { description: err.message })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Published flow ID */}
@@ -110,16 +167,31 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Linked to published flow</p>
             <p className="text-[11px] text-blue-600/70 dark:text-blue-400/70 font-mono truncate">{publishedFlowId}</p>
+            {flowSlug && (
+              <p className="text-[11px] text-purple-600/70 dark:text-purple-400/70 font-mono truncate">slug: {flowSlug}</p>
+            )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDisconnect?.()}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
-          >
-            <Unlink className="w-3 h-3 mr-1" />
-            Disconnect
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-blue-600"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${isSyncing ? "animate-spin" : ""}`} />
+              Sync
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDisconnect?.()}
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
+            >
+              <Unlink className="w-3 h-3 mr-1" />
+              Disconnect
+            </Button>
+          </div>
         </div>
       )}
 

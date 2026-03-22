@@ -21,7 +21,7 @@ const responseSchema = z.object({
   category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).describe("Template category"),
   headerType: z.enum(["none", "text"]).describe("Header type"),
   headerContent: z.string().describe("Header text (max 60 chars, empty if headerType is none)"),
-  bodyContent: z.string().describe("Template body text with {{1}}, {{2}} variables (max 1024 chars)"),
+  bodyContent: z.string().describe("Template body text with named variables like {{customer_name}}, {{order_id}} (max 1024 chars)"),
   footerContent: z.string().describe("Footer text (max 60 chars, can be empty)"),
   buttons: z.array(z.object({
     type: z.enum(["quick_reply", "url", "phone_number"]).describe("Button type"),
@@ -37,7 +37,7 @@ export async function generateTemplate(request: GenerateTemplateRequest): Promis
   const systemPrompt = `You are an expert WhatsApp Business template designer. You create templates that:
 - Follow Meta's WhatsApp Business API guidelines
 - Are clear, concise, and professional
-- Use numbered variables like {{1}}, {{2}} for dynamic content
+- Use descriptive named variables like {{customer_name}}, {{order_id}}, {{delivery_date}} for dynamic content (NOT numbered {{1}}, {{2}})
 - Are likely to get approved by Meta's review process
 - Have engaging but not spammy copy
 

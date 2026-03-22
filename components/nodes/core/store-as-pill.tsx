@@ -12,13 +12,14 @@ interface StoreAsPillProps {
   suggestedName?: string
 }
 
-function sanitizeVariableName(value: string): string {
-  return value
+function sanitizeVariableName(value: string, trimEdges = false): string {
+  let result = value
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "_")
     .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
     .slice(0, 30)
+  if (trimEdges) result = result.replace(/^_+|_+$/g, "")
+  return result
 }
 
 export function StoreAsPill({ storeAs, onUpdate, flowVariables = [], placeholder = "Save response as...", suggestedName }: StoreAsPillProps) {
@@ -46,7 +47,7 @@ export function StoreAsPill({ storeAs, onUpdate, flowVariables = [], placeholder
   }
 
   const finishEditing = () => {
-    const sanitized = sanitizeVariableName(editValue)
+    const sanitized = sanitizeVariableName(editValue, true)
     onUpdate(sanitized)
     setIsEditing(false)
   }

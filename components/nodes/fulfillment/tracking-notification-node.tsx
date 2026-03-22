@@ -9,6 +9,7 @@ import { Edit3, PackageSearch, MapPin, Clock } from "lucide-react"
 import { useState, useEffect } from "react"
 import type { Platform } from "@/types"
 import { getNodeLimits } from "@/constants"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 
 export function TrackingNotificationNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -202,7 +203,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
               className="text-sm text-muted-foreground line-clamp-4 cursor-pointer hover:bg-accent/30 px-2 py-1.5 rounded border border-transparent hover:border-accent transition-colors whitespace-pre-line"
               onClick={startEditingMessage}
             >
-              {formattedMessage || "Your order is on the way! Track your delivery in real-time."}
+              <VariableHighlightText text={formattedMessage || "Your order is on the way! Track your delivery in real-time."} />
             </div>
           )}
 

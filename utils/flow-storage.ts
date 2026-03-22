@@ -27,6 +27,7 @@ export interface FlowData {
   triggerIds?: string[] // Multiple triggers support
   triggerKeywords?: string[] // Custom keywords that trigger this flow (WhatsApp)
   publishedFlowId?: string // fs-whatsapp flow ID after first publish
+  flowSlug?: string // Flow slug from fs-whatsapp (frozen after first publish)
   waAccountId?: string // Selected WhatsApp Business account ID
   waPhoneNumber?: string // WhatsApp Business phone number for wa.me preview link
   aiMetadata?: TemplateAIMetadata // AI metadata for templates
@@ -236,6 +237,8 @@ export function duplicateFlow(flowId: string, newName?: string): FlowData | null
       ...flow,
       id: `flow-${Date.now()}`,
       name: newName || `${flow.name} (Copy)`,
+      publishedFlowId: undefined,
+      flowSlug: undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

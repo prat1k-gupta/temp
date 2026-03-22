@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { PhoneForwarded, Edit3 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 
 export function TransferNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingLabel, setIsEditingLabel] = useState(false)
@@ -79,7 +80,7 @@ export function TransferNode({ data, selected }: { data: any; selected?: boolean
           {/* Notes preview */}
           {notes && (
             <div className="text-[10px] text-muted-foreground line-clamp-2 italic">
-              Notes: {notes}
+              Notes: <VariableHighlightText text={notes} />
             </div>
           )}
         </CardContent>

@@ -4,7 +4,8 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Plus, Edit3, X, Sparkles, Minimize2, Loader2 } from "lucide-react"
@@ -290,10 +291,10 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
         <CardContent className="pt-0 space-y-2 pb-12 px-4">
           {isEditingQuestion ? (
             <div ref={editingContainerRef} className="space-y-2 group/question">
-              <Textarea
+              <VariablePickerTextarea
                 value={editingQuestionValue}
-                onChange={(e) => setEditingQuestionValue(e.target.value)}
-                onBlur={(e) => finishEditingQuestion(e)}
+                onValueChange={setEditingQuestionValue}
+                onBlur={(e) => finishEditingQuestion(e as any)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -306,6 +307,8 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
                 }`}
                 placeholder="Enter your question..."
                 autoFocus
+                flowVariables={data.flowVariablesRich || []}
+                excludeVariable={data.storeAs || undefined}
               />
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -339,7 +342,10 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
               className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:bg-green-50/30 px-2 py-1.5 rounded border border-transparent hover:border-green-100 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Choose an action..."}
+              <VariableHighlightText
+                text={data.question || "Choose an action..."}
+                flowVariables={data.flowVariables || []}
+              />
             </div>
           )}
 

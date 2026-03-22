@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
@@ -27,6 +27,7 @@ interface TemplateButton {
   url?: string
   phone_number?: string
   example_code?: string
+  example?: string // URL button dynamic suffix example for Meta
 }
 
 interface TemplateData {
@@ -132,13 +133,18 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   }, [])
 
   const normalizeName = (value: string) => {
-    return value.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "")
+    return value.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_/, "")
   }
 
-  // Collect all variables from header + body
+  // Collect all variables from header + body + URL buttons
+  const urlButtonVars = data.buttons
+    .filter((b) => b.type === "url" && b.url)
+    .flatMap((b) => extractVariables(b.url || ""))
+
   const allVariables = [
     ...extractVariables(data.header_content),
     ...extractVariables(data.body),
+    ...urlButtonVars,
   ]
 
   const handleAddButton = (type: string) => {
@@ -172,14 +178,6 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
     const updated = [...data.buttons]
     ;[updated[index], updated[newIndex]] = [updated[newIndex], updated[index]]
     update({ buttons: updated })
-  }
-
-  const handleInsertVariable = () => {
-    const existingNums = extractVariables(data.body)
-      .filter((v) => /^\d+$/.test(v))
-      .map(Number)
-    const next = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1
-    update({ body: data.body + `{{${next}}}` })
   }
 
   const handleAiGenerate = async () => {
@@ -234,6 +232,22 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
       toast.error("Template body is required")
       return
     }
+    // Meta requires quick reply buttons to be grouped together (not interleaved with other types)
+    if (data.buttons.length > 1) {
+      const types = data.buttons.map((b) => b.type === "quick_reply" ? "qr" : "other")
+      const seen = new Set<string>()
+      let lastType = ""
+      let interleaved = false
+      for (const t of types) {
+        if (t !== lastType && seen.has(t)) { interleaved = true; break }
+        seen.add(t)
+        lastType = t
+      }
+      if (interleaved) {
+        toast.error("Quick reply buttons must be grouped together — they can't be mixed with URL/phone buttons")
+        return
+      }
+    }
     setSaving(true)
     try {
       await onSave(data)
@@ -246,22 +260,22 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
 
   return (
     <div className="fixed inset-0 z-50 bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-background px-6 py-3 flex items-center justify-between">
+      {/* Header bar */}
+      <div className="border-b border-border bg-background/95 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">{template?.id ? "Edit Template" : "Create Template"}</h2>
+          <h2 className="text-base font-semibold tracking-tight">{template?.id ? "Edit Template" : "Create Template"}</h2>
           {data.status && (
-            <Badge variant={data.status === "APPROVED" ? "default" : "secondary"}>
+            <Badge variant={data.status === "APPROVED" ? "default" : "secondary"} className="text-[10px]">
               {data.status}
             </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onCancel}>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
             <X className="w-4 h-4 mr-1" />
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="bg-[#052762] hover:bg-[#0A49B7] text-white">
+          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-[#052762] hover:bg-[#0A49B7] text-white">
             {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
             {template?.id ? "Update" : "Save Draft"}
           </Button>
@@ -269,269 +283,312 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
       </div>
 
       {/* Content */}
-      <div className="flex h-[calc(100vh-57px)] overflow-hidden">
+      <div className="flex h-[calc(100vh-53px)] overflow-hidden">
         {/* Left — Form */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Basic Info */}
-          <section className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Basic Info</h3>
-            <div>
-              <Label>WhatsApp Account</Label>
-              <Select
-                value={data.whatsapp_account}
-                onValueChange={(v) => update({ whatsapp_account: v })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={accountsLoading ? "Loading accounts..." : "Select account"} />
-                </SelectTrigger>
+        <div className="flex-1 overflow-y-auto scroll-minimal">
+          <div className="max-w-2xl mx-auto px-6 py-4 space-y-3">
+
+            {/* Basic Info */}
+            <section className="rounded-lg border border-border/60 bg-card p-4 space-y-3">
+              <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Basic Info</h3>
+              <div>
+                <Label className="text-xs text-muted-foreground">WhatsApp Account</Label>
+                <Select value={data.whatsapp_account} onValueChange={(v) => update({ whatsapp_account: v })}>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={accountsLoading ? "Loading..." : "Select account"} /></SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.name}>
+                        {acc.name}{acc.status !== "active" ? ` (${acc.status})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="tpl-name" className="text-xs text-muted-foreground">Template Name</Label>
+                  <Input
+                    id="tpl-name"
+                    value={data.name}
+                    onChange={(e) => update({ name: normalizeName(e.target.value) })}
+                    placeholder="order_confirmation"
+                    className="mt-1 h-9 font-mono text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">Lowercase, underscores only</p>
+                </div>
+                <div>
+                  <Label htmlFor="tpl-display" className="text-xs text-muted-foreground">Display Name</Label>
+                  <Input
+                    id="tpl-display"
+                    value={data.display_name}
+                    onChange={(e) => update({ display_name: e.target.value })}
+                    placeholder="Order Confirmation"
+                    className="mt-1 h-9"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Language</Label>
+                  <Select value={data.language} onValueChange={(v) => update({ language: v })}>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LANGUAGES.map((l) => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Category</Label>
+                  <Select value={data.category} onValueChange={(v) => update({ category: v })}>
+                    <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            {/* Header */}
+            <section className="rounded-lg border border-border/60 bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Header</h3>
+                <span className="text-[10px] text-muted-foreground/50">Optional</span>
+              </div>
+              <Select value={data.header_type} onValueChange={(v) => update({ header_type: v as TemplateData["header_type"] })}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {accounts.map((acc) => (
-                    <SelectItem key={acc.id} value={acc.name}>
-                      {acc.name}
-                      {acc.status !== "active" ? ` (${acc.status})` : ""}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="image">Image</SelectItem>
+                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="document">Document</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="tpl-name">Template Name</Label>
-                <Input
-                  id="tpl-name"
-                  value={data.name}
-                  onChange={(e) => update({ name: normalizeName(e.target.value) })}
-                  placeholder="order_confirmation"
-                  className="mt-1 font-mono text-sm"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">Lowercase, underscores only</p>
-              </div>
-              <div>
-                <Label htmlFor="tpl-display">Display Name</Label>
-                <Input
-                  id="tpl-display"
-                  value={data.display_name}
-                  onChange={(e) => update({ display_name: e.target.value })}
-                  placeholder="Order Confirmation"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Language</Label>
-                <Select value={data.language} onValueChange={(v) => update({ language: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {LANGUAGES.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Category</Label>
-                <Select value={data.category} onValueChange={(v) => update({ category: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </section>
-
-          <Separator />
-
-          {/* Header */}
-          <section className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Header (optional)</h3>
-            <Select
-              value={data.header_type}
-              onValueChange={(v) => update({ header_type: v as TemplateData["header_type"] })}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="text">Text</SelectItem>
-                <SelectItem value="image">Image</SelectItem>
-                <SelectItem value="video">Video</SelectItem>
-                <SelectItem value="document">Document</SelectItem>
-              </SelectContent>
-            </Select>
-            {data.header_type === "text" && (
-              <div>
+              {data.header_type === "text" && (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Header Text</Label>
+                    <p className="text-[9px] text-muted-foreground/50 mb-1">Bold text above the body. Supports one {"{{variable}}"}.</p>
+                    <VariablePickerTextarea
+                      value={data.header_content}
+                      onValueChange={(val) => { if (val.length <= 60) update({ header_content: val }) }}
+                      placeholder="e.g. Order update for {{customer_name}}"
+                      className="min-h-[36px] text-sm"
+                      showUnknownWarnings={false}
+                      showVariableButton={false}
+                    />
+                    <div className="flex justify-end mt-0.5">
+                      <span className="text-[10px] text-muted-foreground/50">{data.header_content.length}/60</span>
+                    </div>
+                  </div>
+                  {extractVariables(data.header_content).map((v) => (
+                    <div key={v} className="flex items-center gap-2">
+                      <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
+                      <Input
+                        value={data.sample_values[v] || ""}
+                        onChange={(e) => update({ sample_values: { ...data.sample_values, [v]: e.target.value } })}
+                        placeholder={`Sample value for ${v}`}
+                        className="h-7 text-xs flex-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(data.header_type === "image" || data.header_type === "video" || data.header_type === "document") && (
                 <Input
                   value={data.header_content}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 60) update({ header_content: e.target.value })
-                  }}
-                  placeholder="Header text (supports 1 {{variable}})"
+                  onChange={(e) => update({ header_content: e.target.value })}
+                  placeholder={`Enter ${data.header_type} URL`}
+                  className="h-9"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">{data.header_content.length}/60 characters</p>
-              </div>
-            )}
-            {(data.header_type === "image" || data.header_type === "video" || data.header_type === "document") && (
-              <Input
-                value={data.header_content}
-                onChange={(e) => update({ header_content: e.target.value })}
-                placeholder={`${data.header_type} URL or upload`}
-              />
-            )}
-          </section>
+              )}
+            </section>
 
-          <Separator />
-
-          {/* Body */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Body (required)</h3>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleInsertVariable} className="text-xs h-7">
-                  <Plus className="w-3 h-3 mr-1" />
-                  Variable
-                </Button>
+            {/* Body — the hero section */}
+            <section className="rounded-lg border-2 border-[#052762]/20 bg-[#052762]/[0.02] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-medium text-foreground tracking-wide">Message Body</h3>
+                  <span className="text-[9px] text-[#052762] bg-[#052762]/10 px-1.5 py-0.5 rounded font-medium">Required</span>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleAiGenerate}
                   disabled={aiLoading}
-                  className="text-xs h-7"
+                  className="text-xs h-7 gap-1.5"
                 >
-                  {aiLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
-                  {data.body ? "Improve with AI" : "Generate with AI"}
+                  {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  {data.body ? "Improve" : "Generate"} with AI
                 </Button>
               </div>
-            </div>
-            <Textarea
-              value={data.body}
-              onChange={(e) => {
-                if (e.target.value.length <= 1024) update({ body: e.target.value })
-              }}
-              placeholder="Hello {{1}}, your order {{2}} has been confirmed!"
-              className="min-h-[120px] font-mono text-sm"
-              rows={5}
-            />
-            <p className="text-[10px] text-muted-foreground">{data.body.length}/1024 characters</p>
-          </section>
-
-          <Separator />
-
-          {/* Footer */}
-          <section className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Footer (optional)</h3>
-            <Input
-              value={data.footer}
-              onChange={(e) => {
-                if (e.target.value.length <= 60) update({ footer: e.target.value })
-              }}
-              placeholder="Footer text (no variables)"
-            />
-            <p className="text-[10px] text-muted-foreground">{data.footer.length}/60 characters</p>
-          </section>
-
-          <Separator />
-
-          {/* Buttons */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buttons (optional, up to 10)</h3>
-              <Select onValueChange={handleAddButton}>
-                <SelectTrigger className="w-[160px] h-8 text-xs">
-                  <Plus className="w-3 h-3 mr-1" />
-                  <SelectValue placeholder="Add Button" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BUTTON_TYPES.map((bt) => (
-                    <SelectItem key={bt.value} value={bt.value}>{bt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {data.buttons.map((btn, idx) => (
-              <div key={idx} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="w-4 h-4 text-muted-foreground" />
-                    <Badge variant="outline" className="text-[10px]">{btn.type.replace("_", " ")}</Badge>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveButton(idx, "up")} disabled={idx === 0}>
-                      <ArrowUp className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveButton(idx, "down")} disabled={idx === data.buttons.length - 1}>
-                      <ArrowDown className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => handleRemoveButton(idx)}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-                <Input
-                  value={btn.text}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 25) handleUpdateButton(idx, { text: e.target.value })
-                  }}
-                  placeholder="Button text (25 chars max)"
+              <div>
+                <p className="text-[10px] text-muted-foreground/60 mb-1.5">Type <code className="bg-muted px-1 rounded text-[9px]">{"{{" }</code> to insert a dynamic variable</p>
+                <VariablePickerTextarea
+                  value={data.body}
+                  onValueChange={(val) => { if (val.length <= 1024) update({ body: val }) }}
+                  placeholder="Hello {{user_name}}, your order {{order_id}} is confirmed!"
+                  className="min-h-[120px] text-sm"
+                  showUnknownWarnings={false}
                 />
-                {btn.type === "url" && (
-                  <Input
-                    value={btn.url || ""}
-                    onChange={(e) => handleUpdateButton(idx, { url: e.target.value })}
-                    placeholder="https://example.com/{{1}}"
-                  />
-                )}
-                {btn.type === "phone_number" && (
-                  <Input
-                    value={btn.phone_number || ""}
-                    onChange={(e) => handleUpdateButton(idx, { phone_number: e.target.value })}
-                    placeholder="+1234567890"
-                  />
-                )}
-                {btn.type === "copy_code" && (
-                  <Input
-                    value={btn.example_code || ""}
-                    onChange={(e) => {
-                      if (e.target.value.length <= 15) handleUpdateButton(idx, { example_code: e.target.value })
-                    }}
-                    placeholder="Example code (4-15 chars)"
-                  />
-                )}
+                <div className="flex justify-end mt-0.5">
+                  <span className="text-[10px] text-muted-foreground/50">{data.body.length}/1024</span>
+                </div>
               </div>
-            ))}
-          </section>
+              {extractVariables(data.body).length > 0 && (
+                <div className="border-t border-border/40 pt-2 space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground/60">Sample values for Meta review</p>
+                  {extractVariables(data.body).map((v) => (
+                    <div key={v} className="flex items-center gap-2">
+                      <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
+                      <Input
+                        value={data.sample_values[v] || ""}
+                        onChange={(e) => update({ sample_values: { ...data.sample_values, [v]: e.target.value } })}
+                        placeholder={`Sample value for ${v}`}
+                        className="h-7 text-xs flex-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
-          {/* Sample Values */}
-          {allVariables.length > 0 && (
-            <>
-              <Separator />
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Sample Values (for Meta submission)</h3>
-                {allVariables.map((v) => (
-                  <div key={v}>
-                    <Label className="text-xs">{`Sample value for {{${v}}}`}</Label>
-                    <Input
-                      value={data.sample_values[v] || ""}
-                      onChange={(e) =>
-                        update({ sample_values: { ...data.sample_values, [v]: e.target.value } })
-                      }
-                      placeholder={`e.g. John, #12345`}
-                      className="mt-1"
-                    />
+            {/* Footer */}
+            <section className="rounded-lg border border-border/60 bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Footer</h3>
+                <span className="text-[10px] text-muted-foreground/50">Optional · No variables</span>
+              </div>
+              <div>
+                <Label className="text-[10px] text-muted-foreground">Footer Text</Label>
+                <p className="text-[9px] text-muted-foreground/50 mb-1">Small text below the body. No variables allowed.</p>
+                <Input
+                  value={data.footer}
+                  onChange={(e) => { if (e.target.value.length <= 60) update({ footer: e.target.value }) }}
+                  placeholder="e.g. Reply STOP to unsubscribe"
+                  className="h-9"
+                />
+                <div className="flex justify-end mt-1">
+                  <span className="text-[10px] text-muted-foreground/50">{data.footer.length}/60</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Buttons */}
+            <section className="rounded-lg border border-border/60 bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Buttons</h3>
+                  <span className="text-[10px] text-muted-foreground/50">{data.buttons.length}/10</span>
+                </div>
+                <Select onValueChange={handleAddButton}>
+                  <SelectTrigger className="w-[140px] h-7 text-xs">
+                    <Plus className="w-3 h-3 mr-1" />
+                    <SelectValue placeholder="Add Button" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUTTON_TYPES.map((bt) => <SelectItem key={bt.value} value={bt.value}>{bt.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {data.buttons.length === 0 && (
+                <p className="text-xs text-muted-foreground/40 text-center py-3">No buttons added</p>
+              )}
+              {data.buttons.map((btn, idx) => (
+                <div key={idx} className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground font-mono w-4">{idx + 1}.</span>
+                      <Badge variant="outline" className="text-[9px] h-4 px-1.5">{btn.type.replace("_", " ")}</Badge>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveButton(idx, "up")} disabled={idx === 0}>
+                        <ArrowUp className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveButton(idx, "down")} disabled={idx === data.buttons.length - 1}>
+                        <ArrowDown className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => handleRemoveButton(idx)}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
-                ))}
-              </section>
-            </>
-          )}
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Button Label</Label>
+                    <Input
+                      value={btn.text}
+                      onChange={(e) => { if (e.target.value.length <= 25) handleUpdateButton(idx, { text: e.target.value }) }}
+                      placeholder="e.g. Learn More"
+                      className="mt-0.5 h-8 text-xs"
+                    />
+                    <p className="text-[9px] text-muted-foreground/50 mt-0.5">Text shown on the button · {btn.text.length}/25</p>
+                  </div>
+                  {btn.type === "url" && (
+                    <div className="space-y-2">
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Button URL</Label>
+                        <p className="text-[9px] text-muted-foreground/50 mb-1">Use {"{{variable}}"} for a dynamic suffix</p>
+                        <VariablePickerTextarea
+                          value={btn.url || ""}
+                          onValueChange={(val) => handleUpdateButton(idx, { url: val })}
+                          placeholder="https://example.com/track/"
+                          className="min-h-[36px] font-mono text-xs"
+                          showUnknownWarnings={false}
+                          showVariableButton={false}
+                        />
+                      </div>
+                      {extractVariables(btn.url || "").map((v) => (
+                        <div key={v} className="flex items-center gap-2">
+                          <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
+                          <Input
+                            value={data.sample_values[v] || ""}
+                            onChange={(e) => update({ sample_values: { ...data.sample_values, [v]: e.target.value } })}
+                            placeholder={`Sample value for ${v}`}
+                            className="h-7 text-xs flex-1"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {btn.type === "phone_number" && (
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Phone Number</Label>
+                      <p className="text-[9px] text-muted-foreground/50 mb-0.5">Include country code</p>
+                      <Input
+                        value={btn.phone_number || ""}
+                        onChange={(e) => handleUpdateButton(idx, { phone_number: e.target.value })}
+                        placeholder="+1234567890"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+                  {btn.type === "copy_code" && (
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Coupon Code</Label>
+                      <p className="text-[9px] text-muted-foreground/50 mb-0.5">Example code that users can copy</p>
+                      <Input
+                        value={btn.example_code || ""}
+                        onChange={(e) => { if (e.target.value.length <= 15) handleUpdateButton(idx, { example_code: e.target.value }) }}
+                        placeholder="e.g. SAVE20"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </section>
 
-          <div className="h-8" />
+            <div className="h-4" />
+          </div>
         </div>
 
         {/* Right — Preview */}
-        <div className="w-[400px] border-l border-border bg-muted/30 p-6 overflow-y-auto flex flex-col items-center">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-6 self-start">Preview</h3>
+        <div className="w-[380px] border-l border-border bg-gradient-to-b from-muted/40 to-muted/20 p-5 overflow-y-auto scroll-minimal flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-5 self-start">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#00a884]" />
+            <h3 className="text-[11px] font-medium text-muted-foreground tracking-wide">Live Preview</h3>
+          </div>
           <TemplatePreview
             headerType={data.header_type}
             headerContent={data.header_content}

@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
     // fs-whatsapp uses fastglue envelope: { status, data: { id, ... } }
     const data = result.data || result
     const flowId = data.id || data.flow_id || publishedFlowId
-    return NextResponse.json({ success: true, flowId, updated: isUpdate })
+    const flowSlug = data.flow_slug || undefined
+    return NextResponse.json({ success: true, flowId, flowSlug, updated: isUpdate })
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Failed to publish flow" },

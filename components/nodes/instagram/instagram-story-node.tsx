@@ -4,7 +4,8 @@ import { memo, useState, useEffect } from "react"
 import type { Platform } from "@/types"
 import { BaseNode } from "../core/base-node"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Edit2, Check, X, Camera } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
 import { getNodeLimits } from "@/constants"
@@ -51,9 +52,9 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
         {/* Story Content */}
         {isEditing ? (
           <div className="space-y-2">
-            <Textarea
+            <VariablePickerTextarea
               value={editingValue}
-              onChange={(e) => setEditingValue(e.target.value)}
+              onValueChange={setEditingValue}
               onBlur={handleSave}
               className={`text-sm resize-none ${isOverLimit ? "border-red-500" : ""}`}
               rows={3}
@@ -62,6 +63,7 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
                 if (e.key === "Escape") handleCancel()
               }}
               autoFocus
+              flowVariables={(data as any).flowVariablesRich || []}
             />
 
             {/* Character count */}
@@ -86,7 +88,11 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
             onClick={() => setIsEditing(true)}
           >
             <div className="flex-1">
-              <p className="text-sm text-gray-900 whitespace-pre-wrap">{data.text || "Tap to reply..."}</p>
+              <VariableHighlightText
+                text={data.text || "Tap to reply..."}
+                flowVariables={(data as any).flowVariables || []}
+                className="text-sm text-gray-900 whitespace-pre-wrap"
+              />
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs text-gray-500">
                   {data.text.length}/{maxLength} characters

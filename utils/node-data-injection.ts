@@ -2,7 +2,7 @@ import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
 import type { ButtonData, OptionData } from "@/types"
 import { updateFlow } from "@/utils/flow-storage"
-import { collectFlowVariables } from "@/utils/flow-variables"
+import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
 
 interface NodeCallbacks {
   updateNodeData: (nodeId: string, updates: any, shouldFocus?: boolean) => void
@@ -19,8 +19,11 @@ interface FlowContext {
   saveFlowFields?: (updates: Record<string, any>) => void
 }
 
+import type { FlowVariable } from "@/utils/flow-variables"
+
 // Stable empty arrays to avoid creating new references on every render
 const EMPTY_STRINGS: string[] = []
+const EMPTY_FLOW_VARS: FlowVariable[] = []
 const EMPTY_KEYWORDS: string[] = []
 
 /**
@@ -57,6 +60,7 @@ export function injectNodeCallbacks(
   }
 
   const flowVariables = allNodes ? collectFlowVariables(allNodes) : EMPTY_STRINGS
+  const flowVariablesRich = allNodes ? collectFlowVariablesRich(allNodes) : EMPTY_FLOW_VARS
 
   return {
     ...node,
@@ -64,6 +68,7 @@ export function injectNodeCallbacks(
       ...data,
       id: node.id,
       flowVariables,
+      flowVariablesRich,
       onNodeUpdate: callbacks.updateNodeData,
       onAddButton: () => callbacks.addButtonToNode(node.id),
       onAddOption: () => callbacks.addButtonToNode(node.id),

@@ -4,7 +4,8 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
 import { Edit3 } from "lucide-react"
 import { InstagramIcon } from "@/components/platform-icons"
@@ -117,10 +118,10 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingMessage ? (
             <div ref={editingContainerRef} className="space-y-2 group/message">
-              <Textarea
+              <VariablePickerTextarea
                 value={editingMessageValue}
-                onChange={(e) => setEditingMessageValue(e.target.value)}
-                onBlur={(e) => finishEditingMessage(e)}
+                onValueChange={setEditingMessageValue}
+                onBlur={(e) => finishEditingMessage(e as any)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -133,6 +134,7 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
                 }`}
                 placeholder="Type your Instagram DM message..."
                 autoFocus
+                flowVariables={data.flowVariablesRich || []}
               />
 
               <div className="flex justify-between items-center">
@@ -167,7 +169,10 @@ export function InstagramDMNode({ data, selected }: { data: any; selected?: bool
               className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-pink-50/30 dark:hover:bg-pink-950/30 px-2 py-1.5 rounded border border-transparent hover:border-pink-100 dark:hover:border-pink-800 transition-colors"
               onClick={startEditingMessage}
             >
-              {data.text || "Type your Instagram DM message..."}
+              <VariableHighlightText
+                text={data.text || "Type your Instagram DM message..."}
+                flowVariables={data.flowVariables || []}
+              />
             </div>
           )}
         </CardContent>

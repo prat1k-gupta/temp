@@ -4,9 +4,10 @@ import { Handle, Position } from "@xyflow/react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit3, Wand2, ArrowRight, X, Check } from "lucide-react"
+import { Plus, Edit3, ArrowRight, X, Check } from "lucide-react"
 import { WebIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useState, useEffect, useRef } from "react"
@@ -246,10 +247,10 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
           {isEditingQuestion ? (
             <div ref={editingContainerRef} className="space-y-2 group/question">
-              <Textarea
+              <VariablePickerTextarea
                 value={editingQuestionValue}
-                onChange={(e) => setEditingQuestionValue(e.target.value)}
-                onBlur={(e) => finishEditingQuestion(e)}
+                onValueChange={setEditingQuestionValue}
+                onBlur={(e) => finishEditingQuestion(e as any)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -262,6 +263,8 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
                 }`}
                 placeholder={nodeLimits.question?.placeholder || "Enter your question..."}
                 autoFocus
+                flowVariables={data.flowVariablesRich || []}
+                excludeVariable={data.storeAs || undefined}
               />
               
               <div className="flex justify-between items-center">
@@ -296,7 +299,10 @@ export function WebQuestionNode({ data, selected }: { data: any; selected?: bool
               className="text-sm text-muted-foreground line-clamp-3 cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/10 px-2 py-1.5 rounded border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors"
               onClick={startEditingQuestion}
             >
-              {data.question || "Enter your question..."}
+              <VariableHighlightText
+                text={data.question || "Enter your question..."}
+                flowVariables={data.flowVariables || []}
+              />
             </div>
           )}
 

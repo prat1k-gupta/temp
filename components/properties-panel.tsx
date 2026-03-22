@@ -4,6 +4,8 @@ import type { Node } from "@xyflow/react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -52,7 +54,7 @@ import { useSortable } from "@dnd-kit/sortable"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
 import { createButtonData, createOptionData } from "@/utils"
-import { collectFlowVariables } from "@/utils/flow-variables"
+import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
@@ -496,7 +498,13 @@ export function PropertiesPanel({
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
-  
+
+  // Compute flow variables from all nodes (selectedNode.data may not have injected flowVariablesRich)
+  const flowVariablesRich = useMemo(
+    () => collectFlowVariablesRich(allNodes),
+    [allNodes]
+  )
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -887,34 +895,36 @@ export function PropertiesPanel({
                     selectedNode.type === "instagramDM" || 
                     selectedNode.type === "instagramStory") ? "Message Text" : "Question Text"}
                 </Label>
-                <Textarea
+                <VariablePickerTextarea
                   id="question-text"
-                  value={(selectedNode.type === "whatsappMessage" || 
-                          selectedNode.type === "instagramDM" || 
-                          selectedNode.type === "instagramStory") 
-                          ? (selectedNode.data.text || "") 
+                  value={(selectedNode.type === "whatsappMessage" ||
+                          selectedNode.type === "instagramDM" ||
+                          selectedNode.type === "instagramStory")
+                          ? (selectedNode.data.text || "")
                           : (selectedNode.data.question || "")}
-                  onChange={(e) => {
-                    if (selectedNode.type === "whatsappMessage" || 
-                        selectedNode.type === "instagramDM" || 
+                  onValueChange={(val) => {
+                    if (selectedNode.type === "whatsappMessage" ||
+                        selectedNode.type === "instagramDM" ||
                         selectedNode.type === "instagramStory") {
-                      handleTextChange(e.target.value)
+                      handleTextChange(val)
                     } else {
-                      handleQuestionChange(e.target.value)
+                      handleQuestionChange(val)
                     }
                   }}
-                  placeholder={(selectedNode.type === "whatsappMessage" || 
-                               selectedNode.type === "instagramDM" || 
-                               selectedNode.type === "instagramStory") 
+                  placeholder={(selectedNode.type === "whatsappMessage" ||
+                               selectedNode.type === "instagramDM" ||
+                               selectedNode.type === "instagramStory")
                                ? "Enter your message..." : "Enter your question..."}
                   className={`mt-2 min-h-[80px] ${
-                    isOverLimit((selectedNode.type === "whatsappMessage" || 
-                                selectedNode.type === "instagramDM" || 
-                                selectedNode.type === "instagramStory") 
-                                ? (selectedNode.data.text || "") 
+                    isOverLimit((selectedNode.type === "whatsappMessage" ||
+                                selectedNode.type === "instagramDM" ||
+                                selectedNode.type === "instagramStory")
+                                ? (selectedNode.data.text || "")
                                 : (selectedNode.data.question || ""), "question") ? "border-destructive" : ""
                   }`}
                   rows={3}
+                  flowVariables={flowVariablesRich}
+                  excludeVariable={selectedNode.data.storeAs || undefined}
                 />
                 <div className="flex justify-between items-center mt-2">
                   <span
@@ -1130,18 +1140,18 @@ export function PropertiesPanel({
                       {/* Error Message */}
                       <div>
                         <Label htmlFor="validation-error" className="text-sm">Error Message</Label>
-                        <Textarea
+                        <VariablePickerTextarea
                           id="validation-error"
                           value={nodeValidation.errorMessage || ""}
-                          onChange={(e) =>
+                          onValueChange={(val) =>
                             onNodeUpdate(selectedNode.id, {
                               ...selectedNode.data,
-                              validation: { ...nodeValidation, errorMessage: e.target.value },
+                              validation: { ...nodeValidation, errorMessage: val },
                             })
                           }
                           placeholder={preset.errorMessage || "Please enter a valid response"}
                           className="mt-1 min-h-[60px]"
-                          rows={2}
+                          flowVariables={flowVariablesRich}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
                           Leave blank to use the default message.
@@ -1632,18 +1642,18 @@ export function PropertiesPanel({
                           <Label htmlFor="tracking-message" className="text-sm mb-2 block">
                             Message Template
                           </Label>
-                          <Textarea
+                          <VariablePickerTextarea
                             id="tracking-message"
                             value={message}
-                            onChange={(e) => 
+                            onValueChange={(val) =>
                               onNodeUpdate(selectedNode.id, {
                                 ...selectedNode.data,
-                                message: e.target.value
+                                message: val
                               })
                             }
                             placeholder="Use variables: {{name}}, {{product}}, {{delivery}}, {{tracking}}"
-                            className="min-h-[120px] resize-none font-mono text-xs"
-                            rows={6}
+                            className="min-h-[120px] font-mono text-xs"
+                            flowVariables={flowVariablesRich}
                           />
                           <p className="text-xs text-muted-foreground mt-1">
                             Use double curly braces for variables: <code className="text-[10px] bg-muted px-1 rounded">{"{{variable_name}}"}</code>
@@ -1958,12 +1968,13 @@ export function PropertiesPanel({
                 <Label htmlFor="api-url" className="text-sm font-medium">
                   URL
                 </Label>
-                <Input
+                <VariablePickerTextarea
                   id="api-url"
                   value={selectedNode.data.url || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, url: e.target.value })}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, url: val })}
                   placeholder="https://api.example.com/endpoint"
-                  className="mt-2 font-mono text-xs"
+                  className="mt-2 font-mono text-xs min-h-[36px]"
+                  flowVariables={flowVariablesRich}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values
@@ -2011,15 +2022,17 @@ export function PropertiesPanel({
                         placeholder="Header name"
                         className="flex-1 text-xs font-mono"
                       />
-                      <Input
-                        value={value as string}
-                        onChange={(e) => {
+                      <VariablePickerTextarea
+                        value={(value as string) || ""}
+                        onValueChange={(val) => {
                           const headers = { ...(selectedNode.data.headers || {}) }
-                          headers[key] = e.target.value
+                          headers[key] = val
                           onNodeUpdate(selectedNode.id, { ...selectedNode.data, headers })
                         }}
                         placeholder="Value"
-                        className="flex-1 text-xs font-mono"
+                        className="flex-1 text-xs font-mono min-h-[36px]"
+                        flowVariables={flowVariablesRich}
+                        showVariableButton={false}
                       />
                       <Button
                         variant="ghost"
@@ -2058,13 +2071,13 @@ export function PropertiesPanel({
                     <Label htmlFor="api-body" className="text-sm font-medium">
                       Request Body
                     </Label>
-                    <Textarea
+                    <VariablePickerTextarea
                       id="api-body"
                       value={selectedNode.data.body || ""}
-                      onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, body: e.target.value })}
+                      onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, body: val })}
                       placeholder='{"key": "{{variable}}"}'
                       className="mt-2 min-h-[80px] font-mono text-xs"
-                      rows={4}
+                      flowVariables={flowVariablesRich}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values
@@ -2143,13 +2156,13 @@ export function PropertiesPanel({
                 <Label htmlFor="api-fallback" className="text-sm font-medium">
                   Fallback Message
                 </Label>
-                <Textarea
+                <VariablePickerTextarea
                   id="api-fallback"
                   value={selectedNode.data.fallbackMessage || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, fallbackMessage: e.target.value })}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, fallbackMessage: val })}
                   placeholder="Message to send if API call fails..."
                   className="mt-2 min-h-[60px]"
-                  rows={2}
+                  flowVariables={flowVariablesRich}
                 />
               </div>
 
@@ -2158,13 +2171,13 @@ export function PropertiesPanel({
                 <Label htmlFor="api-message" className="text-sm font-medium">
                   Response Message
                 </Label>
-                <Textarea
+                <VariablePickerTextarea
                   id="api-message"
                   value={selectedNode.data.message || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, message: e.target.value })}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, message: val })}
                   placeholder="Message with {{mapped_variable}} to send after API call..."
                   className="mt-2 min-h-[60px]"
-                  rows={2}
+                  flowVariables={flowVariablesRich}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Use mapped variables with <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> syntax
@@ -2241,13 +2254,13 @@ export function PropertiesPanel({
                 <Label htmlFor="transfer-notes" className="text-sm font-medium">
                   Agent Notes
                 </Label>
-                <Textarea
+                <VariablePickerTextarea
                   id="transfer-notes"
                   value={selectedNode.data.notes || ""}
-                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, notes: e.target.value })}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, notes: val })}
                   placeholder="Notes for the receiving agent... Use {{variable}} for context."
                   className="mt-2 min-h-[80px]"
-                  rows={3}
+                  flowVariables={flowVariablesRich}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic context
@@ -2381,9 +2394,10 @@ export function PropertiesPanel({
                       )}
                     </div>
                     {selectedNode.data.bodyPreview && (
-                      <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap">
-                        {selectedNode.data.bodyPreview}
-                      </p>
+                      <VariableHighlightText
+                        text={selectedNode.data.bodyPreview}
+                        className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap"
+                      />
                     )}
                   </div>
 
@@ -2415,8 +2429,8 @@ export function PropertiesPanel({
                     )}
                     {(selectedNode.data.parameterMappings || []).map((mapping: any, idx: number) => (
                       <div key={idx} className="flex items-center gap-2 mb-2">
-                        <div className="w-16 text-center font-mono text-xs bg-muted rounded px-1.5 py-1.5 text-muted-foreground shrink-0">
-                          {`{{${mapping.templateVar}}}`}
+                        <div className="shrink-0 font-mono text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-1">
+                          {mapping.templateVar}
                         </div>
                         <span className="text-xs text-muted-foreground">=</span>
                         <Input
@@ -2426,8 +2440,8 @@ export function PropertiesPanel({
                             mappings[idx] = { ...mappings[idx], flowValue: e.target.value }
                             onNodeUpdate(selectedNode.id, { ...selectedNode.data, parameterMappings: mappings })
                           }}
-                          placeholder="{{customer_name}} or literal"
-                          className="flex-1 text-xs"
+                          placeholder={`{{${mapping.templateVar}}}`}
+                          className="flex-1 text-xs font-mono"
                         />
                         <Button
                           variant="ghost"
@@ -2442,8 +2456,8 @@ export function PropertiesPanel({
                         </Button>
                       </div>
                     ))}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Map template variables to flow values. Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values.
+                    <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+                      Leave empty if the variable name matches a session variable (e.g. <code className="bg-muted px-1 rounded">first_name</code> resolves from session automatically). Only map when names differ.
                     </p>
                   </div>
                 </>

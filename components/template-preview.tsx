@@ -1,6 +1,7 @@
 "use client"
 
 import { ExternalLink, Copy, Phone } from "lucide-react"
+import { VariableHighlightText } from "@/components/variable-highlight-text"
 
 interface TemplateButton {
   type: "quick_reply" | "url" | "phone_number" | "copy_code"
@@ -19,11 +20,6 @@ interface TemplatePreviewProps {
 }
 
 export function TemplatePreview({ headerType, headerContent, body, footer, buttons }: TemplatePreviewProps) {
-  const highlightVariables = (text: string) => {
-    return text.replace(/\{\{(\d+|[a-zA-Z_]+)\}\}/g, (match) => {
-      return `<span class="bg-[#00a884]/20 text-[#00a884] rounded px-0.5 font-medium">${match}</span>`
-    })
-  }
 
   return (
     <div className="w-[320px] mx-auto">
@@ -49,9 +45,9 @@ export function TemplatePreview({ headerType, headerContent, body, footer, butto
               {headerType && headerType !== "none" && (
                 <div className="px-3 pt-2">
                   {headerType === "text" && headerContent && (
-                    <p
+                    <VariableHighlightText
+                      text={headerContent}
                       className="text-sm font-bold text-gray-900 dark:text-gray-100"
-                      dangerouslySetInnerHTML={{ __html: highlightVariables(headerContent) }}
                     />
                   )}
                   {headerType === "image" && (
@@ -74,10 +70,14 @@ export function TemplatePreview({ headerType, headerContent, body, footer, butto
 
               {/* Body */}
               <div className="px-3 py-2">
-                <p
-                  className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: body ? highlightVariables(body) : '<span class="text-gray-400">Template body text...</span>' }}
-                />
+                {body ? (
+                  <VariableHighlightText
+                    text={body}
+                    className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed"
+                  />
+                ) : (
+                  <span className="text-sm text-gray-400">Template body text...</span>
+                )}
               </div>
 
               {/* Footer */}
@@ -97,14 +97,13 @@ export function TemplatePreview({ headerType, headerContent, body, footer, butto
             {buttons && buttons.length > 0 && (
               <div className="mt-1 space-y-0.5">
                 {buttons.map((btn, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-white dark:bg-zinc-700 rounded-lg shadow-sm px-3 py-2 flex items-center justify-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-600"
-                  >
-                    {btn.type === "url" && <ExternalLink className="w-3.5 h-3.5 text-[#00a884]" />}
-                    {btn.type === "phone_number" && <Phone className="w-3.5 h-3.5 text-[#00a884]" />}
-                    {btn.type === "copy_code" && <Copy className="w-3.5 h-3.5 text-[#00a884]" />}
-                    <span className="text-sm text-[#00a884] font-medium">{btn.text || `Button ${idx + 1}`}</span>
+                  <div key={idx}>
+                    <div className="bg-white dark:bg-zinc-700 rounded-lg shadow-sm px-3 py-2 flex items-center justify-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-600">
+                      {btn.type === "url" && <ExternalLink className="w-3.5 h-3.5 text-[#00a884]" />}
+                      {btn.type === "phone_number" && <Phone className="w-3.5 h-3.5 text-[#00a884]" />}
+                      {btn.type === "copy_code" && <Copy className="w-3.5 h-3.5 text-[#00a884]" />}
+                      <span className="text-sm text-[#00a884] font-medium">{btn.text || `Button ${idx + 1}`}</span>
+                    </div>
                   </div>
                 ))}
               </div>

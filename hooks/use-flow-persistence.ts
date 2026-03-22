@@ -234,6 +234,7 @@ export function useFlowPersistence({
                 triggerIds: latestFlow?.triggerIds ?? currentFlow?.triggerIds,
                 triggerKeywords: latestFlow?.triggerKeywords ?? currentFlow?.triggerKeywords,
                 publishedFlowId: latestFlow?.publishedFlowId ?? currentFlow?.publishedFlowId,
+                flowSlug: latestFlow?.flowSlug ?? currentFlow?.flowSlug,
                 waAccountId: latestFlow?.waAccountId ?? currentFlow?.waAccountId,
                 waPhoneNumber: latestFlow?.waPhoneNumber ?? currentFlow?.waPhoneNumber,
               }),

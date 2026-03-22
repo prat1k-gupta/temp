@@ -280,3 +280,92 @@
 .dark .properties-panel-scroll::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* Minimal scrollbar — hidden until hover, thin pill thumb */
+.scroll-minimal {
+  scrollbar-width: none;
+  overflow-y: auto;
+}
+
+.scroll-minimal:hover {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
+}
+
+.scroll-minimal::-webkit-scrollbar {
+  width: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.scroll-minimal:hover::-webkit-scrollbar {
+  opacity: 1;
+}
+
+.scroll-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-minimal::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.15);
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+}
+
+.scroll-minimal::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.3);
+}
+
+.dark .scroll-minimal::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.2);
+}
+
+.dark .scroll-minimal::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Validation error highlight on nodes */
+.react-flow__node.validation-error > div {
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5), 0 8px 24px rgba(245, 158, 11, 0.12) !important;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.4) 0%, rgba(254, 215, 170, 0.2) 100%) !important;
+  animation: validation-attention 2.5s ease-in-out infinite;
+  position: relative;
+}
+
+.dark .react-flow__node.validation-error > div {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(239, 68, 68, 0.05) 100%) !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4), 0 8px 24px rgba(245, 158, 11, 0.1) !important;
+}
+
+@keyframes validation-attention {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.5), 0 8px 24px rgba(245, 158, 11, 0.12); }
+  50% { box-shadow: 0 0 0 1.5px rgba(245, 158, 11, 0.6), 0 8px 32px rgba(245, 158, 11, 0.18); }
+}
+
+/* Lexical editor styles */
+.lexical-editor {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  outline: none;
+  position: relative;
+  cursor: text !important;
+}
+
+.lexical-editor * {
+  cursor: text !important;
+}
+
+.lexical-editor [contenteditable] {
+  outline: none;
+}
+
+.lexical-paragraph {
+  margin: 0;
+}
+
+.lexical-placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

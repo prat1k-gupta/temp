@@ -76,8 +76,8 @@ export function collectFlowVariables(nodes: Node[]): string[] {
     scanNode({ type: node.type, data })
 
     // Scan inside flowTemplate nodes
-    if (node.type === "flowTemplate" && Array.isArray(data.templateNodes)) {
-      for (const innerNode of data.templateNodes) {
+    if (node.type === "flowTemplate" && Array.isArray(data.internalNodes)) {
+      for (const innerNode of data.internalNodes) {
         scanNode({ type: innerNode.type, data: innerNode.data || {} })
       }
     }
@@ -171,9 +171,9 @@ export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
     scanNode({ type: node.type, data })
 
     // Scan inside flowTemplate nodes for their internal storable nodes
-    if (node.type === "flowTemplate" && Array.isArray(data.templateNodes)) {
+    if (node.type === "flowTemplate" && Array.isArray(data.internalNodes)) {
       const templateLabel = data.label || data.templateName || "Template"
-      for (const innerNode of data.templateNodes) {
+      for (const innerNode of data.internalNodes) {
         scanNode({ type: innerNode.type, data: innerNode.data || {} }, templateLabel)
       }
     }

@@ -507,12 +507,16 @@ export function convertToFsWhatsApp(
         )
         // Store all template buttons (with types) so the processor knows
         // the full button layout for correct Meta API indexing
-        const allButtons = (data.buttons || []) as Array<{ id?: string; type: string; text: string }>
+        const allButtons = (data.buttons || []) as Array<{ id?: string; type: string; text: string; url?: string }>
         step.input_config = {
           template_name: data.templateName || "",
           language: data.language || "en",
           body_parameters: bodyParams,
-          template_buttons: allButtons.map((b) => ({ type: b.type, text: b.text })),
+          template_buttons: allButtons.map((b) => ({
+            type: b.type,
+            text: b.text,
+            ...(b.url ? { url: b.url } : {}),
+          })),
         }
 
         // Include ALL buttons with proper types for preview rendering
@@ -521,7 +525,7 @@ export function convertToFsWhatsApp(
           id: btn.text, // Use text as ID so it matches WhatsApp payload
           title: btn.text,
           type: btn.type === "url" ? "url" as const : "reply" as const,
-          ...(btn.type === "url" && { url: (btn as any).url || "" }),
+          ...(btn.type === "url" && { url: btn.url || "" }),
         }))
 
         // Quick reply buttons → conditional_next (flow branches by user response)

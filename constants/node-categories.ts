@@ -85,7 +85,7 @@ export interface NodeTemplateLimits {
    *
    * If omitted, inferred: maxConnections=0 → "none", otherwise "default".
    */
-  sourceHandles?: "none" | "default" | "buttons" | "options" | "conditions"
+  sourceHandles?: "none" | "default" | "buttons" | "options" | "conditions" | "api_result"
 }
 
 export interface NodeTemplateAI {
@@ -379,13 +379,16 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     description: "Make HTTP request and map response to variables",
     category: "action",
     platforms: ["whatsapp"],
-    limits: { maxConnections: 1 },
+    limits: { maxConnections: 2, multiOutput: true, sourceHandles: "api_result" },
     ai: {
       whenToUse: "When you need to make an HTTP request to an external API and map the response data to session variables.",
+      selectionRule: "Use for external API calls (CRM lookup, inventory check, coupon validation). Has dual output handles: 'success' and 'error' — always connect both.",
+      contentFields: "url, method (GET/POST/PUT/DELETE), headers, body (JSON string — can use {{variables}}), responseMapping ({varName: jsonPath}), fallbackMessage",
       bestPractices: [
         "Configure the URL with proper template variables",
         "Set up response mapping to capture relevant data",
         "Always provide a fallback message for errors",
+        "Connect both success and error handles to appropriate next steps",
       ],
       examples: [
         "Fetch user profile from CRM",
@@ -757,7 +760,7 @@ export function getAllCategories() {
  * Looks up NODE_TEMPLATES by base type (strips platform prefixes).
  * Returns the sourceHandles descriptor or infers from limits.
  */
-function resolveHandleDescriptor(nodeType: string): "none" | "default" | "buttons" | "options" | "conditions" {
+function resolveHandleDescriptor(nodeType: string): "none" | "default" | "buttons" | "options" | "conditions" | "api_result" {
   // Strip platform prefixes to find the base template
   const baseType = nodeType
     .replace(/^whatsapp/, "").replace(/^web/, "").replace(/^instagram/, "")
@@ -811,6 +814,9 @@ export function getNodeSourceHandles(nodeType: string, data: any): (string | und
       handles.push("else")
       return handles
     }
+
+    case "api_result":
+      return ["success", "error"]
 
     case "default":
     default:

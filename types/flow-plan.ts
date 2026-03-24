@@ -24,6 +24,8 @@ export const VALID_BASE_NODE_TYPES = [
   "retailStore",
   // Flow template
   "flowTemplate",
+  // Action
+  "apiFetch",
   // Flow terminator
   "flowComplete",
   // Integration
@@ -54,6 +56,13 @@ export interface NodeContent {
   message?: string
   storeAs?: string
   templateId?: string // for flowTemplate nodes — references a template by ID
+  // apiFetch fields
+  url?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  responseMapping?: Record<string, string>
+  fallbackMessage?: string
 }
 
 export interface NodeStep {
@@ -88,6 +97,13 @@ export const nodeContentSchema = z.object({
   message: z.string().optional(),
   storeAs: z.string().optional(),
   templateId: z.string().optional(),
+  // apiFetch fields
+  url: z.string().optional(),
+  method: z.string().optional(),
+  headers: z.record(z.string()).optional(),
+  body: z.string().optional(),
+  responseMapping: z.record(z.string()).optional(),
+  fallbackMessage: z.string().optional(),
 })
 
 export const nodeStepSchema = z.object({

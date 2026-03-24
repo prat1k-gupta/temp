@@ -697,3 +697,122 @@ describe("round-trip conversion", () => {
     expect(syncEdge!.target).toBeDefined()
   })
 })
+
+// --- API Fetch Success/Failure Handles ---
+
+describe("apiFetch success/failure handles", () => {
+  it("forward: emits conditional_next with success and error targets", () => {
+    const nodes = [
+      node("start", "start"),
+      node("api1", "apiFetch", {
+        url: "https://api.example.com",
+        method: "GET",
+        responseMapping: { name: "data.name" },
+        fallbackMessage: "API failed",
+      }),
+      node("msg-ok", "whatsappMessage", { text: "Success!" }),
+      node("msg-err", "whatsappMessage", { text: "Error occurred" }),
+    ]
+    const edges = [
+      edge("start", "api1"),
+      edge("api1", "msg-ok", "success"),
+      edge("api1", "msg-err", "error"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "API Test")
+    const apiStep = result.steps.find((s) => s.message_type === "api_fetch")
+
+    expect(apiStep).toBeDefined()
+    expect(apiStep!.conditional_next).toBeDefined()
+    expect(apiStep!.conditional_next!.success).toBeDefined()
+    expect(apiStep!.conditional_next!.error).toBeDefined()
+    expect(apiStep!.next_step).toBe(apiStep!.conditional_next!.success)
+  })
+
+  it("forward: only success connected, no error handle", () => {
+    const nodes = [
+      node("start", "start"),
+      node("api1", "apiFetch", { url: "https://api.example.com", method: "GET" }),
+      node("msg-ok", "whatsappMessage", { text: "OK" }),
+    ]
+    const edges = [
+      edge("start", "api1"),
+      edge("api1", "msg-ok", "success"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "API Test")
+    const apiStep = result.steps.find((s) => s.message_type === "api_fetch")
+
+    expect(apiStep).toBeDefined()
+    expect(apiStep!.conditional_next?.success).toBeDefined()
+    expect(apiStep!.conditional_next?.error).toBeUndefined()
+  })
+
+  it("forward: legacy single handle (backward compat)", () => {
+    const nodes = [
+      node("start", "start"),
+      node("api1", "apiFetch", { url: "https://api.example.com", method: "GET" }),
+      node("msg", "whatsappMessage", { text: "Next" }),
+    ]
+    // Old-style edge with no sourceHandle
+    const edges = [
+      edge("start", "api1"),
+      edge("api1", "msg"),
+    ]
+
+    const result = convertToFsWhatsApp(nodes, edges, "API Test")
+    const apiStep = result.steps.find((s) => s.message_type === "api_fetch")
+
+    expect(apiStep).toBeDefined()
+    // Legacy edge should be picked up as next_step via fallback
+    expect(apiStep!.next_step).toBeDefined()
+    expect(apiStep!.next_step).not.toBe("__complete__")
+  })
+
+  it("reverse: creates edges from conditional_next success/error", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "API Test",
+      steps: [
+        {
+          step_name: "api_step",
+          step_order: 1,
+          message_type: "api_fetch",
+          message: "",
+          input_type: "none",
+          api_config: {
+            url: "https://api.example.com",
+            method: "GET",
+            response_mapping: {},
+            fallback_message: "Failed",
+          },
+          conditional_next: {
+            success: "ok_step",
+            error: "err_step",
+          },
+        },
+        {
+          step_name: "ok_step",
+          step_order: 2,
+          message_type: "text",
+          message: "Success!",
+          input_type: "none",
+        },
+        {
+          step_name: "err_step",
+          step_order: 3,
+          message_type: "text",
+          message: "Error!",
+          input_type: "none",
+        },
+      ],
+    }
+
+    const { edges } = convertFromFsWhatsApp(flow)
+
+    const successEdge = edges.find((e) => e.sourceHandle === "success")
+    const errorEdge = edges.find((e) => e.sourceHandle === "error")
+
+    expect(successEdge).toBeDefined()
+    expect(errorEdge).toBeDefined()
+  })
+})

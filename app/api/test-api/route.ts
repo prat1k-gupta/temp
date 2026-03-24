@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // Replace {{variable}} placeholders with test values
     const processedUrl = replaceVariables(url, testVariables || {})
-    const processedBody = body ? replaceVariables(body, testVariables || {}) : undefined
+    const processedBody = body ? replaceVariablesJson(body, testVariables || {}) : undefined
     const processedHeaders: Record<string, string> = {}
     if (headers && typeof headers === "object") {
       for (const [key, value] of Object.entries(headers)) {
@@ -71,9 +71,36 @@ export async function POST(request: NextRequest) {
 }
 
 function replaceVariables(template: string, variables: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, varName) => {
-    return variables[varName] ?? `{{${varName}}}`
+  return template.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    const trimmed = varName.trim()
+    return variables[trimmed] ?? ""
   })
+}
+
+/**
+ * JSON-safe variable replacement. Two-pass approach:
+ * 1. "{{var}}" (fully quoted) → "escaped_value" (string)
+ * 2. Remaining {{var}} → raw value for numbers/booleans, plain text for mid-string vars
+ */
+function replaceVariablesJson(template: string, variables: Record<string, string>): string {
+  // Pass 1: replace "{{var}}" (adjacent quotes) with escaped string value
+  let result = template.replace(/"(\{\{[^}]+\}\})"/g, (_match, varExpr) => {
+    const varName = varExpr.slice(2, -2).trim()
+    const value = variables[varName] ?? ""
+    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+  })
+
+  // Pass 2: replace remaining {{var}} — plain text for mid-string, auto-type for bare values
+  result = result.replace(/\{\{([^}]+)\}\}/g, (_match, varName) => {
+    const trimmed = varName.trim()
+    const value = variables[trimmed] ?? ""
+    if (value === "true" || value === "false" || value === "null" || /^-?\d+(\.\d+)?$/.test(value)) {
+      return value || "null"
+    }
+    return value
+  })
+
+  return result
 }
 
 /**
@@ -114,6 +141,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "responseBody and responseMapping are required" }, { status: 400 })
     }
 
+    // responseMapping: {varName: jsonPath}
     const extracted: Record<string, any> = {}
     for (const [varName, jsonPath] of Object.entries(responseMapping)) {
       extracted[varName] = getNestedValue(responseBody, jsonPath as string)

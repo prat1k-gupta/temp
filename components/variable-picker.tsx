@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import type { FlowVariable } from "@/utils/flow-variables"
 import { cn } from "@/lib/utils"
-import { Variable, Globe, GitFork, Search, Plus } from "lucide-react"
+import { Variable, Globe, GitFork, Search, Plus, Zap } from "lucide-react"
+import { SYSTEM_VARIABLES } from "@/constants/system-variables"
 
 export interface CrossFlowVariable {
   flowName: string
@@ -129,12 +130,23 @@ export function VariablePicker({
         .map((v) => ({ ref: `flow.${cf.flowSlug}.${v}`, label: v, sublabel: cf.flowName, badge: undefined as string | undefined }))
     )
 
-  const currentItems = activeTab === "flow" ? flowItems : activeTab === "global" ? globalItems : crossFlowItems
+  // System variables — always available in every flow session
+  const systemVars = SYSTEM_VARIABLES.map((v) => ({
+    ref: v.key,
+    label: v.label,
+    sublabel: v.description,
+    badge: undefined as string | undefined,
+  }))
+  const systemItems = systemVars.filter((v) => !filterQuery || v.label.toLowerCase().includes(filterQuery.toLowerCase()))
+
+  const currentItems = activeTab === "flow" ? flowItems : activeTab === "global" ? globalItems : activeTab === "system" ? systemItems : crossFlowItems
   const colorClass = activeTab === "flow"
     ? "text-indigo-600 dark:text-indigo-400"
     : activeTab === "global"
       ? "text-emerald-600 dark:text-emerald-400"
-      : "text-purple-600 dark:text-purple-400"
+      : activeTab === "system"
+        ? "text-sky-600 dark:text-sky-400"
+        : "text-purple-600 dark:text-purple-400"
 
   // Handle search input changes: auto-switch tab on prefix + reset selection
   const handleSearchChange = (newQuery: string) => {
@@ -177,7 +189,7 @@ export function VariablePicker({
         onClose()
       } else if (e.key === "Tab") {
         e.preventDefault()
-        const tabs = ["flow", ...(globalKeys.length > 0 ? ["global"] : []), ...(hasCrossFlow ? ["cross-flow"] : [])]
+        const tabs = ["flow", ...(globalKeys.length > 0 ? ["global"] : []), ...(hasCrossFlow ? ["cross-flow"] : []), "system"]
         const nextIdx = (tabs.indexOf(activeTab) + 1) % tabs.length
         handleTabChange(tabs[nextIdx])
       }
@@ -237,10 +249,10 @@ export function VariablePicker({
       </div>
 
       {/* Compact tab bar */}
-      <div className="flex items-center gap-0.5 px-1.5 pb-1">
+      <div className="flex items-center gap-0 px-1 pb-1 overflow-x-auto">
         <button
           className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer",
+            "flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer shrink-0",
             activeTab === "flow"
               ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -252,7 +264,7 @@ export function VariablePicker({
         </button>
         <button
           className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer",
+            "flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer shrink-0",
             activeTab === "global"
               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -265,7 +277,7 @@ export function VariablePicker({
         {hasCrossFlow && (
           <button
             className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer",
+              "flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer shrink-0",
               activeTab === "cross-flow"
                 ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -276,6 +288,18 @@ export function VariablePicker({
             Flows
           </button>
         )}
+        <button
+          className={cn(
+            "flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors cursor-pointer shrink-0",
+            activeTab === "system"
+              ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          )}
+          onMouseDown={(e) => { e.preventDefault(); handleTabChange("system") }}
+        >
+          <Zap className="w-3 h-3" />
+          System
+        </button>
       </div>
 
       {/* Divider */}
@@ -299,7 +323,7 @@ export function VariablePicker({
             </div>
           ) : (
             <div className="text-[10px] text-muted-foreground/60 text-center py-4">
-              {activeTab === "flow" ? "No variables — type to create" : activeTab === "global" ? "No global variables" : "No cross-flow variables"}
+              {activeTab === "flow" ? "No variables — type to create" : activeTab === "global" ? "No global variables" : activeTab === "system" ? "No system variables" : "No cross-flow variables"}
             </div>
           )
         ) : (

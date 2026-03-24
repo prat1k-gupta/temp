@@ -10,6 +10,22 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
  * Migrate old super nodes (name, email, dob, address) to flowTemplate nodes.
  * Wraps the super node data into internalNodes within a flowTemplate node.
  */
+// Migrate old apiFetch edges from unnamed handle to "success" handle
+function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; migrated: boolean } {
+  const apiFetchIds = new Set(nodes.filter((n) => n.type === "apiFetch").map((n) => n.id))
+  if (apiFetchIds.size === 0) return { edges, migrated: false }
+
+  let migrated = false
+  const newEdges = edges.map((edge) => {
+    if (apiFetchIds.has(edge.source) && (!edge.sourceHandle || edge.sourceHandle === "")) {
+      migrated = true
+      return { ...edge, sourceHandle: "success" }
+    }
+    return edge
+  })
+  return { edges: newEdges, migrated }
+}
+
 function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated: boolean } {
   const SUPER_NODE_TYPES = new Set(["name", "email", "dob", "address"])
   let migrated = false
@@ -184,6 +200,13 @@ export function useFlowPersistence({
             if (migrated) {
               flowData.nodes = migratedNodes
               updateFlow(flowId, { nodes: migratedNodes })
+            }
+
+            // Migrate old apiFetch edges (unnamed handle → "success")
+            const { edges: migratedEdges, migrated: edgesMigrated } = migrateApiFetchEdges(flowData.nodes, flowData.edges)
+            if (edgesMigrated) {
+              flowData.edges = migratedEdges
+              updateFlow(flowId, { edges: migratedEdges })
             }
 
             setCurrentFlow(flowData)

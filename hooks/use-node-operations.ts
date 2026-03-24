@@ -518,16 +518,22 @@ export function useNodeOperations({
     [setNodes, nodes, withEditTracking, updateDraftChanges]
   )
 
-  // Custom onEdgesChange to handle condition node disconnection
+  // Custom onEdgesChange to handle condition node disconnection + change tracking
   const onEdgesChange = useCallback(
     (changes: any[]) => {
+      const hasRemoval = changes.some((c) => c.type === "remove")
+      if (hasRemoval) {
+        withEditTracking()
+      }
+
       changes.forEach((change) => {
         if (change.type === "remove") {
           const edgeToRemove = edges.find((e) => e.id === change.id)
           if (edgeToRemove) {
+            changeTracker.trackEdgeDelete(edgeToRemove.id, edgeToRemove.source, edgeToRemove.target)
+
             const targetNode = nodes.find((n) => n.id === edgeToRemove.target)
             if (targetNode?.type === "condition") {
-              console.log("[v0] Clearing connected node data from condition node")
               updateNodeData(edgeToRemove.target, {
                 connectedNode: null,
                 conditionRules: [],
@@ -538,7 +544,7 @@ export function useNodeOperations({
       })
       onEdgesChangeOriginal(changes)
     },
-    [edges, nodes, onEdgesChangeOriginal, updateNodeData]
+    [edges, nodes, onEdgesChangeOriginal, updateNodeData, withEditTracking]
   )
 
   const convertNodesToPlatform = useCallback(

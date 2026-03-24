@@ -18,7 +18,7 @@ import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
-import { isMultiOutputType, getBaseNodeType } from "./platform-helpers"
+import { isMultiOutputType, getFixedHandles, getBaseNodeType } from "./platform-helpers"
 import { autoStoreAs, collectFlowVariables } from "./flow-variables"
 
 // AI models sometimes output shorthand type names — normalize to canonical types
@@ -360,25 +360,44 @@ export function buildEditFlowFromPlan(
         const lastNodeIsMultiOutput = lastNode?.type ? isMultiOutputType(lastNode.type) : false
 
         if (lastNodeIsMultiOutput && lastNode) {
-          const btns = (lastNode.data?.buttons as ButtonData[] | undefined) || []
-          const opts = (lastNode.data?.options as OptionData[] | undefined) || []
-          const handles = btns.length > 0 ? btns : opts
+          const lastFixedHandles = getFixedHandles(lastNode.type || "")
           const occupied = new Set(
             [...existingEdges, ...newEdges]
               .filter(e => e.source === lastNodeId && e.sourceHandle)
               .map(e => e.sourceHandle!)
           )
-          for (let i = 0; i < handles.length; i++) {
-            const handleId = handles[i]?.id || `button-${i}`
-            if (!occupied.has(handleId)) {
-              newEdges.push({
-                id: `e-${lastNodeId}-${chain.connectTo}-btn${i}`,
-                source: lastNodeId,
-                sourceHandle: handleId,
-                target: chain.connectTo,
-                type: "default",
-                style: { stroke: "#6366f1", strokeWidth: 2 },
-              } as Edge)
+
+          if (lastFixedHandles) {
+            // Fixed-handle nodes (apiFetch): use fixed handle IDs
+            for (const handle of lastFixedHandles) {
+              if (!occupied.has(handle)) {
+                newEdges.push({
+                  id: `e-${lastNodeId}-${chain.connectTo}-${handle}`,
+                  source: lastNodeId,
+                  sourceHandle: handle,
+                  target: chain.connectTo,
+                  type: "default",
+                  style: { stroke: "#6366f1", strokeWidth: 2 },
+                } as Edge)
+              }
+            }
+          } else {
+            // Button/option nodes: use dynamic button/option IDs
+            const btns = (lastNode.data?.buttons as ButtonData[] | undefined) || []
+            const opts = (lastNode.data?.options as OptionData[] | undefined) || []
+            const handles = btns.length > 0 ? btns : opts
+            for (let i = 0; i < handles.length; i++) {
+              const handleId = handles[i]?.id || `button-${i}`
+              if (!occupied.has(handleId)) {
+                newEdges.push({
+                  id: `e-${lastNodeId}-${chain.connectTo}-btn${i}`,
+                  source: lastNodeId,
+                  sourceHandle: handleId,
+                  target: chain.connectTo,
+                  type: "default",
+                  style: { stroke: "#6366f1", strokeWidth: 2 },
+                } as Edge)
+              }
             }
           }
         } else {
@@ -655,11 +674,25 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
     }
     for (const endpointId of ctx.branchEndpoints) {
       if (endpointId === ctx.lastMultiOutputNodeId) continue
-      // If the branch endpoint is a multi-output node (quickReply/list),
-      // create one edge per button/option handle so all buttons connect
+      // If the branch endpoint is a multi-output node, create edges for all handles
       const endpointNode = ctx.nodes.find(n => n.id === endpointId)
       const endpointType = endpointNode?.type || ""
-      if (endpointNode && isMultiOutputType(endpointType)) {
+      const endpointFixedHandles = endpointNode?.type ? getFixedHandles(endpointNode.type) : null
+
+      if (endpointFixedHandles) {
+        // Fixed-handle nodes (apiFetch): use fixed handle IDs
+        for (const handle of endpointFixedHandles) {
+          ctx.edges.push({
+            id: `e-${endpointId}-${nodeId}-${handle}`,
+            source: endpointId,
+            sourceHandle: handle,
+            target: nodeId,
+            type: "default",
+            style: { stroke: "#6366f1", strokeWidth: 2 },
+          } as Edge)
+        }
+      } else if (endpointNode && isMultiOutputType(endpointType)) {
+        // Button/option nodes: use dynamic button/option IDs
         const btns = (endpointNode.data?.buttons as ButtonData[] | undefined) || []
         const opts = (endpointNode.data?.options as OptionData[] | undefined) || []
         const handles = btns.length > 0 ? btns : opts
@@ -690,21 +723,38 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
     ctx.maxBranchX = 0
 
   } else if (ctx.previousNodeId === ctx.lastMultiOutputNodeId) {
-    // DIRECT CONVERGENCE: no branches were created, all buttons → same node
+    // DIRECT CONVERGENCE: no branches were created, all outputs → same node
     const parentNode = ctx.nodes.find(n => n.id === ctx.lastMultiOutputNodeId)
-    const buttons = (parentNode?.data?.buttons as ButtonData[] | undefined) || []
-    const options = (parentNode?.data?.options as OptionData[] | undefined) || []
-    const handleCount = buttons.length || options.length || 1
-    for (let i = 0; i < handleCount; i++) {
-      const handleId = buttons[i]?.id || options[i]?.id || `button-${i}`
-      ctx.edges.push({
-        id: `e-${ctx.lastMultiOutputNodeId}-${nodeId}-btn${i}`,
-        source: ctx.lastMultiOutputNodeId,
-        sourceHandle: handleId,
-        target: nodeId,
-        type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
-      } as Edge)
+    const fixedHandles = parentNode?.type ? getFixedHandles(parentNode.type) : null
+
+    if (fixedHandles) {
+      // Fixed-handle nodes (apiFetch): use fixed handle IDs
+      for (let i = 0; i < fixedHandles.length; i++) {
+        ctx.edges.push({
+          id: `e-${ctx.lastMultiOutputNodeId}-${nodeId}-${fixedHandles[i]}`,
+          source: ctx.lastMultiOutputNodeId,
+          sourceHandle: fixedHandles[i],
+          target: nodeId,
+          type: "default",
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        } as Edge)
+      }
+    } else {
+      // Button/option nodes: use dynamic button/option IDs
+      const buttons = (parentNode?.data?.buttons as ButtonData[] | undefined) || []
+      const options = (parentNode?.data?.options as OptionData[] | undefined) || []
+      const handleCount = buttons.length || options.length || 1
+      for (let i = 0; i < handleCount; i++) {
+        const handleId = buttons[i]?.id || options[i]?.id || `button-${i}`
+        ctx.edges.push({
+          id: `e-${ctx.lastMultiOutputNodeId}-${nodeId}-btn${i}`,
+          source: ctx.lastMultiOutputNodeId,
+          sourceHandle: handleId,
+          target: nodeId,
+          type: "default",
+          style: { stroke: "#6366f1", strokeWidth: 2 },
+        } as Edge)
+      }
     }
     // Reset multi-output state
     ctx.lastMultiOutputNodeId = null
@@ -792,12 +842,20 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     ctx.nodes.push(node)
     ctx.nodeOrder.push(nodeId)
 
-    // Edge from parent with sourceHandle (use stable button ID if available)
-    const parentButtons = (parentNode.data?.buttons as ButtonData[] | undefined) || []
-    const parentOptions = (parentNode.data?.options as OptionData[] | undefined) || []
-    const handleId = parentButtons[step.buttonIndex]?.id
-      || parentOptions[step.buttonIndex]?.id
-      || `button-${step.buttonIndex}`
+    // Edge from parent with sourceHandle
+    // Fixed-handle nodes (apiFetch): use fixed handle IDs (e.g. "success"/"error")
+    // Button/option nodes: use stable button/option ID if available
+    const fixedHandles = getFixedHandles(parentNode.type || "")
+    let handleId: string
+    if (fixedHandles && step.buttonIndex < fixedHandles.length) {
+      handleId = fixedHandles[step.buttonIndex]
+    } else {
+      const parentButtons = (parentNode.data?.buttons as ButtonData[] | undefined) || []
+      const parentOptions = (parentNode.data?.options as OptionData[] | undefined) || []
+      handleId = parentButtons[step.buttonIndex]?.id
+        || parentOptions[step.buttonIndex]?.id
+        || `button-${step.buttonIndex}`
+    }
     const edgeId = `e-${parentId}-${nodeId}-btn${step.buttonIndex}`
     ctx.edges.push({
       id: edgeId,
@@ -886,6 +944,14 @@ export function contentToNodeData(
       (text, i): OptionData => createOptionData(text, i)
     )
   }
+
+  // apiFetch fields
+  if (content.url) data.url = content.url
+  if (content.method) data.method = content.method
+  if (content.headers) data.headers = content.headers
+  if (content.body) data.body = content.body
+  if (content.responseMapping) data.responseMapping = content.responseMapping
+  if (content.fallbackMessage) data.fallbackMessage = content.fallbackMessage
 
   return data
 }

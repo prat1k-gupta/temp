@@ -284,6 +284,84 @@ function SortableOptionItem({
   )
 }
 
+// --- Response Mapping Editor (array-based to avoid key collision bugs) ---
+
+function ResponseMappingEditor({
+  mapping,
+  onChange,
+}: {
+  mapping: Record<string, string>
+  onChange: (mapping: Record<string, string>) => void
+}) {
+  // Convert object to array for stable editing (no key collisions)
+  const [rows, setRows] = useState<Array<{ varName: string; jsonPath: string }>>(() =>
+    Object.entries(mapping).map(([varName, jsonPath]) => ({ varName, jsonPath: String(jsonPath) }))
+  )
+
+  // Sync rows when mapping changes externally (e.g. node selection change)
+  const mappingKey = JSON.stringify(mapping)
+  useEffect(() => {
+    setRows(Object.entries(mapping).map(([varName, jsonPath]) => ({ varName, jsonPath: String(jsonPath) })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappingKey])
+
+  const commitRows = (updated: typeof rows) => {
+    setRows(updated)
+    const obj: Record<string, string> = {}
+    for (const row of updated) {
+      if (row.varName || row.jsonPath) obj[row.varName] = row.jsonPath
+    }
+    onChange(obj)
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map((row, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <Input
+            value={row.varName}
+            onChange={(e) => {
+              const updated = [...rows]
+              updated[idx] = { ...updated[idx], varName: e.target.value }
+              commitRows(updated)
+            }}
+            placeholder="variable_name"
+            className="flex-1 text-xs font-mono"
+          />
+          <span className="text-xs text-muted-foreground">&larr;</span>
+          <Input
+            value={row.jsonPath}
+            onChange={(e) => {
+              const updated = [...rows]
+              updated[idx] = { ...updated[idx], jsonPath: e.target.value }
+              commitRows(updated)
+            }}
+            placeholder="data.field"
+            className="flex-1 text-xs font-mono"
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => commitRows(rows.filter((_, i) => i !== idx))}
+            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => commitRows([...rows, { varName: "", jsonPath: "" }])}
+        className="w-full cursor-pointer"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        Add Mapping
+      </Button>
+    </div>
+  )
+}
+
 // --- API Test Section (extracted for clarity) ---
 
 function ApiTestSection({
@@ -300,6 +378,7 @@ function ApiTestSection({
   responseMapping: Record<string, string>
 }) {
   const [testVars, setTestVars] = useState<Record<string, string>>({})
+  const [fetchedGlobals, setFetchedGlobals] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{
     status?: number
@@ -311,20 +390,55 @@ function ApiTestSection({
   } | null>(null)
   const [mappedValues, setMappedValues] = useState<Record<string, any> | null>(null)
 
-  // Extract {{variable}} placeholders from url, body, headers
+  // Extract {{variable}} placeholders from url, body, headers (supports dot notation)
   const templateVars = useMemo(() => {
     const vars = new Set<string>()
-    const regex = /\{\{(\w+)\}\}/g
+    const regex = /\{\{([^}]+)\}\}/g
     let match: RegExpExecArray | null
 
     for (const str of [url, body, ...Object.values(headers)]) {
       regex.lastIndex = 0
       while ((match = regex.exec(str)) !== null) {
-        vars.add(match[1])
+        vars.add(match[1].trim())
       }
     }
     return Array.from(vars)
   }, [url, body, headers])
+
+  // Fetch global variables once for auto-population
+  useEffect(() => {
+    const hasGlobalVars = templateVars.some((v) => v.startsWith("global."))
+    if (hasGlobalVars && Object.keys(fetchedGlobals).length === 0) {
+      fetch("/api/whatsapp/settings")
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data?.globalVariables) setFetchedGlobals(data.globalVariables)
+        })
+        .catch(() => {})
+    }
+  }, [templateVars, fetchedGlobals])
+
+  // Auto-populate system and global variables
+  useEffect(() => {
+    const autoVars: Record<string, string> = {}
+    for (const v of templateVars) {
+      if (testVars[v]) continue // don't overwrite user input
+      if (v === "system.phone_number") {
+        autoVars[v] = "919773722464"
+      } else if (v === "system.contact_name") {
+        autoVars[v] = "Test User"
+      } else if (v.startsWith("global.")) {
+        const key = v.slice(7)
+        if (fetchedGlobals[key]) {
+          autoVars[v] = String(fetchedGlobals[key])
+        }
+      }
+    }
+    if (Object.keys(autoVars).length > 0) {
+      setTestVars((prev) => ({ ...autoVars, ...prev }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateVars.join(","), fetchedGlobals])
 
   const runTest = async () => {
     if (!url) return
@@ -385,20 +499,32 @@ function ApiTestSection({
       {/* Test variable inputs */}
       {templateVars.length > 0 && (
         <div className="space-y-2 mb-3">
-          <p className="text-xs text-muted-foreground">Test values for variables:</p>
-          {templateVars.map((varName) => (
+          <p className="text-xs text-muted-foreground">Provide test values for variables:</p>
+          <p className="text-[10px] text-muted-foreground/70">
+            Tip: Use <code className="bg-muted px-1 rounded">{'"{{var}}"'}</code> in body for strings, <code className="bg-muted px-1 rounded">{'{{var}}'}</code> without quotes for numbers/booleans.
+          </p>
+          {templateVars.map((varName) => {
+            const isSystem = varName.startsWith("system.")
+            const isGlobal = varName.startsWith("global.")
+            const pillColor = isSystem
+              ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+              : isGlobal
+                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+            return (
             <div key={varName} className="flex items-center gap-2">
-              <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded min-w-[80px]">
-                {`{{${varName}}}`}
+              <code className={`text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ${pillColor}`}>
+                {varName}
               </code>
               <Input
                 value={testVars[varName] || ""}
                 onChange={(e) => setTestVars((prev) => ({ ...prev, [varName]: e.target.value }))}
-                placeholder={`test value for ${varName}`}
+                placeholder={isSystem || isGlobal ? `auto: ${testVars[varName] || ""}` : `test value for ${varName}`}
                 className="flex-1 text-xs h-7"
               />
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -2068,9 +2194,33 @@ export function PropertiesPanel({
                 <>
                   <Separator />
                   <div>
-                    <Label htmlFor="api-body" className="text-sm font-medium">
-                      Request Body
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="api-body" className="text-sm font-medium">
+                        Request Body
+                      </Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2"
+                        onClick={() => {
+                          const raw = selectedNode.data.body || ""
+                          // Collect vars with their surrounding quotes for faithful restoration
+                          const vars: string[] = []
+                          const stripped = raw.replace(/"?\{\{[^}]+\}\}"?/g, (m: string) => { vars.push(m); return '"__var__"' })
+                          try {
+                            const parsed = JSON.parse(stripped)
+                            const formatted = JSON.stringify(parsed, null, 2)
+                            let idx = 0
+                            const result = formatted.replace(/"__var__"/g, () => vars[idx++] || '""')
+                            onNodeUpdate(selectedNode.id, { ...selectedNode.data, body: result })
+                          } catch {
+                            // Can't format — invalid JSON even after stripping variables
+                          }
+                        }}
+                      >
+                        Format JSON
+                      </Button>
+                    </div>
                     <VariablePickerTextarea
                       id="api-body"
                       value={selectedNode.data.body || ""}
@@ -2079,8 +2229,17 @@ export function PropertiesPanel({
                       className="mt-2 min-h-[80px] font-mono text-xs"
                       flowVariables={flowVariablesRich}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Use <code className="text-[10px] bg-muted px-1 rounded">{"{{variable}}"}</code> for dynamic values
+                    {(() => {
+                      const raw = selectedNode.data.body || ""
+                      if (!raw.trim()) return null
+                      const stripped = raw.replace(/"?\{\{[^}]+\}\}"?/g, '"__var__"')
+                      try { JSON.parse(stripped); return null } catch (e: any) {
+                        const msg = e.message?.replace("JSON.parse: ", "").replace(" at line ", " at line ") || "Invalid JSON"
+                        return <p className="text-[10px] text-destructive mt-1">{msg}</p>
+                      }
+                    })()}
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Use <code className="bg-muted px-1 rounded">{'"{{var}}"'}</code> for strings, <code className="bg-muted px-1 rounded">{'{{var}}'}</code> for numbers/booleans
                     </p>
                   </div>
                 </>
@@ -2094,59 +2253,10 @@ export function PropertiesPanel({
                 <p className="text-xs text-muted-foreground mb-2">
                   Map JSON response paths to session variables
                 </p>
-                <div className="space-y-2">
-                  {Object.entries(selectedNode.data.responseMapping || {}).map(([varName, jsonPath], idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <Input
-                        value={varName}
-                        onChange={(e) => {
-                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
-                          const oldPath = mapping[varName]
-                          delete mapping[varName]
-                          mapping[e.target.value] = oldPath
-                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
-                        }}
-                        placeholder="variable_name"
-                        className="flex-1 text-xs font-mono"
-                      />
-                      <span className="text-xs text-muted-foreground">&larr;</span>
-                      <Input
-                        value={jsonPath as string}
-                        onChange={(e) => {
-                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
-                          mapping[varName] = e.target.value
-                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
-                        }}
-                        placeholder="data.field"
-                        className="flex-1 text-xs font-mono"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const mapping = { ...(selectedNode.data.responseMapping || {}) }
-                          delete mapping[varName]
-                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
-                        }}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const mapping = { ...(selectedNode.data.responseMapping || {}), "": "" }
-                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })
-                    }}
-                    className="w-full cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Mapping
-                  </Button>
-                </div>
+                <ResponseMappingEditor
+                  mapping={selectedNode.data.responseMapping || {}}
+                  onChange={(mapping) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, responseMapping: mapping })}
+                />
               </div>
 
               <Separator />

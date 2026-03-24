@@ -149,7 +149,7 @@ export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
       })
     }
 
-    // apiFetch nodes expose response mapping keys as variables
+    // apiFetch response mapping: {varName: jsonPath} — variable names are keys
     if (node.type === "apiFetch" && data.responseMapping) {
       for (const varName of Object.keys(data.responseMapping)) {
         if (varName.trim()) {
@@ -184,13 +184,10 @@ export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
 
 /**
  * Extracts all {{...}} variable references from text.
- * Returns the variable names (without the braces).
+ * Re-exports from the single source of truth in variable-resolver.ts.
  */
-export function extractVariableReferences(text: string): string[] {
-  const matches = text.match(/\{\{([^}]+)\}\}/g)
-  if (!matches) return []
-  return matches.map((m) => m.slice(2, -2).trim())
-}
+import { extractVariableRefs } from "@/utils/variable-resolver"
+export const extractVariableReferences = extractVariableRefs
 
 /**
  * Text fields on nodes that can contain {{variable}} references.
@@ -264,7 +261,7 @@ export function validateFlowVariables(
     if (allRefs.length === 0) continue
 
     const unknownVars = allRefs.filter((r) =>
-      !known.has(r) && !r.startsWith("global.") && !r.startsWith("flow.")
+      !known.has(r) && !r.startsWith("global.") && !r.startsWith("flow.") && !r.startsWith("system.")
     )
 
     if (unknownVars.length > 0) {

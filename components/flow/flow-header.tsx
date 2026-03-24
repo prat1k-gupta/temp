@@ -339,7 +339,7 @@ export function FlowHeader({
               disabled={(() => {
                 const hasChanges = hasActualChanges(nodes, edges, platform)
                 const changesCount = getChangesCount()
-                return !isEditMode || !hasChanges || changesCount === 0
+                return !isEditMode || (!hasChanges && changesCount === 0)
               })()}
               className="h-9 px-4 gap-2"
             >

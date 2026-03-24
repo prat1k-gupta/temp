@@ -162,7 +162,7 @@ export function VariablePickerTextarea({
       for (const v of cf.variables) known.add(`flow.${cf.flowSlug}.${v}`)
     }
     return refs.filter((r) =>
-      !known.has(r) && !r.startsWith("global.") && !r.startsWith("flow.")
+      !known.has(r) && !r.startsWith("global.") && !r.startsWith("flow.") && !r.startsWith("system.")
     )
   }, [value, filteredFlowVariables, globals, crossFlow, showUnknownWarnings])
 

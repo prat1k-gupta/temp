@@ -25,6 +25,8 @@ export function VariablePill({ displayName, varType, nodeKey }: VariablePillProp
           "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
         varType === "cross-flow" &&
           "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+        varType === "system" &&
+          "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
         varType === "unknown" &&
           "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
       )}

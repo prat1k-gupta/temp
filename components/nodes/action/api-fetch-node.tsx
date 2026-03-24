@@ -117,12 +117,27 @@ export function ApiFetchNode({ data, selected }: { data: any; selected?: boolean
           className="w-3 h-3 bg-[#1a365d] border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
-        <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium mr-2">Next</span>
+        {/* Success handle */}
+        <div className="px-4 pb-1 flex items-center justify-end gap-1.5">
+          <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Success</span>
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-[#1a365d] border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            id="success"
+            className="w-3 h-3 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            style={{ position: "relative", right: "auto", top: "auto", transform: "none" }}
+          />
+        </div>
+
+        {/* Error handle */}
+        <div className="px-4 pb-3 flex items-center justify-end gap-1.5">
+          <span className="text-[10px] text-red-500 dark:text-red-400 font-medium">Error</span>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="error"
+            className="w-3 h-3 bg-red-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            style={{ position: "relative", right: "auto", top: "auto", transform: "none" }}
           />
         </div>
       </Card>

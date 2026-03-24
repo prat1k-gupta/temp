@@ -30,7 +30,26 @@ export const getPlatformSpecificContent = (nodeType: string, platform: Platform)
  */
 export function isMultiOutputType(nodeType: string): boolean {
   const base = getBaseNodeType(nodeType)
-  return base === "quickReply" || base === "list"
+  return base === "quickReply" || base === "list" || base === "apiFetch"
+}
+
+/**
+ * Check whether a node type uses fixed output handles (e.g. "success"/"error")
+ * rather than dynamic button/option handles.
+ */
+export function isFixedHandleType(nodeType: string): boolean {
+  const base = getBaseNodeType(nodeType)
+  return base === "apiFetch"
+}
+
+/**
+ * Get the fixed output handle IDs for a node type.
+ * Returns null if the node type uses dynamic button/option handles.
+ */
+export function getFixedHandles(nodeType: string): string[] | null {
+  const base = getBaseNodeType(nodeType)
+  if (base === "apiFetch") return ["success", "error"]
+  return null
 }
 
 /**

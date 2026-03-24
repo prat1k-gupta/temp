@@ -109,6 +109,9 @@ export function useFlowAI({
     }
   }, [isEditMode, autoEnterEditMode, setNodes, setEdges, setPlatform, nodes, edges, platform])
 
+  // TODO: Re-enable auto-suggestions once AI is aware of new node types (tagging, API success/failure, WhatsApp Flows)
+  // Disabled temporarily — suggestions fire on every node selection and slow down editing
+  /*
   // Fetch suggestions when node is selected (debounced)
   useEffect(() => {
     if (selectedNode && selectedNode.type && selectedNode.type !== "start" && selectedNode.type !== "comment") {
@@ -151,6 +154,7 @@ export function useFlowAI({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id, selectedNode?.type, platform, currentFlow?.description])
+  */
 
   const onAddNode = useCallback(
     (nodeType: string, position?: { x: number; y: number }) => {

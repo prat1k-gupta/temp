@@ -34,7 +34,10 @@ export function VariableHighlightText({
       let varType = "unknown"
       let displayName = varName
 
-      if (flowVarSet.has(varName)) {
+      if (varName.startsWith("system.")) {
+        varType = "system"
+        displayName = varName.slice(7)
+      } else if (flowVarSet.has(varName)) {
         varType = "flow"
       } else if (flowVariables.length === 0 && !varName.startsWith("global.") && !varName.startsWith("flow.")) {
         // No flow context (e.g. template preview) — treat bare vars as session variables
@@ -80,6 +83,8 @@ export function VariableHighlightText({
             "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
           part.varType === "cross-flow" &&
             "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+          part.varType === "system" &&
+            "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
           part.varType === "unknown" &&
             "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
         )

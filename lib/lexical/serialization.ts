@@ -6,10 +6,16 @@ import type { FlowVariable } from "@/utils/flow-variables"
  * Determines display name and variable type for a variable reference.
  * Same logic as variable-highlight-text.tsx.
  */
+import { SYSTEM_VARIABLE_PREFIX } from "@/constants/system-variables"
+
 export function resolveVariableDisplay(
   ref: string,
   flowVariables: FlowVariable[]
 ): { displayName: string; varType: string } {
+  if (ref.startsWith(SYSTEM_VARIABLE_PREFIX)) {
+    return { displayName: ref.slice(SYSTEM_VARIABLE_PREFIX.length), varType: "system" }
+  }
+
   const flowVarNames = new Set(flowVariables.map((v) => v.name))
   for (const v of flowVariables) flowVarNames.add(`${v.name}_title`)
 

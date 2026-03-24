@@ -12,7 +12,7 @@ import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
-import { isMultiOutputType } from "@/utils/platform-helpers"
+import { isMultiOutputType, getFixedHandles } from "@/utils/platform-helpers"
 import { collectFlowVariables } from "@/utils/flow-variables"
 
 export interface GenerateFlowRequest {
@@ -148,6 +148,9 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     // Also try matching by option.id
     const byOptId = options.find(o => o.id === sourceHandle)
     if (byOptId) return byOptId.text || sourceHandle
+    // API fetch success/error handles
+    if (sourceHandle === "success") return "Success"
+    if (sourceHandle === "error") return "Error"
     // Handle "next-step" or other named handles
     if (sourceHandle === "next-step") return null
     return null
@@ -196,12 +199,17 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     // Get children
     const children = adjacency.get(nodeId) || []
 
-    // Show button labels for quickReply / interactiveList nodes
+    // Show output handles for multi-output nodes
     const isButtonNode = node.type ? isMultiOutputType(node.type) : false
+    const fixedHandles = node.type ? getFixedHandles(node.type) : null
     const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
     const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
 
-    if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
+    if (fixedHandles) {
+      // Fixed-handle nodes (apiFetch): show "success" and "error" handles
+      const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+      lines.push(`${childPrefix}│ Handles: [${fixedHandles.map(h => `"${h}" (handle: ${h})`).join(", ")}]`)
+    } else if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
       const seen = new Set<string>()
       const items: string[] = []
       for (let i = 0; i < buttons.length; i++) {
@@ -941,8 +949,10 @@ function getCreateInstructions(): string {
     '- Example: A quickReply with storeAs "selected_flavor" → use {{selected_flavor_title}} in messages: "Great choice! We\'ll send you {{selected_flavor_title}} right away."',
     '- For text input nodes (question, super nodes), just use {{storeAs}} directly — there is no _title variant.',
     '- Super nodes have fixed variables: name→user_name, email→user_email, dob→user_dob, address→user_address.',
+    '- **System variables** (available in all flows, no node needed): {{system.contact_name}}, {{system.phone_number}}. Use these in API bodies, messages, etc.',
+    '- **Global variables** (organization-wide): {{global.variable_name}} — e.g. {{global.api_base_url}}, {{global.support_email}}.',
     '- NEVER use square brackets like [flavor] or [selected_flavor]. ALWAYS use {{variable_name}} with double curly braces.',
-    '- Only reference variables from nodes that appear EARLIER in the flow.',
+    '- Only reference variables from nodes that appear EARLIER in the flow (system/global variables are always available).',
     '',
     '**Key Rules:**',
     '- Only include nodes directly relevant to the user\'s request — do NOT add name, email, dob, or address unless the flow logically needs that data',
@@ -952,6 +962,9 @@ function getCreateInstructions(): string {
     '  - If branches converge to shared follow-up steps: place the shared steps AFTER all branch steps — they\'ll be created once and all branches will connect to them.',
     '  - Do NOT duplicate identical nodes inside every branch.',
     '  - **Do NOT nest quickReply/interactiveList inside a branch.** Keep flows flat — a branch should end with a message or simple node, not another quickReply that needs its own branches.',
+    '- **apiFetch node** has TWO output handles: "success" and "error". After an apiFetch step, use branch steps with buttonIndex 0 for success path and buttonIndex 1 for error path.',
+    '  - Content fields: url, method (GET/POST/PUT/DELETE), headers (object), body (JSON string — can include {{variables}}), responseMapping ({varName: "jsonPath"} e.g. {"user_id": "data.user_id"}), fallbackMessage (shown on error).',
+    '  - responseMapping maps API response JSON paths to session variables usable as {{varName}} in later nodes.',
     '- Include integrations (metaAudience, shopify, etc.) only when relevant',
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
@@ -993,7 +1006,9 @@ function getEditInstructions(): string {
     '**Content fields:** question, buttons[], options[], listTitle, text, label, message, storeAs',
     '- storeAs: ALWAYS set for question/quickReply/interactiveList. Use snake_case (e.g. "delivery_slot").',
     '',
-    '**Variables:** Use {{var_name}} for text inputs, {{var_name_title}} for button/list selections. Super nodes: {{user_name}}, {{user_email}}, {{user_dob}}, {{user_address}}.',
+    '**Variables:** Use {{var_name}} for text inputs, {{var_name_title}} for button/list selections. Super nodes: {{user_name}}, {{user_email}}, {{user_dob}}, {{user_address}}. System: {{system.contact_name}}, {{system.phone_number}}. Global: {{global.variable_name}}.',
+    '',
+    '**apiFetch node:** Has dual output handles "success" and "error". Use attachHandle "success" or "error" when chaining from an apiFetch node. Content: url, method, headers, body (JSON string with {{variables}}), responseMapping ({varName: "jsonPath"}), fallbackMessage.',
     '',
     '**Rules:**',
     '- ≤3 choices → quickReply. 4+ choices → interactiveList.',

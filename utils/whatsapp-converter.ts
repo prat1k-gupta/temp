@@ -480,7 +480,26 @@ export function convertToFsWhatsApp(
           response_mapping: data.responseMapping || {},
           fallback_message: data.fallbackMessage || "",
         }
-        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+
+        // Resolve success and error handles for dual routing
+        const apiSuccessTarget = resolveNextStep(node.id, "success", edgeMap, nodeStepNames)
+        const apiErrorTarget = resolveNextStep(node.id, "error", edgeMap, nodeStepNames)
+        // Legacy fallback: old flows with single unnamed handle
+        const apiLegacyTarget = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+
+        const apiConditionalNext: Record<string, string> = {}
+        if (apiSuccessTarget && apiSuccessTarget !== "__complete__") {
+          apiConditionalNext["success"] = apiSuccessTarget
+        }
+        if (apiErrorTarget && apiErrorTarget !== "__complete__") {
+          apiConditionalNext["error"] = apiErrorTarget
+        }
+        if (Object.keys(apiConditionalNext).length > 0) {
+          step.conditional_next = apiConditionalNext
+        }
+
+        // next_step = success target, or legacy fallback for backward compat
+        step.next_step = apiSuccessTarget !== "__complete__" ? apiSuccessTarget : apiLegacyTarget
         break
       }
 
@@ -765,7 +784,9 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
     if (!sourceId) continue
 
     // next_step → default edge (skip __complete__ — it means "end flow")
-    if (step.next_step && step.next_step !== "__complete__") {
+    // Skip for api_fetch with conditional_next — those use success/error handles instead
+    const hasConditionalNext = step.conditional_next && Object.keys(step.conditional_next).length > 0
+    if (step.next_step && step.next_step !== "__complete__" && !(step.message_type === "api_fetch" && hasConditionalNext)) {
       const targetId = stepNodeMap.get(step.next_step)
       if (targetId) {
         edges.push({

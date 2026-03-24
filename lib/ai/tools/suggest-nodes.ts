@@ -205,7 +205,15 @@ ${dependencyRules ? `\n${dependencyRules}` : ""}
 - Nodes with {storeAs: "var_name"} in the flow graph store user responses as variables.
 - Button/list responses: use {{var_name_title}} to get the display text the user chose.
 - Text input responses: use {{var_name}} directly.
+- apiFetch responseMapping variables: available as {{varName}} after a successful API call.
+- **System variables** (always available): {{system.contact_name}}, {{system.phone_number}}.
+- **Global variables** (org-wide): {{global.variable_name}}.
 - When generating message text, reference earlier variables using {{var_name}} or {{var_name_title}} — NEVER use [placeholder] syntax.
+
+**API FETCH NODES:**
+- apiFetch nodes have TWO output handles: "success" and "error".
+- When suggesting nodes after an apiFetch, consider both success and error paths.
+- responseMapping convention: {varName: "jsonPath"} — e.g. {"user_id": "data.user_id"} maps the API response to session variables.
 
 **OUTPUT FORMAT:**
 Return JSON with exactly ${n} suggestions:

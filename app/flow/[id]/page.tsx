@@ -352,15 +352,16 @@ function MagicFlowInner() {
     }
   }, [currentVersion, isEditMode, draftStateLoaded, isLoadingVersion])
 
-  // Save draft state
+  // Save draft state and sync change tracker
   useEffect(() => {
     if (isEditMode && (nodes.length > 0 || edges.length > 0)) {
+      updateDraftChanges()
       const timeoutId = setTimeout(() => {
         saveCurrentStateAsDraft(nodes, edges, platform)
       }, 100)
       return () => clearTimeout(timeoutId)
     }
-  }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft])
+  }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft, updateDraftChanges])
 
   // --- JSX ---
 

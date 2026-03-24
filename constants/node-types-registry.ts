@@ -23,6 +23,7 @@ import { GenericIntegrationNode } from "@/components/nodes/integration/generic-i
 import { ApiFetchNode } from "@/components/nodes/action/api-fetch-node"
 import { TransferNode } from "@/components/nodes/action/transfer-node"
 import { TemplateMessageNode } from "@/components/nodes/action/template-message-node"
+import { ActionNode } from "@/components/nodes/action/action-node"
 import { FlowCompleteNode } from "@/components/nodes/flow/flow-complete-node"
 
 export const nodeTypes = {
@@ -61,6 +62,7 @@ export const nodeTypes = {
   apiFetch: ApiFetchNode,
   transfer: TransferNode,
   templateMessage: TemplateMessageNode,
+  action: ActionNode,
   // Integration nodes
   shopify: GenericIntegrationNode,
   metaAudience: GenericIntegrationNode,

@@ -8,6 +8,7 @@ const STORABLE_NODE_TYPES = new Set([
   "whatsappInteractiveList",
   "interactiveList",
   "apiFetch",
+  "action",
 ])
 
 const TITLE_VARIANT_NODE_TYPES = new Set([
@@ -67,6 +68,13 @@ export function collectFlowVariables(nodes: Node[]): string[] {
     if (node.type === "apiFetch" && data.responseMapping) {
       for (const varName of Object.keys(data.responseMapping)) {
         if (varName.trim()) variables.push(varName.trim())
+      }
+    }
+    if (node.type === "action" && Array.isArray(data.variables)) {
+      for (const v of data.variables) {
+        if (v?.name && typeof v.name === "string" && v.name.trim()) {
+          variables.push(v.name.trim())
+        }
       }
     }
   }
@@ -157,6 +165,20 @@ export function collectFlowVariablesRich(nodes: Node[]): FlowVariable[] {
             name: varName.trim(),
             sourceNodeType: node.type,
             sourceNodeLabel: parentLabel || data.label || "API Fetch",
+            hasTitleVariant: false,
+          })
+        }
+      }
+    }
+
+    // action node variables
+    if (node.type === "action" && Array.isArray(data.variables)) {
+      for (const v of data.variables) {
+        if (v?.name && typeof v.name === "string" && v.name.trim()) {
+          variables.push({
+            name: v.name.trim(),
+            sourceNodeType: node.type,
+            sourceNodeLabel: parentLabel || data.label || "Action",
             hasTitleVariant: false,
           })
         }

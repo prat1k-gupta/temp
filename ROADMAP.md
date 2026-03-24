@@ -173,11 +173,23 @@ Version/draft storage can stay in localStorage (session-scoped, not user-scoped)
 - Protected routes middleware
 - Update proxy routes from single API key to per-user JWT forwarding
 
-### 2.5 Test API via Go Backend (Single Source of Truth)
+### 2.5 Variable & Tag Registry
+
+Variables and tags become first-class entities with originator tracking, picker-based creation (no free text), and smart impact checking on change. Prevents silent cross-flow breakage and data orphaning.
+
+- `flow_variables` table: `(flow_id, name, source_node, source_type)` — tracks which node created each variable
+- `tags` + `contact_tags` tables: org-wide tags with junction table for campaign filtering
+- **Originator picker** (storeAs, response mapping, action node): shows existing variables + "Create new". No free text.
+- **Consumer picker** (message body, API body, conditions): shows existing variables only. No creation.
+- **VariableImpactDialog**: when changing a variable at its originator, checks cross-flow references + contact data count. Shows appropriate options (Rename Everywhere / Only This Flow / Cancel). "Rename Everywhere" runs as a single DB transaction — all or nothing.
+- Zero runtime changes — `processTemplate`, `saveContactVariable`, converter all unchanged.
+- Full design: `docs/variable-tag-registry-plan.md`
+
+### 2.6 Test API via Go Backend (Single Source of Truth)
 
 Route test API calls through Go's `fetchApiResponse` instead of Next.js proxy. Ensures test uses the exact same variable replacement, timeout, and header handling as production. Blocked on Phase 2 (backend always available). See [#9](https://github.com/freestandtech/magic-flow/issues/9).
 
-### 2.6 Embedded Signup (Connect WhatsApp)
+### 2.7 Embedded Signup (Connect WhatsApp)
 
 - FS Chat backend fully implemented (`/api/embedded-signup/*`)
 - MagicFlow needs: Facebook SDK loading, `FB.login()` flow, postMessage listener for `WA_EMBEDDED_SIGNUP` events, completion call

@@ -26,6 +26,7 @@ export const VALID_BASE_NODE_TYPES = [
   "flowTemplate",
   // Action
   "apiFetch",
+  "action",
   // Flow terminator
   "flowComplete",
   // Integration
@@ -63,6 +64,10 @@ export interface NodeContent {
   body?: string
   responseMapping?: Record<string, string>
   fallbackMessage?: string
+  // action node fields
+  variables?: Array<{ name: string; value: string }>
+  tags?: string[]
+  tagAction?: "add" | "remove"
 }
 
 export interface NodeStep {
@@ -104,6 +109,10 @@ export const nodeContentSchema = z.object({
   body: z.string().optional(),
   responseMapping: z.record(z.string()).optional(),
   fallbackMessage: z.string().optional(),
+  // action node fields
+  variables: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+  tags: z.array(z.string()).optional(),
+  tagAction: z.enum(["add", "remove"]).optional(),
 })
 
 export const nodeStepSchema = z.object({

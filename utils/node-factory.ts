@@ -458,6 +458,29 @@ export const createTemplateMessageNode = (
 }
 
 /**
+ * Create an Action node (set variables + manage tags)
+ */
+export const createActionNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("action")
+  return {
+    id: nodeId,
+    type: "action",
+    position,
+    data: {
+      platform,
+      label: "Action",
+      variables: [{ name: "", value: "" }],
+      tagAction: "add",
+      tags: [],
+    } as NodeData,
+  }
+}
+
+/**
  * Factory function to create any node type
  */
 export const createNode = (
@@ -478,6 +501,9 @@ export const createNode = (
   }
   else if (nodeType === "templateMessage") {
     node = createTemplateMessageNode(platform, position, customId)
+  }
+  else if (nodeType === "action") {
+    node = createActionNode(platform, position, customId)
   }
   // Flow control nodes
   else if (nodeType === "flowComplete") {

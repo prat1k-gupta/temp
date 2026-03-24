@@ -36,6 +36,7 @@ import {
   AlertCircle,
   ExternalLink,
   ShieldCheck,
+  Copy,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -875,19 +876,28 @@ export function PropertiesPanel({
   const isApiFetchNode = selectedNode.type === "apiFetch"
   const isTransferNode = selectedNode.type === "transfer"
   const isTemplateMessageNode = selectedNode.type === "templateMessage"
+  const isActionNode = selectedNode.type === "action"
 
   // Get available fields purely from flow session variables
   const getAvailableFields = () => {
-    const fields: Array<{ value: string; label: string }> = []
+    const fields: Array<{ value: string; label: string; source?: string; sourceType?: string }> = []
     const seen = new Set<string>()
 
-    const flowVars = collectFlowVariables(allNodes)
-    for (const varName of flowVars) {
-      if (!seen.has(varName)) {
-        seen.add(varName)
-        fields.push({ value: varName, label: varName.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) })
+    // Flow variables with source info
+    for (const fv of flowVariablesRich) {
+      if (!seen.has(fv.name)) {
+        seen.add(fv.name)
+        fields.push({
+          value: fv.name,
+          label: fv.name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          source: fv.sourceNodeLabel,
+          sourceType: fv.sourceNodeType,
+        })
       }
     }
+
+    // Tags — special field for has_tag/not_has_tag operators
+    fields.push({ value: "_tags", label: "Tags" })
 
     if (fields.length === 0) {
       fields.push({ value: "value", label: "Value" })
@@ -896,8 +906,15 @@ export function PropertiesPanel({
     return fields
   }
 
-  // Get all available operators for any variable
-  const getAvailableOperators = () => {
+  // Get available operators for a field
+  const getAvailableOperators = (field?: string) => {
+    // Tag field gets tag-specific operators
+    if (field === "_tags") {
+      return [
+        { value: "hasTag", label: "Has Tag" },
+        { value: "notHasTag", label: "Does Not Have Tag" },
+      ]
+    }
     return [
       { value: "equals", label: "Equals (=)" },
       { value: "notEquals", label: "Not Equals (≠)" },
@@ -1565,7 +1582,12 @@ export function PropertiesPanel({
               existingRule={editingRule}
               connectedNodeType={selectedNode.data.connectedNode?.type}
               availableFields={getAvailableFields()}
-              getOperators={() => getAvailableOperators()}
+              getOperators={(field) => getAvailableOperators(field)}
+              availableTags={allNodes
+                .filter((n) => n.type === "action" && Array.isArray((n.data as any).tags))
+                .flatMap((n) => ((n.data as any).tags as string[]).filter((t: string) => t.trim()))
+                .filter((t, i, arr) => arr.indexOf(t) === i)
+              }
             />
           )}
 
@@ -2593,6 +2615,191 @@ export function PropertiesPanel({
                       Open Template Builder
                     </a>
                   </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Action Node */}
+          {isActionNode && (
+            <>
+              <div>
+                <Label className="text-sm font-medium">Node Label</Label>
+                <Input
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, label: e.target.value })}
+                  placeholder="Action"
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Set Variables */}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Set Variables</Label>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Set variables to static or computed values. Use <code className="bg-muted px-1 rounded">{"{{variable}}"}</code> for interpolation.
+                </p>
+                <div className="space-y-2">
+                  {(selectedNode.data.variables || []).map((v: any, idx: number) => {
+                    const varNames = (selectedNode.data.variables || []).map((x: any) => x.name?.trim()).filter(Boolean)
+                    const isDuplicateName = v.name?.trim() && varNames.filter((n: string) => n === v.name.trim()).length > 1
+                    return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={v.name || ""}
+                        onChange={(e) => {
+                          const vars = [...(selectedNode.data.variables || [])]
+                          vars[idx] = { ...vars[idx], name: e.target.value }
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, variables: vars })
+                        }}
+                        placeholder="variable_name"
+                        className={`flex-1 text-xs font-mono ${isDuplicateName ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        title={isDuplicateName ? "Duplicate variable name" : undefined}
+                      />
+                      <span className="text-xs text-muted-foreground">=</span>
+                      <Input
+                        value={v.value || ""}
+                        onChange={(e) => {
+                          const vars = [...(selectedNode.data.variables || [])]
+                          vars[idx] = { ...vars[idx], value: e.target.value }
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, variables: vars })
+                        }}
+                        placeholder="value or {{variable}}"
+                        className="flex-1 text-xs font-mono"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const vars = [...(selectedNode.data.variables || [])]
+                          if (vars.length >= 10) return
+                          const baseName = v.name?.replace(/_\d+$/, "") || ""
+                          const existingNames = new Set(vars.map((x: any) => x.name))
+                          let copyName = `${baseName}_copy`
+                          let counter = 1
+                          while (existingNames.has(copyName)) {
+                            copyName = `${baseName}_copy_${counter++}`
+                          }
+                          vars.splice(idx + 1, 0, { name: copyName, value: v.value || "" })
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, variables: vars })
+                        }}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent"
+                        disabled={(selectedNode.data.variables || []).length >= 10}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const vars = [...(selectedNode.data.variables || [])]
+                          vars.splice(idx, 1)
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, variables: vars })
+                        }}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    )
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const vars = [...(selectedNode.data.variables || []), { name: "", value: "" }]
+                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, variables: vars })
+                    }}
+                    className="w-full cursor-pointer"
+                    disabled={(selectedNode.data.variables || []).length >= 10}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    {(selectedNode.data.variables || []).length >= 10 ? "Max 10 variables" : "Add Variable"}
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Tags */}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Tags</Label>
+                <div className="space-y-2">
+                  <select
+                    value={selectedNode.data.tagAction || "add"}
+                    onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, tagAction: e.target.value })}
+                    className="w-full h-8 text-xs rounded-md border bg-background px-2"
+                  >
+                    <option value="add">Add Tags</option>
+                    <option value="remove">Remove Tags</option>
+                  </select>
+                  {(selectedNode.data.tags || []).map((tag: string, idx: number) => {
+                    const allTags = (selectedNode.data.tags || []).map((t: string) => t?.trim()).filter(Boolean)
+                    const isDuplicateTag = tag?.trim() && allTags.filter((t: string) => t === tag.trim()).length > 1
+                    return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={tag}
+                        onChange={(e) => {
+                          const tags = [...(selectedNode.data.tags || [])]
+                          tags[idx] = e.target.value
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, tags })
+                        }}
+                        placeholder="tag_name or {{variable}}"
+                        className={`flex-1 text-xs font-mono ${isDuplicateTag ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                        title={isDuplicateTag ? "Duplicate tag" : undefined}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const tags = [...(selectedNode.data.tags || [])]
+                          if (tags.length >= 10) return
+                          const baseTag = tag?.replace(/_\d+$/, "") || ""
+                          const existingTags = new Set(tags)
+                          let copyTag = `${baseTag}_copy`
+                          let counter = 1
+                          while (existingTags.has(copyTag)) {
+                            copyTag = `${baseTag}_copy_${counter++}`
+                          }
+                          tags.splice(idx + 1, 0, copyTag)
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, tags })
+                        }}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent"
+                        disabled={(selectedNode.data.tags || []).length >= 10}
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const tags = [...(selectedNode.data.tags || [])]
+                          tags.splice(idx, 1)
+                          onNodeUpdate(selectedNode.id, { ...selectedNode.data, tags })
+                        }}
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    )
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const tags = [...(selectedNode.data.tags || []), ""]
+                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, tags })
+                    }}
+                    className="w-full cursor-pointer"
+                    disabled={(selectedNode.data.tags || []).length >= 10}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    {(selectedNode.data.tags || []).length >= 10 ? "Max 10 tags" : "Add Tag"}
+                  </Button>
                 </div>
               </div>
             </>

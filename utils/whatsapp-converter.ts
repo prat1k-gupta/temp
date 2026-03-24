@@ -8,7 +8,7 @@ export interface FsWhatsAppFlowStep {
   step_name: string
   step_order: number
   message: string
-  message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer" | "template"
+  message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer" | "template" | "action"
   input_type: WhatsAppInputType
   buttons?: Array<{ id: string; title: string; type?: string; url?: string }>
   store_as?: string
@@ -111,6 +111,8 @@ const OPERATOR_MAP: Record<string, string> = {
   isNotEmpty: "not_empty",
   isTrue: "==",
   isFalse: "==",
+  hasTag: "has_tag",
+  notHasTag: "not_has_tag",
 }
 
 type ConditionalRoute = { operator?: string; value?: string; target: string; variable?: string; default?: boolean }
@@ -514,6 +516,34 @@ export function convertToFsWhatsApp(
         break
       }
 
+      case "action": {
+        step.message_type = "action"
+        step.input_type = "none"
+        step.message = data.label || "Action"
+        // Filter out empty and deduplicate variables and tags before publishing
+        const seenVarNames = new Set<string>()
+        const actionVars = (data.variables || []).filter((v: any) => {
+          if (!v?.name?.trim() || !v?.value?.trim()) return false
+          if (seenVarNames.has(v.name.trim())) return false
+          seenVarNames.add(v.name.trim())
+          return true
+        })
+        const seenTags = new Set<string>()
+        const actionTags = (data.tags || []).filter((t: string) => {
+          if (!t?.trim()) return false
+          if (seenTags.has(t.trim())) return false
+          seenTags.add(t.trim())
+          return true
+        })
+        step.input_config = {
+          variables: actionVars,
+          tag_action: data.tagAction || "add",
+          tags: actionTags,
+        }
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
       case "templateMessage": {
         step.message_type = "template"
         // input_type defaults to "button" from getImplicitInputType — flow always
@@ -726,6 +756,11 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         data.notes = step.transfer_config?.notes || ""
         data.teamName = step.transfer_config?.team_id === "_general" ? "General Queue" : step.transfer_config?.team_id || ""
         break
+      case "action":
+        data.variables = step.input_config?.variables || []
+        data.tagAction = step.input_config?.tag_action || "add"
+        data.tags = step.input_config?.tags || []
+        break
       case "templateMessage": {
         data.templateName = step.input_config?.template_name || step.message || ""
         data.language = step.input_config?.language || "en"
@@ -858,6 +893,7 @@ function inferNodeType(step: FsWhatsAppFlowStep): string {
   if (step.message_type === "conditional_routing") return "condition"
   if (step.message_type === "api_fetch") return "apiFetch"
   if (step.message_type === "transfer") return "transfer"
+  if (step.message_type === "action") return "action"
   if (step.message_type === "template") return "templateMessage"
   if (step.message_type === "buttons") {
     if (step.input_type === "select") return "whatsappInteractiveList"

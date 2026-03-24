@@ -64,7 +64,13 @@ export async function suggestNodes(
         description: z.string().optional()
       })).optional().describe("List options (for list nodes)"),
       text: z.string().optional().describe("Message text (for message nodes)"),
-      storeAs: z.string().optional().describe("Variable name to store the user response (for question/quickReply/list nodes)")
+      storeAs: z.string().optional().describe("Variable name to store the user response (for question/quickReply/list nodes)"),
+      variables: z.array(z.object({
+        name: z.string(),
+        value: z.string()
+      })).optional().describe("Variables to set (for action nodes, max 10)"),
+      tags: z.array(z.string()).optional().describe("Tags to add/remove (for action nodes, max 10)"),
+      tagAction: z.enum(["add", "remove"]).optional().describe("Whether to add or remove tags (for action nodes)")
     })
 
     const suggestionSchema = z.object({
@@ -214,6 +220,13 @@ ${dependencyRules ? `\n${dependencyRules}` : ""}
 - apiFetch nodes have TWO output handles: "success" and "error".
 - When suggesting nodes after an apiFetch, consider both success and error paths.
 - responseMapping convention: {varName: "jsonPath"} — e.g. {"user_id": "data.user_id"} maps the API response to session variables.
+
+**ACTION NODES:**
+- action nodes set variables and/or manage contact tags silently (no message sent, auto-advances).
+- Content: variables ([{name, value}], max 10), tagAction ("add"|"remove"), tags (string[], max 10).
+- Values and tags support {{variable}} interpolation.
+- Tags can be checked in condition nodes using has_tag/not_has_tag operators on the _tags field.
+- For action node suggestions, include "variables" and/or "tags"+"tagAction" in generatedContent.
 
 **OUTPUT FORMAT:**
 Return JSON with exactly ${n} suggestions:

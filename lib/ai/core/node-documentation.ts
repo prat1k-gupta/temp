@@ -284,6 +284,13 @@ function buildDataStructure(
     ]
   }
 
+  // Action node
+  if (t === "action") {
+    base.variables = [{ name: "string (variable name)", value: "string (supports {{variable}} interpolation)" }]
+    base.tagAction = "add | remove"
+    base.tags = ["string (tag name, supports {{variable}} interpolation)"]
+  }
+
   // Tracking notification
   if (t === "trackingNotification") {
     base.message = "string (the notification message)"

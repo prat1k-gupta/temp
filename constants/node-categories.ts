@@ -341,10 +341,12 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
         "Use OR logic for any condition can be true",
         "Connect to information nodes (name, email, dob, address) for context-aware fields",
         "Each condition group can have multiple rules",
+        "Use has_tag/not_has_tag operators on _tags field to branch based on contact tags set by action nodes",
       ],
       examples: [
         "If age >= 18, go to adult content; else go to age verification",
         "If email domain is corporate, go to B2B flow; else go to B2C flow",
+        "If _tags has_tag 'vip', go to VIP flow; else go to standard flow",
       ],
       contentFields: "(auto-configured)",
       requiredProperties: ["label", "platform", "conditionLogic", "conditionGroups"],
@@ -443,6 +445,30 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       ],
       requiredProperties: ["label", "platform", "templateName", "language"],
       optionalProperties: ["parameterMappings"],
+    },
+  },
+
+  {
+    type: "action",
+    icon: Zap,
+    label: "Action",
+    description: "Set variables and/or manage contact tags",
+    category: "action",
+    platforms: ["whatsapp"],
+    limits: { maxConnections: 1 },
+    ai: {
+      description: "Set variables and/or manage contact tags in one step. No message sent — auto-advances to the next node. Max 10 variables and 10 tags per node. Values and tags support {{variable}} interpolation.",
+      whenToUse: "When you need to set variables to computed/static values or add/remove tags on a contact without sending a message. Use before a condition node to prepare routing data, or after collecting info to derive computed values.",
+      bestPractices: [
+        "Use {{variable}} interpolation in values (e.g. {{first_name}} {{last_name}})",
+        "Use descriptive variable names and tag names",
+        "Tags can be used with has_tag/not_has_tag operators on the _tags field in condition nodes",
+        "Max 10 variables and 10 tags per action node",
+      ],
+      contentFields: "variables[{name,value}] (max 10), tagAction (add|remove), tags[] (max 10) — supports {{variable}} interpolation",
+      requiredProperties: ["label", "platform"],
+      optionalProperties: ["variables", "tags", "tagAction"],
+      selectionRule: "Use to set variables or manage tags silently (no message). Condition node supports has_tag/not_has_tag on _tags field.",
     },
   },
 

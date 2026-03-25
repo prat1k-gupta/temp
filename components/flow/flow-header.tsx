@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, FlowVersion, EditModeState, FlowChange } from "@/types"
 import type { FlowData } from "@/utils/flow-storage"
 import { Button } from "@/components/ui/button"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -139,7 +141,10 @@ export function FlowHeader({
   isFlowGraphPanelOpen,
   onToggleFlowGraph,
 }: FlowHeaderProps) {
+  const [showResetDialog, setShowResetDialog] = useState(false)
+
   return (
+    <>
     <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
       <div className="flex items-center justify-between px-6 py-3 gap-2">
         {/* Left Section */}
@@ -411,24 +416,10 @@ export function FlowHeader({
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
+                disabled={!getAllVersions().find((v) => v.isPublished)}
                 onSelect={() => {
-                  if (
-                    window.confirm(
-                      getAllVersions().find((v) => v.isPublished)
-                        ? "Reset to last published version? All unsaved changes will be lost."
-                        : "No published version exists. Clear everything?"
-                    )
-                  ) {
-                    resetToPublished(setNodes, setEdges, setPlatform)
-                    setSelectedNode(null)
-                    setSelectedNodes([])
-                    setIsPropertiesPanelOpen(false)
-                    toast.success(
-                      getAllVersions().find((v) => v.isPublished)
-                        ? "Reset to published version"
-                        : "Flow cleared"
-                    )
-                  }
+                  if (!getAllVersions().find((v) => v.isPublished)) return
+                  setShowResetDialog(true)
                 }}
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
@@ -475,5 +466,29 @@ export function FlowHeader({
         </div>
       </div>
     </div>
+
+    <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Reset to published version?</AlertDialogTitle>
+          <AlertDialogDescription>
+            All unsaved changes will be lost. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
+          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer" onClick={() => {
+            resetToPublished(setNodes, setEdges, setPlatform)
+            setSelectedNode(null)
+            setSelectedNodes([])
+            setIsPropertiesPanelOpen(false)
+            toast.success("Reset to published version")
+          }}>
+            Reset
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

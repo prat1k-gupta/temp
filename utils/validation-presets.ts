@@ -47,6 +47,7 @@ export const VALIDATION_PRESETS: Record<WhatsAppInputType, ValidationConfig> = {
     maxRetries: 3,
   },
   none: {},
+  whatsapp_flow: {},
 }
 
 /**

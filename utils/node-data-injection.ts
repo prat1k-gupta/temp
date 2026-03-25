@@ -10,6 +10,11 @@ interface NodeCallbacks {
   addConnectedNode: (sourceNodeId: string) => void
   deleteNode: (nodeId: string) => void
   convertNode: (nodeId: string, newNodeType: string, updatedData: any) => void
+  openFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
+}
+
+interface WhatsAppFlowContext {
+  availableFlows: any[]
 }
 
 interface FlowContext {
@@ -34,7 +39,8 @@ export function injectNodeCallbacks(
   node: Node,
   callbacks: NodeCallbacks,
   flowContext?: FlowContext,
-  allNodes?: Node[]
+  allNodes?: Node[],
+  whatsAppFlowContext?: WhatsAppFlowContext
 ): Node {
   // Ensure stable IDs exist for buttons/options (migration for legacy data)
   const data = { ...node.data }
@@ -75,6 +81,10 @@ export function injectNodeCallbacks(
       onAddConnection: () => callbacks.addConnectedNode(node.id),
       onDelete: () => callbacks.deleteNode(node.id),
       onConvert: callbacks.convertNode,
+      ...(node.type === "whatsappFlow" && {
+        onOpenFlowBuilder: callbacks.openFlowBuilder,
+        availableWhatsAppFlows: whatsAppFlowContext?.availableFlows || [],
+      }),
       ...(node.type === "start" && flowContext && {
         flowDescription: flowContext.currentFlow?.description || "",
         triggerKeywords: ((data.triggerKeywords as string[])?.length ? data.triggerKeywords as string[] : undefined) ?? flowContext.currentFlow?.triggerKeywords ?? EMPTY_KEYWORDS,

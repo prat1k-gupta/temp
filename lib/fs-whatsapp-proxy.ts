@@ -49,8 +49,14 @@ export async function fsWhatsAppProxy(options: ProxyOptions): Promise<NextRespon
 
     if (!response.ok) {
       const errorText = await response.text()
+      // Try to extract the message from fs-whatsapp's envelope: { "status": "error", "message": "..." }
+      let errorMessage = `Upstream error (${response.status})`
+      try {
+        const parsed = JSON.parse(errorText)
+        errorMessage = parsed.message || parsed.error || errorMessage
+      } catch { /* not JSON, use raw text */ }
       return NextResponse.json(
-        { error: `Upstream error: ${response.status} ${errorText}` },
+        { error: errorMessage },
         { status: response.status }
       )
     }

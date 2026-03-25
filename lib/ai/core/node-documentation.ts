@@ -291,6 +291,16 @@ function buildDataStructure(
     base.tags = ["string (tag name, supports {{variable}} interpolation)"]
   }
 
+  // WhatsApp Flow node
+  if (t === "whatsappFlow") {
+    base.whatsappFlowId = "string (Meta Flow ID — selected from existing published flows)"
+    base.flowName = "string (display name of the selected flow)"
+    base.headerText = "string (optional header text, max 60 chars)"
+    base.bodyText = "string (required message body — shown to user before they open the form)"
+    base.ctaText = "string (CTA button text, max 20 chars, default 'Open Form')"
+    base.responseFields = ["string (field names returned by the form, auto-extracted from flow)"]
+  }
+
   // Tracking notification
   if (t === "trackingNotification") {
     base.message = "string (the notification message)"

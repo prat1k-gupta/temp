@@ -37,6 +37,9 @@ import {
   ExternalLink,
   ShieldCheck,
   Copy,
+  Pencil,
+  Search,
+  ChevronDown,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -78,6 +81,7 @@ interface PropertiesPanelProps {
   onAddButton?: (nodeId: string) => void
   onRemoveButton?: (nodeId: string, buttonIndex: number) => void
   allNodes?: Node[] // All nodes in the flow for variable mapping
+  onOpenFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
 }
 
 // Limits are resolved dynamically from getNodeLimits() per-node, not hardcoded.
@@ -281,6 +285,84 @@ function SortableOptionItem({
           </Badge>
         )}
       </div>
+    </div>
+  )
+}
+
+// --- WhatsApp Flow Picker (searchable dropdown) ---
+
+function WhatsAppFlowPicker({ flows, value, onChange }: {
+  flows: any[]
+  value: string
+  onChange: (metaFlowId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+
+  const selectedFlow = flows.find((f: any) => f.meta_flow_id === value)
+  const filtered = search
+    ? flows.filter((f: any) => f.name?.toLowerCase().includes(search.toLowerCase()))
+    : flows
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between h-9 px-3 border rounded-md text-sm bg-background hover:bg-muted/50 transition-colors cursor-pointer"
+      >
+        {selectedFlow ? (
+          <span className="flex items-center gap-1.5 truncate">
+            <span className="truncate">{selectedFlow.name}</span>
+            <span className={`text-[9px] px-1 py-0 rounded ${selectedFlow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+              {selectedFlow.status}
+            </span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Select a flow...</span>
+        )}
+        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full border rounded-lg bg-popover shadow-lg overflow-hidden">
+          <div className="relative border-b">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search flows..."
+              className="w-full h-8 pl-8 pr-3 text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-[200px] overflow-y-auto p-1">
+            {/* Clear selection */}
+            <button
+              onClick={() => { onChange(""); setOpen(false); setSearch("") }}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-muted transition-colors cursor-pointer text-muted-foreground"
+            >
+              None
+            </button>
+            {filtered.map((flow: any) => (
+              <button
+                key={flow.id}
+                onClick={() => { onChange(flow.meta_flow_id); setOpen(false); setSearch("") }}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer ${value === flow.meta_flow_id ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "hover:bg-muted"}`}
+              >
+                <span className="flex-1 truncate">{flow.name}</span>
+                <span className={`text-[8px] px-1 py-0 rounded shrink-0 ${flow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                  {flow.status}
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="py-3 text-center text-xs text-muted-foreground">
+                {search ? `No flows match "${search}"` : "No flows available"}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -621,7 +703,8 @@ export function PropertiesPanel({
   onNodeUpdate,
   onAddButton,
   onRemoveButton,
-  allNodes = []
+  allNodes = [],
+  onOpenFlowBuilder,
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
@@ -877,6 +960,25 @@ export function PropertiesPanel({
   const isTransferNode = selectedNode.type === "transfer"
   const isTemplateMessageNode = selectedNode.type === "templateMessage"
   const isActionNode = selectedNode.type === "action"
+  const isWhatsAppFlowNode = selectedNode.type === "whatsappFlow"
+
+  // Extract form field names from a WhatsApp Flow's JSON definition
+  const extractFlowResponseFields = (flowJson: any): string[] => {
+    if (!flowJson?.screens) return []
+    const fields: string[] = []
+    const inputTypes = new Set(["TextInput", "TextArea", "DatePicker", "Dropdown", "RadioButtonsGroup", "CheckboxGroup", "CalendarPicker", "OptIn"])
+    for (const screen of flowJson.screens) {
+      for (const child of screen?.layout?.children || []) {
+        if (inputTypes.has(child.type) && child.name) {
+          fields.push(child.name)
+        }
+      }
+    }
+    return fields
+  }
+
+  // WhatsApp Flows — data injected into node.data at page level
+  const availableWhatsAppFlows: any[] = selectedNode.data.availableWhatsAppFlows || []
 
   // Get available fields purely from flow session variables
   const getAvailableFields = () => {
@@ -2802,6 +2904,142 @@ export function PropertiesPanel({
                   </Button>
                 </div>
               </div>
+            </>
+          )}
+
+          {/* WhatsApp Flow Node */}
+          {isWhatsAppFlowNode && (
+            <>
+              <div>
+                <Label className="text-sm font-medium">Node Label</Label>
+                <Input
+                  value={selectedNode.data.label || ""}
+                  onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, label: e.target.value })}
+                  placeholder="WhatsApp Flow"
+                  className="mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Flow Selector */}
+              <div>
+                <Label className="text-sm font-medium mb-2 block">WhatsApp Flow</Label>
+                <WhatsAppFlowPicker
+                  flows={availableWhatsAppFlows}
+                  value={selectedNode.data.whatsappFlowId || ""}
+                  onChange={(metaFlowId) => {
+                    const flow = availableWhatsAppFlows.find((f: any) => f.meta_flow_id === metaFlowId)
+                    if (flow) {
+                      const responseFields = extractFlowResponseFields(flow.flow_json)
+                      onNodeUpdate(selectedNode.id, {
+                        ...selectedNode.data,
+                        whatsappFlowId: flow.meta_flow_id,
+                        flowName: flow.name,
+                        flowStatus: flow.status,
+                        responseFields,
+                      })
+                    } else {
+                      onNodeUpdate(selectedNode.id, {
+                        ...selectedNode.data,
+                        whatsappFlowId: "",
+                        flowName: "",
+                        flowStatus: "",
+                        responseFields: [],
+                      })
+                    }
+                  }}
+                />
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8 text-xs cursor-pointer"
+                    onClick={() => onOpenFlowBuilder?.(selectedNode.id, "create")}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Create New
+                  </Button>
+                  {selectedNode.data.whatsappFlowId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-8 text-xs cursor-pointer"
+                      onClick={() => onOpenFlowBuilder?.(selectedNode.id, "edit")}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Edit Flow
+                    </Button>
+                  )}
+                </div>
+                {availableWhatsAppFlows.length === 0 && !selectedNode.data.whatsappFlowId && (
+                  <p className="text-[10px] text-muted-foreground mt-1">No published flows found. Click &quot;Create New&quot; to build one.</p>
+                )}
+              </div>
+
+              {/* Header */}
+              <div>
+                <Label className="text-sm font-medium mb-1 block">Header (optional)</Label>
+                <VariablePickerTextarea
+                  value={selectedNode.data.headerText || ""}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, headerText: val })}
+                  placeholder="Form header text"
+                  className="min-h-[32px]"
+                  flowVariables={flowVariablesRich}
+                />
+              </div>
+
+              {/* Body */}
+              <div>
+                <Label className="text-sm font-medium mb-1 block">Message Body</Label>
+                <VariablePickerTextarea
+                  value={selectedNode.data.bodyText || ""}
+                  onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, bodyText: val })}
+                  placeholder="Please fill out this form"
+                  className="min-h-[60px]"
+                  flowVariables={flowVariablesRich}
+                />
+              </div>
+
+              {/* CTA */}
+              <div>
+                <Label className="text-sm font-medium mb-1 block">
+                  CTA Button Text
+                  <span className="text-[10px] text-muted-foreground font-normal ml-2">
+                    {(selectedNode.data.ctaText || "").length}/20
+                  </span>
+                </Label>
+                <Input
+                  value={selectedNode.data.ctaText || ""}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 20) {
+                      onNodeUpdate(selectedNode.id, { ...selectedNode.data, ctaText: e.target.value })
+                    }
+                  }}
+                  placeholder="Open Form"
+                  maxLength={20}
+                />
+              </div>
+
+              {/* Response Fields */}
+              {(selectedNode.data.responseFields || []).length > 0 && (
+                <div>
+                  <Separator />
+                  <Label className="text-sm font-medium mb-2 block mt-3">Response Fields</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    These fields will be available as variables in subsequent nodes.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {(selectedNode.data.responseFields || []).map((field: string, i: number) => (
+                      <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 font-mono">
+                        {`{{${field}}}`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Flow Builder Modal lives at page level — opened via onOpenFlowBuilder */}
             </>
           )}
 

@@ -51,6 +51,7 @@ import { useClipboard } from "@/hooks/use-clipboard"
 import { useFlowAI } from "@/hooks/use-flow-ai"
 import { useFlowInteractions } from "@/hooks/use-flow-interactions"
 import { TemplateEditorModal } from "@/components/template-editor-modal"
+import { WhatsAppFlowBuilderModal } from "@/components/whatsapp-flow-builder-modal"
 import { FlowHeader } from "@/components/flow/flow-header"
 import { FlowGraphPanel } from "@/components/flow/flow-graph-panel"
 import { PaneContextMenu } from "@/components/flow/pane-context-menu"
@@ -82,6 +83,31 @@ function MagicFlowInner() {
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
   const [isFlowGraphPanelOpen, setIsFlowGraphPanelOpen] = useState(false)
   const [templateEditorNodeId, setTemplateEditorNodeId] = useState<string | null>(null)
+
+  // WhatsApp Flow builder modal state (page-level so both node + properties panel can open it)
+  const [flowBuilderOpen, setFlowBuilderOpen] = useState(false)
+  const [flowBuilderMode, setFlowBuilderMode] = useState<"create" | "edit">("create")
+  const [flowBuilderNodeId, setFlowBuilderNodeId] = useState<string | null>(null)
+  const [availableWhatsAppFlows, setAvailableWhatsAppFlows] = useState<any[]>([])
+
+  const refreshWhatsAppFlows = useCallback(() => {
+    fetch("/api/whatsapp-flows")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        const flows = d?.data?.flows || d?.flows || d || []
+        setAvailableWhatsAppFlows(Array.isArray(flows) ? flows.filter((f: any) => f.meta_flow_id) : [])
+      })
+      .catch(() => {})
+  }, [])
+
+  const openFlowBuilder = useCallback((nodeId: string, mode: "create" | "edit") => {
+    setFlowBuilderNodeId(nodeId)
+    setFlowBuilderMode(mode)
+    setFlowBuilderOpen(true)
+  }, [])
+
+  // Fetch WhatsApp flows on mount
+  useEffect(() => { refreshWhatsAppFlows() }, [refreshWhatsAppFlows])
 
   // Version loading state
   const [draftStateLoaded, setDraftStateLoaded] = useState(false)
@@ -660,12 +686,13 @@ function MagicFlowInner() {
                   addConnectedNode: nodeOps.addConnectedNode,
                   deleteNode: nodeOps.deleteNode,
                   convertNode: nodeOps.convertNode,
+                  openFlowBuilder,
                 }, {
                   flowId,
                   currentFlow: persistence.currentFlow,
                   setCurrentFlow: persistence.setCurrentFlow,
                   saveFlowFields: persistence.saveFlowFields,
-                }, nodes)
+                }, nodes, { availableFlows: availableWhatsAppFlows })
                 // Apply validation error highlight without mutating persisted node state
                 if (validationErrorIds.has(node.id)) {
                   return { ...injected, className: "validation-error" }
@@ -825,6 +852,92 @@ function MagicFlowInner() {
         copyNodes={clipboard.copyNodes}
         pasteNodes={clipboard.pasteNodes}
         selectAllNodes={clipboard.selectAllNodes}
+        onOpenFlowBuilder={openFlowBuilder}
+      />
+
+      {/* WhatsApp Flow Builder Modal — page-level so both node + properties panel can open it */}
+      <WhatsAppFlowBuilderModal
+        open={flowBuilderOpen}
+        onClose={() => setFlowBuilderOpen(false)}
+        onSave={async (data): Promise<string | void> => {
+          const targetNode = nodes.find((n) => n.id === flowBuilderNodeId)
+          if (!targetNode) return
+          let flowId = data.existingFlowId
+          try {
+
+            if (flowId) {
+              const updateRes = await fetch(`/api/whatsapp-flows/${flowId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: data.name,
+                  flow_json: { version: data.version, screens: data.screens },
+                }),
+              })
+              if (!updateRes.ok) { const d = await updateRes.json().catch(() => ({})); throw new Error(d?.error || d?.message || "Failed to update flow") }
+            } else {
+              const createRes = await fetch("/api/whatsapp-flows", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: data.name,
+                  whatsapp_account: data.whatsappAccount,
+                  category: "OTHER",
+                  flow_json: { version: data.version, screens: data.screens },
+                }),
+              })
+              if (!createRes.ok) { const d = await createRes.json().catch(() => ({})); throw new Error(d?.error || d?.message || "Failed to create flow") }
+              const createData = await createRes.json()
+              flowId = createData?.flow?.id || createData?.data?.flow?.id
+              if (!flowId) throw new Error("Failed to create flow")
+            }
+
+            const saveRes = await fetch(`/api/whatsapp-flows/${flowId}/save-to-meta`, { method: "POST" })
+            const saveData = await saveRes.json()
+            if (!saveRes.ok) throw new Error(saveData?.error || saveData?.message || "Failed to save flow to Meta")
+            let metaFlowId = saveData?.flow?.meta_flow_id || saveData?.data?.flow?.meta_flow_id || targetNode.data.whatsappFlowId || ""
+            let flowStatus = saveData?.flow?.status || saveData?.data?.flow?.status || "DRAFT"
+
+            if (data.publish) {
+              const pubRes = await fetch(`/api/whatsapp-flows/${flowId}/publish`, { method: "POST" })
+              const pubData = await pubRes.json()
+              if (!pubRes.ok) throw new Error(pubData?.error || pubData?.message || "Failed to publish flow")
+              metaFlowId = pubData?.flow?.meta_flow_id || pubData?.data?.flow?.meta_flow_id || metaFlowId
+              flowStatus = pubData?.flow?.status || "PUBLISHED"
+            }
+
+            nodeOps.updateNodeData(flowBuilderNodeId!, {
+              ...targetNode.data,
+              whatsappFlowId: metaFlowId,
+              flowName: data.name,
+              flowStatus,
+              responseFields: data.responseFields,
+            })
+
+            refreshWhatsAppFlows()
+            setFlowBuilderOpen(false)
+            return flowId
+          } catch (err: any) {
+            console.error("Failed to save WhatsApp Flow:", err)
+            // Re-throw so modal catches it — but attach flowId so modal can reuse it on retry
+            const error = new Error(err?.message || "Failed to save flow")
+            ;(error as any).flowId = flowId
+            throw error
+          }
+        }}
+        existingFlow={flowBuilderMode === "edit" && flowBuilderNodeId ? (() => {
+          const targetNode = nodes.find((n) => n.id === flowBuilderNodeId)
+          if (!targetNode?.data?.whatsappFlowId) return undefined
+          const flow = availableWhatsAppFlows.find((f: any) => f.meta_flow_id === targetNode.data.whatsappFlowId)
+          return {
+            id: flow?.id || "",
+            name: (targetNode.data.flowName as string) || "",
+            status: flow?.status || (targetNode.data.flowStatus as string) || "",
+            whatsappAccount: flow?.whatsapp_account || "",
+            flowJson: flow?.flow_json || { screens: [] },
+          }
+        })() : undefined}
+        defaultWhatsAppAccount={availableWhatsAppFlows[0]?.whatsapp_account || ""}
       />
 
       <Toaster position="bottom-right" />

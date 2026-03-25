@@ -1,4 +1,4 @@
-import { MessageCircle, MessageSquare, List, User, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded, FileText, Layers, CircleCheck } from "lucide-react"
+import { MessageCircle, MessageSquare, List, User, Package, Store, Calendar as CalendarIcon, Zap, GitBranch, PackageSearch, Globe, PhoneForwarded, FileText, Layers, CircleCheck, FormInput } from "lucide-react"
 import { ShopifyIcon, MetaIcon, GoogleIcon, StripeIcon, ZapierIcon, SalesforceIcon, MailchimpIcon, TwilioIcon, SlackIcon, AirtableIcon } from "@/components/service-icons"
 import type { Platform } from "@/types"
 
@@ -469,6 +469,30 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       requiredProperties: ["label", "platform"],
       optionalProperties: ["variables", "tags", "tagAction"],
       selectionRule: "Use to set variables or manage tags silently (no message). Condition node supports has_tag/not_has_tag on _tags field.",
+    },
+  },
+
+  {
+    type: "whatsappFlow",
+    icon: FormInput,
+    label: "WhatsApp Flow",
+    description: "Send a WhatsApp interactive form (Meta Flows)",
+    category: "action",
+    platforms: ["whatsapp"],
+    limits: { maxConnections: 1 },
+    ai: {
+      description: "Send a WhatsApp interactive form (Meta Flows). Opens full-screen native form in WhatsApp. Response fields auto-stored in session variables and contact_variables.",
+      whenToUse: "When you need to collect structured multi-field data via a native WhatsApp form (registration, surveys, feedback). The form must be pre-created and published in Meta's WhatsApp Flows builder.",
+      requiredProperties: ["label", "platform", "whatsappFlowId", "bodyText", "ctaText"],
+      optionalProperties: ["headerText"],
+      contentFields: "bodyText (required message), headerText (optional), ctaText (button text, max 20 chars)",
+      selectionRule: "Use to send a WhatsApp Flow form. Response fields become available as {{field_name}} variables in subsequent nodes.",
+      bestPractices: [
+        "bodyText is required — it's the message users see before opening the form",
+        "ctaText max 20 chars (e.g. 'Open Form', 'Fill Survey', 'Register')",
+        "Response fields are auto-extracted from the selected flow and available as variables downstream",
+        "The flow must be published on Meta before it can be sent to users",
+      ],
     },
   },
 

@@ -131,6 +131,25 @@ export function PublishModal({
         })
         return
       }
+
+      // Validate: WhatsApp Flow nodes must have body text and a flow selected
+      const flowErrors = nodes.filter((n) => n.type === "whatsappFlow" && n.data)
+        .filter((n) => !n.data.whatsappFlowId || !(n.data.bodyText as string)?.trim())
+      if (flowErrors.length > 0) {
+        setIsOpen(false)
+        onValidationError?.(flowErrors.map((n) => n.id))
+        const missing = flowErrors.map((n) => {
+          const parts: string[] = []
+          if (!n.data.whatsappFlowId) parts.push("flow")
+          if (!(n.data.bodyText as string)?.trim()) parts.push("message body")
+          return parts.join(" & ")
+        })
+        toast.error("Cannot publish: WhatsApp Flow node incomplete", {
+          description: `Missing ${missing[0]} on "${flowErrors[0].data.label || "WhatsApp Flow"}"`,
+          duration: 5000,
+        })
+        return
+      }
     }
 
     const finalVersionName = versionName.trim() || generateDefaultVersionName()
@@ -148,6 +167,7 @@ export function PublishModal({
         try {
           // Flatten template nodes before converting
           const { nodes: flatNodes, edges: flatEdges } = flattenFlow(nodes, edges)
+          const selectedAccountName = waAccounts.find((a) => a.id === selectedWaAccountId)?.name
           const converted = convertToFsWhatsApp(
             flatNodes,
             flatEdges,
@@ -156,6 +176,7 @@ export function PublishModal({
             triggerIds,
             triggerKeywords,
             flowSlug,
+            selectedAccountName,
           )
           const response = await fetch("/api/whatsapp/publish", {
             method: "POST",

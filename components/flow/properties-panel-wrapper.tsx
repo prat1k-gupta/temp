@@ -25,6 +25,7 @@ interface PropertiesPanelWrapperProps {
   copyNodes: () => void
   pasteNodes: (cursorPosition?: { x: number; y: number }) => void
   selectAllNodes: () => void
+  onOpenFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
 }
 
 export function PropertiesPanelWrapper({
@@ -41,6 +42,7 @@ export function PropertiesPanelWrapper({
   copyNodes,
   pasteNodes,
   selectAllNodes,
+  onOpenFlowBuilder,
 }: PropertiesPanelWrapperProps) {
   const { screenToFlowPosition } = useReactFlow()
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
@@ -113,6 +115,7 @@ export function PropertiesPanelWrapper({
               onAddButton={onAddButton}
               onRemoveButton={onRemoveButton}
               allNodes={nodes}
+              onOpenFlowBuilder={onOpenFlowBuilder}
             />
           </div>
         </div>

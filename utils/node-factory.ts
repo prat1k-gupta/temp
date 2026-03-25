@@ -481,6 +481,33 @@ export const createActionNode = (
 }
 
 /**
+ * Create a WhatsApp Flow node (Meta interactive form)
+ */
+export const createWhatsAppFlowNode = (
+  platform: Platform,
+  position: NodePosition,
+  customId?: string
+): Node => {
+  const nodeId = customId || generateNodeId("whatsappFlow")
+  return {
+    id: nodeId,
+    type: "whatsappFlow",
+    position,
+    data: {
+      platform,
+      label: "WhatsApp Flow",
+      whatsappFlowId: "",
+      flowName: "",
+      flowStatus: "",
+      headerText: "",
+      bodyText: "",
+      ctaText: "Open Form",
+      responseFields: [],
+    } as NodeData,
+  }
+}
+
+/**
  * Factory function to create any node type
  */
 export const createNode = (
@@ -504,6 +531,9 @@ export const createNode = (
   }
   else if (nodeType === "action") {
     node = createActionNode(platform, position, customId)
+  }
+  else if (nodeType === "whatsappFlow") {
+    node = createWhatsAppFlowNode(platform, position, customId)
   }
   // Flow control nodes
   else if (nodeType === "flowComplete") {

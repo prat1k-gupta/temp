@@ -8,7 +8,7 @@ export interface FsWhatsAppFlowStep {
   step_name: string
   step_order: number
   message: string
-  message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer" | "template" | "action"
+  message_type: "text" | "buttons" | "conditional_routing" | "api_fetch" | "transfer" | "template" | "action" | "whatsapp_flow"
   input_type: WhatsAppInputType
   buttons?: Array<{ id: string; title: string; type?: string; url?: string }>
   store_as?: string
@@ -45,6 +45,7 @@ export interface FsWhatsAppFlowStep {
 export interface FsWhatsAppFlow {
   name: string
   description?: string
+  whatsapp_account?: string
   trigger_keywords?: string[]
   initial_message?: string
   completion_message?: string
@@ -158,6 +159,7 @@ export function convertToFsWhatsApp(
   triggerIds?: string[],
   triggerKeywords?: string[],
   flowSlug?: string,
+  whatsappAccount?: string,
 ): FsWhatsAppFlow {
   const edgeMap = buildEdgeMap(edges)
 
@@ -544,6 +546,19 @@ export function convertToFsWhatsApp(
         break
       }
 
+      case "whatsappFlow": {
+        step.message_type = "whatsapp_flow"
+        step.input_type = "whatsapp_flow"
+        step.message = data.bodyText || ""
+        step.input_config = {
+          whatsapp_flow_id: data.whatsappFlowId || "",
+          flow_header: data.headerText || "",
+          flow_cta: data.ctaText || "Open Form",
+        }
+        step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        break
+      }
+
       case "templateMessage": {
         step.message_type = "template"
         // input_type defaults to "button" from getImplicitInputType — flow always
@@ -629,6 +644,7 @@ export function convertToFsWhatsApp(
   const flow: FsWhatsAppFlow = {
     name: flowName,
     description: flowDescription,
+    whatsapp_account: whatsappAccount || undefined,
     trigger_keywords: customKeywords,
     enabled: true,
     flow_slug: flowSlug || undefined,
@@ -760,6 +776,12 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         data.variables = step.input_config?.variables || []
         data.tagAction = step.input_config?.tag_action || "add"
         data.tags = step.input_config?.tags || []
+        break
+      case "whatsappFlow":
+        data.whatsappFlowId = step.input_config?.whatsapp_flow_id || ""
+        data.headerText = step.input_config?.flow_header || ""
+        data.bodyText = step.message || ""
+        data.ctaText = step.input_config?.flow_cta || "Open Form"
         break
       case "templateMessage": {
         data.templateName = step.input_config?.template_name || step.message || ""
@@ -894,6 +916,7 @@ function inferNodeType(step: FsWhatsAppFlowStep): string {
   if (step.message_type === "api_fetch") return "apiFetch"
   if (step.message_type === "transfer") return "transfer"
   if (step.message_type === "action") return "action"
+  if (step.message_type === "whatsapp_flow") return "whatsappFlow"
   if (step.message_type === "template") return "templateMessage"
   if (step.message_type === "buttons") {
     if (step.input_type === "select") return "whatsappInteractiveList"

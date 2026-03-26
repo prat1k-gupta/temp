@@ -2,11 +2,14 @@
 
 import type { Node } from "@xyflow/react"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { VariablePickerTextarea } from "@/components/variable-picker-textarea"
 import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -297,73 +300,52 @@ function WhatsAppFlowPicker({ flows, value, onChange }: {
   onChange: (metaFlowId: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-
   const selectedFlow = flows.find((f: any) => f.meta_flow_id === value)
-  const filtered = search
-    ? flows.filter((f: any) => f.name?.toLowerCase().includes(search.toLowerCase()))
-    : flows
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between h-9 px-3 border rounded-md text-sm bg-background hover:bg-muted/50 transition-colors cursor-pointer"
-      >
-        {selectedFlow ? (
-          <span className="flex items-center gap-1.5 truncate">
-            <span className="truncate">{selectedFlow.name}</span>
-            <span className={`text-[9px] px-1 py-0 rounded ${selectedFlow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
-              {selectedFlow.status}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="w-full flex items-center justify-between h-9 px-3 border rounded-md text-sm bg-background hover:bg-muted/50 transition-colors cursor-pointer">
+          {selectedFlow ? (
+            <span className="flex items-center gap-1.5 truncate">
+              <span className="truncate">{selectedFlow.name}</span>
+              <span className={`text-[9px] px-1 py-0 rounded ${selectedFlow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                {selectedFlow.status}
+              </span>
             </span>
-          </span>
-        ) : (
-          <span className="text-muted-foreground">Select a flow...</span>
-        )}
-        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 mt-1 w-full border rounded-lg bg-popover shadow-lg overflow-hidden">
-          <div className="relative border-b">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search flows..."
-              className="w-full h-8 pl-8 pr-3 text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-[200px] overflow-y-auto p-1">
-            {/* Clear selection */}
-            <button
-              onClick={() => { onChange(""); setOpen(false); setSearch("") }}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-muted transition-colors cursor-pointer text-muted-foreground"
-            >
-              None
-            </button>
-            {filtered.map((flow: any) => (
-              <button
-                key={flow.id}
-                onClick={() => { onChange(flow.meta_flow_id); setOpen(false); setSearch("") }}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer ${value === flow.meta_flow_id ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "hover:bg-muted"}`}
-              >
-                <span className="flex-1 truncate">{flow.name}</span>
-                <span className={`text-[8px] px-1 py-0 rounded shrink-0 ${flow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
-                  {flow.status}
-                </span>
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <div className="py-3 text-center text-xs text-muted-foreground">
-                {search ? `No flows match "${search}"` : "No flows available"}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+          ) : (
+            <span className="text-muted-foreground">Select a flow...</span>
+          )}
+          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)]" align="start">
+        <Command>
+          <CommandInput placeholder="Search flows..." className="h-8 text-xs" />
+          <CommandList className="max-h-[200px]">
+            <CommandEmpty className="py-3 text-center text-xs">No flows found</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value="__none__" onSelect={() => { onChange(""); setOpen(false) }} className="text-xs text-muted-foreground cursor-pointer">
+                None
+              </CommandItem>
+              {flows.map((flow: any) => (
+                <CommandItem
+                  key={flow.id}
+                  value={flow.name}
+                  onSelect={() => { onChange(flow.meta_flow_id); setOpen(false) }}
+                  className={`text-xs cursor-pointer ${value === flow.meta_flow_id ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : ""}`}
+                >
+                  <span className="flex-1 truncate">{flow.name}</span>
+                  <span className={`text-[8px] px-1 py-0 rounded shrink-0 ${flow.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                    {flow.status}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -2093,12 +2075,11 @@ export function PropertiesPanel({
                         <div className="space-y-2">
                           {["in-store", "event"].map((type) => (
                             <div key={type} className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
+                              <Checkbox
                                 checked={(selectedNode.data.configuration?.eventTypes || []).includes(type)}
-                                onChange={(e) => {
+                                onCheckedChange={(checked) => {
                                   const eventTypes = selectedNode.data.configuration?.eventTypes || []
-                                  const updated = e.target.checked
+                                  const updated = checked
                                     ? [...eventTypes, type]
                                     : eventTypes.filter((t: string) => t !== type)
                                   onNodeUpdate(selectedNode.id, {
@@ -2106,7 +2087,7 @@ export function PropertiesPanel({
                                     configuration: { ...(selectedNode.data.configuration || {}), eventTypes: updated }
                                   })
                                 }}
-                                className="rounded border-border"
+                                className="rounded border-border cursor-pointer"
                               />
                               <Label className="text-sm font-normal cursor-pointer">{type}</Label>
                             </div>
@@ -2829,14 +2810,15 @@ export function PropertiesPanel({
               <div>
                 <Label className="text-sm font-medium mb-2 block">Tags</Label>
                 <div className="space-y-2">
-                  <select
-                    value={selectedNode.data.tagAction || "add"}
-                    onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, tagAction: e.target.value })}
-                    className="w-full h-8 text-xs rounded-md border bg-background px-2"
-                  >
-                    <option value="add">Add Tags</option>
-                    <option value="remove">Remove Tags</option>
-                  </select>
+                  <Select value={selectedNode.data.tagAction || "add"} onValueChange={(v) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, tagAction: v })}>
+                    <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="add" className="text-xs cursor-pointer">Add Tags</SelectItem>
+                      <SelectItem value="remove" className="text-xs cursor-pointer">Remove Tags</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {(selectedNode.data.tags || []).map((tag: string, idx: number) => {
                     const allTags = (selectedNode.data.tags || []).map((t: string) => t?.trim()).filter(Boolean)
                     const isDuplicateTag = tag?.trim() && allTags.filter((t: string) => t === tag.trim()).length > 1

@@ -116,6 +116,26 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Platform-level theme overrides */
+/* Set on <body> so portals (Dialog, Popover) inherit the right colors */
+/* Only override --ring and --primary for focus rings and buttons */
+/* --accent stays as subtle hover background (muted) — not changed per platform */
+body[data-platform="whatsapp"] {
+  --ring: #10b981;
+  --primary: #10b981;
+  --primary-foreground: #ffffff;
+}
+body[data-platform="instagram"] {
+  --ring: #a855f7;
+  --primary: #a855f7;
+  --primary-foreground: #ffffff;
+}
+body[data-platform="web"] {
+  --ring: #2872F4;
+  --primary: #2872F4;
+  --primary-foreground: #ffffff;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { Form, FormField, FormItem, FormControl, FormMessage } from "@/components/ui/form"
 import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
@@ -608,13 +609,18 @@ function InlineEditor({ comp, onChange, onDelete, onMoveUp, onMoveDown, onDone, 
       {comp.type === "TextInput" && (
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground shrink-0">Input type</span>
-          <select value={comp["input-type"] || "text"} onChange={(e) => onChange("input-type", e.target.value)} className="text-xs h-7 rounded border bg-background px-2 flex-1">
-            <option value="text">Text</option>
-            <option value="email">Email</option>
-            <option value="phone">Phone</option>
-            <option value="number">Number</option>
-            <option value="password">Password</option>
-          </select>
+          <Select value={comp["input-type"] || "text"} onValueChange={(v) => onChange("input-type", v)}>
+            <SelectTrigger className="text-xs h-7 flex-1 cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text" className="text-xs cursor-pointer">Text</SelectItem>
+              <SelectItem value="email" className="text-xs cursor-pointer">Email</SelectItem>
+              <SelectItem value="phone" className="text-xs cursor-pointer">Phone</SelectItem>
+              <SelectItem value="number" className="text-xs cursor-pointer">Number</SelectItem>
+              <SelectItem value="password" className="text-xs cursor-pointer">Password</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -671,26 +677,35 @@ function InlineEditor({ comp, onChange, onDelete, onMoveUp, onMoveDown, onDone, 
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground shrink-0">Action</span>
-            <select value={comp["on-click-action"]?.name || "complete"} onChange={(e) => {
-              if (e.target.value === "complete") {
+            <Select value={comp["on-click-action"]?.name || "complete"} onValueChange={(v) => {
+              if (v === "complete") {
                 onChange("on-click-action", { name: "complete", payload: {} })
               } else {
                 onChange("on-click-action", { name: "navigate", next: { type: "screen", name: "" }, payload: {} })
               }
-            }} className="text-xs h-7 rounded border bg-background px-2 flex-1">
-              <option value="complete">Submit form</option>
-              <option value="navigate">Go to next page</option>
-            </select>
+            }}>
+              <SelectTrigger className="text-xs h-7 flex-1 cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="complete" className="text-xs cursor-pointer">Submit form</SelectItem>
+                <SelectItem value="navigate" className="text-xs cursor-pointer">Go to next page</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           {comp["on-click-action"]?.name === "navigate" && (
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground shrink-0">Next page</span>
-              <select value={comp["on-click-action"]?.next?.name || ""} onChange={(e) => {
-                onChange("on-click-action", { name: "navigate", next: { type: "screen", name: e.target.value }, payload: {} })
-              }} className="text-xs h-7 rounded border bg-background px-2 flex-1">
-                <option value="">Select...</option>
-                {screens.filter((s) => s.id !== currentScreenId).map((s) => <option key={s.id} value={s.id}>{s.title} ({s.id})</option>)}
-              </select>
+              <Select value={comp["on-click-action"]?.next?.name || ""} onValueChange={(v) => {
+                onChange("on-click-action", { name: "navigate", next: { type: "screen", name: v }, payload: {} })
+              }}>
+                <SelectTrigger className="text-xs h-7 flex-1 cursor-pointer">
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {screens.filter((s) => s.id !== currentScreenId).map((s) => <SelectItem key={s.id} value={s.id} className="text-xs cursor-pointer">{s.title} ({s.id})</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )}
         </div>
@@ -954,26 +969,27 @@ export function WhatsAppFlowBuilderModal({ open, onClose, onSave, existingFlow, 
             )} />
             <Separator orientation="vertical" className="h-5" />
             <FormField control={form.control} name="selectedAccount" render={({ field, fieldState }) => (
-              <FormItem className="relative">
-                <Smartphone className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 pointer-events-none z-10" />
+              <FormItem>
                 <FormControl>
-                  <select
+                  <Select
                     value={existingFlow ? (existingFlow.whatsappAccount || field.value) : field.value}
-                    onChange={field.onChange}
+                    onValueChange={field.onChange}
                     disabled={!!existingFlow}
-                    className={cn(
-                      "h-7 text-[11px] bg-transparent border rounded pl-7 pr-6 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-300 appearance-none",
-                      existingFlow ? "opacity-70 cursor-not-allowed border-border" : "cursor-pointer border-border",
-                      fieldState.error && "border-destructive"
-                    )}
                   >
-                    <option value="">Select account</option>
-                    {whatsappAccounts.map((a) => (
-                      <option key={a.id} value={a.name}>{a.name}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className={cn(
+                      "h-7 text-[11px] cursor-pointer",
+                      existingFlow && "opacity-70 cursor-not-allowed",
+                      fieldState.error && "border-destructive"
+                    )}>
+                      <SelectValue placeholder="Select account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {whatsappAccounts.map((a) => (
+                        <SelectItem key={a.id} value={a.name} className="text-xs cursor-pointer">{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormControl>
-                {!existingFlow && <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40 pointer-events-none" />}
               </FormItem>
             )} />
           </div>

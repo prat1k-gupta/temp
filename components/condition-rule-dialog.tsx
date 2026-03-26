@@ -69,7 +69,7 @@ function TagValueSelect({ value, onChange, availableTags }: { value: string; onC
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between h-9 px-3 border rounded-md text-sm bg-background hover:bg-accent/50 transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between h-9 px-3 border rounded-md text-sm bg-background hover:bg-muted transition-colors cursor-pointer"
       >
         {value ? (
           <span className="flex items-center gap-1.5 font-mono text-xs">
@@ -86,7 +86,7 @@ function TagValueSelect({ value, onChange, availableTags }: { value: string; onC
         <div className="absolute z-50 mt-1 w-full border rounded-lg bg-popover shadow-md overflow-hidden">
           <div className="relative border-b">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search tags..."
@@ -101,7 +101,7 @@ function TagValueSelect({ value, onChange, availableTags }: { value: string; onC
                 onClick={() => { onChange(tag); setOpen(false); setSearch("") }}
                 className={cn(
                   "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs font-mono transition-colors cursor-pointer",
-                  value === tag ? "bg-teal-500/10 text-teal-600 dark:text-teal-400" : "hover:bg-accent"
+                  value === tag ? "bg-teal-500/10 text-teal-600 dark:text-teal-400" : "hover:bg-muted"
                 )}
               >
                 <Tag className="w-3 h-3 text-teal-500 shrink-0" />
@@ -112,7 +112,7 @@ function TagValueSelect({ value, onChange, availableTags }: { value: string; onC
             {filtered.length === 0 && search && (
               <button
                 onClick={() => { onChange(search); setOpen(false); setSearch("") }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer hover:bg-accent"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer hover:bg-muted"
               >
                 <Tag className="w-3 h-3 text-teal-500 shrink-0" />
                 <span className="text-muted-foreground">Use "</span>
@@ -273,7 +273,7 @@ export function ConditionRuleDialog({
               {/* Search */}
               <div className="relative border-b">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
+                <Input
                   value={fieldSearch}
                   onChange={(e) => setFieldSearch(e.target.value)}
                   placeholder={fieldTab === "tags" ? "Search tags..." : fieldTab === "variables" ? "Search variables..." : "Search..."}
@@ -303,7 +303,7 @@ export function ConditionRuleDialog({
                             "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer",
                             field === f.value
                               ? `${config.bg} ${config.text}`
-                              : "hover:bg-accent"
+                              : "hover:bg-muted"
                           )}
                         >
                           <div className={cn("w-5 h-5 rounded flex items-center justify-center shrink-0", config.bg)}>
@@ -340,7 +340,7 @@ export function ConditionRuleDialog({
                           "w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-left transition-colors cursor-pointer",
                           field === f.value
                             ? "bg-teal-500/10 text-teal-600 dark:text-teal-400"
-                            : "hover:bg-accent"
+                            : "hover:bg-muted"
                         )}
                       >
                         <div className="w-5 h-5 rounded bg-teal-500/10 flex items-center justify-center shrink-0">
@@ -370,7 +370,7 @@ export function ConditionRuleDialog({
             /* Selected field display */
             <button
               onClick={() => setShowFieldPicker(true)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 border rounded-lg hover:bg-accent/50 transition-colors text-left cursor-pointer group"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 border rounded-lg hover:bg-muted transition-colors text-left cursor-pointer group"
             >
               {(() => {
                 const config = isTagField

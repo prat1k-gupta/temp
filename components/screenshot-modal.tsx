@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { 
   Camera, 
@@ -217,7 +218,7 @@ export function ScreenshotModal({ children, flowElementRef, open: controlledOpen
                         onChange={(e) => setBackgroundColor(e.target.value)}
                         className="w-8 h-8 rounded border"
                       />
-                      <input
+                      <Input
                         type="text"
                         value={backgroundColor}
                         onChange={(e) => setBackgroundColor(e.target.value)}

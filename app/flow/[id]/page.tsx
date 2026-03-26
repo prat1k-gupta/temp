@@ -109,6 +109,12 @@ function MagicFlowInner() {
   // Fetch WhatsApp flows on mount
   useEffect(() => { refreshWhatsAppFlows() }, [refreshWhatsAppFlows])
 
+  // Set platform theme on body so portals (dialogs, popovers) inherit the right accent color
+  useEffect(() => {
+    document.body.setAttribute("data-platform", platform)
+    return () => { document.body.removeAttribute("data-platform") }
+  }, [platform])
+
   // Version loading state
   const [draftStateLoaded, setDraftStateLoaded] = useState(false)
   const [isLoadingVersion, setIsLoadingVersion] = useState(false)

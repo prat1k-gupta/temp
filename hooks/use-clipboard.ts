@@ -43,7 +43,19 @@ export function useClipboard({
   autoEnterEditMode,
   updateDraftChanges,
 }: UseClipboardParams) {
-  const [clipboard, setClipboard] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null)
+  const [clipboard, _setClipboard] = useState<{ nodes: Node[]; edges: Edge[] } | null>(() => {
+    try {
+      const stored = localStorage.getItem("magic-flow-clipboard")
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
+  const setClipboard = useCallback((data: { nodes: Node[]; edges: Edge[] } | null) => {
+    _setClipboard(data)
+    try {
+      if (data) localStorage.setItem("magic-flow-clipboard", JSON.stringify(data))
+      else localStorage.removeItem("magic-flow-clipboard")
+    } catch { /* ignore */ }
+  }, [])
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([])
   const [pastePosition, setPastePosition] = useState<{ x: number; y: number } | null>(null)
 

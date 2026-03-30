@@ -3,6 +3,7 @@ import type { Node, Edge } from '@xyflow/react'
 import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
 import { useVersions, useCreateVersion, usePublishVersion, useDeleteDraft } from '@/hooks/queries'
 import { changeTracker } from '@/utils/change-tracker'
+import { getEditModeState, saveEditModeState } from '@/utils/version-storage'
 
 /**
  * Format nodes/edges for ReactFlow (ensure data/style objects exist).
@@ -36,29 +37,49 @@ export function useVersionManager(flowId: string) {
   // Derived: latest published version from the server-fetched list
   const latestPublishedVersion = versionsQuery.data?.find(v => v.isPublished) ?? null
 
-  // Initialize edit mode based on whether a published version exists
+  // Initialize edit mode — restore from localStorage (UI preference), then check versions
   useEffect(() => {
     if (versionsQuery.isLoading || !versionsQuery.data) return
 
     changeTracker.setFlowId(flowId)
 
-    if (latestPublishedVersion) {
-      // Has published version — start in view mode
-      setEditModeState({
-        isEditMode: false,
-        hasUnsavedChanges: false,
-        currentVersion: latestPublishedVersion,
-        draftChanges: []
-      })
+    const storedEditMode = getEditModeState(flowId)
+    const isFirstVisit = storedEditMode === null
+
+    if (isFirstVisit) {
+      if (latestPublishedVersion) {
+        // First visit with published version — start in view mode
+        setEditModeState({
+          isEditMode: false,
+          hasUnsavedChanges: false,
+          currentVersion: latestPublishedVersion,
+          draftChanges: []
+        })
+        saveEditModeState(flowId, false)
+      } else {
+        // First visit, no published version — start in edit mode
+        setEditModeState({
+          isEditMode: true,
+          hasUnsavedChanges: false,
+          currentVersion: null,
+          draftChanges: []
+        })
+        saveEditModeState(flowId, true)
+        changeTracker.startTracking()
+      }
     } else {
-      // No published version — start in edit mode
+      // Subsequent visit — restore stored edit mode
+      const draftChanges = changeTracker.getChanges()
       setEditModeState({
-        isEditMode: true,
-        hasUnsavedChanges: false,
-        currentVersion: null,
-        draftChanges: []
+        isEditMode: storedEditMode,
+        hasUnsavedChanges: draftChanges.length > 0,
+        currentVersion: latestPublishedVersion,
+        draftChanges
       })
-      changeTracker.startTracking()
+
+      if (storedEditMode) {
+        changeTracker.startTracking()
+      }
     }
   }, [flowId, versionsQuery.isLoading, latestPublishedVersion?.id])
 
@@ -76,6 +97,7 @@ export function useVersionManager(flowId: string) {
         hasUnsavedChanges: changeTracker.getChangesCount() > 0
       }))
       changeTracker.startTracking()
+      saveEditModeState(flowId, true)
     } else {
       // Exiting edit mode — revert to published version
       if (latestPublishedVersion) {
@@ -96,12 +118,13 @@ export function useVersionManager(flowId: string) {
         }))
         changeTracker.clearChanges()
         changeTracker.stopTracking()
+        saveEditModeState(flowId, false)
       } else {
         // No published version — cannot exit edit mode
         return
       }
     }
-  }, [editModeState.isEditMode, latestPublishedVersion])
+  }, [editModeState.isEditMode, latestPublishedVersion, flowId])
 
   /**
    * Enter edit mode
@@ -123,8 +146,9 @@ export function useVersionManager(flowId: string) {
         hasUnsavedChanges: true
       }))
       changeTracker.startTracking(currentNodes, currentEdges, currentPlatform)
+      saveEditModeState(flowId, true)
     }
-  }, [editModeState.isEditMode])
+  }, [editModeState.isEditMode, flowId])
 
   /**
    * Exit edit mode
@@ -217,6 +241,7 @@ export function useVersionManager(flowId: string) {
     })
     changeTracker.clearChanges()
     changeTracker.stopTracking()
+    saveEditModeState(flowId, false)
 
     // Delete draft since we just published
     deleteDraftMutation.mutate(flowId)
@@ -245,6 +270,7 @@ export function useVersionManager(flowId: string) {
         isEditMode: false,
         currentVersion: publishedVersion
       }))
+      saveEditModeState(flowId, false)
 
       deleteDraftMutation.mutate(flowId)
       return publishedVersion
@@ -358,6 +384,7 @@ export function useVersionManager(flowId: string) {
         draftChanges: preservedChanges
       }))
       changeTracker.pauseTracking()
+      saveEditModeState(flowId, false)
     } else {
       // Switch to edit mode
       changeTracker.resumeTracking()
@@ -368,8 +395,9 @@ export function useVersionManager(flowId: string) {
         hasUnsavedChanges: currentChanges.length > 0,
         draftChanges: currentChanges
       }))
+      saveEditModeState(flowId, true)
     }
-  }, [editModeState.isEditMode, latestPublishedVersion])
+  }, [editModeState.isEditMode, latestPublishedVersion, flowId])
 
   /**
    * Reset to published version
@@ -392,6 +420,7 @@ export function useVersionManager(flowId: string) {
       })
       changeTracker.clearChanges()
       changeTracker.stopTracking()
+      saveEditModeState(flowId, false)
       deleteDraftMutation.mutate(flowId)
       return true
     } else {
@@ -418,6 +447,7 @@ export function useVersionManager(flowId: string) {
       })
       changeTracker.clearChanges()
       changeTracker.startTracking()
+      saveEditModeState(flowId, true)
       deleteDraftMutation.mutate(flowId)
       return true
     }

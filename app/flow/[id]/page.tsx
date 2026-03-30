@@ -325,40 +325,23 @@ function MagicFlowInner() {
     }
   }, [editModeState.isEditMode, isAutoEnteringEditMode])
 
-  // Load published version on startup or draft state
+  // Load published version when in view mode
+  // In edit mode, draft data is already loaded by useFlowPersistence (via useFlow)
   useEffect(() => {
-    if (editModeState.isEditMode !== undefined) {
-      if (!isEditMode && currentVersion) {
-        const formattedNodes = currentVersion.nodes.map((node) => ({
-          ...node,
-          data: node.data || {},
-        }))
-        const formattedEdges = currentVersion.edges.map((edge) => ({
-          ...edge,
-          style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
-        }))
-        setNodes(formattedNodes)
-        setEdges(formattedEdges)
-        setPlatform(currentVersion.platform)
-      } else if (isEditMode && !isAutoEnteringEditMode) {
-        // Draft is loaded via auto-save (server-side draft included in getFlow response)
-        // If no draft was loaded and we have a published version, show it
-        if (currentVersion) {
-          const formattedNodes = currentVersion.nodes.map((node) => ({
-            ...node,
-            data: node.data || {},
-          }))
-          const formattedEdges = currentVersion.edges.map((edge) => ({
-            ...edge,
-            style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
-          }))
-          setNodes(formattedNodes)
-          setEdges(formattedEdges)
-          setPlatform(currentVersion.platform)
-        }
-      }
+    if (!isEditMode && currentVersion) {
+      const formattedNodes = currentVersion.nodes.map((node) => ({
+        ...node,
+        data: node.data || {},
+      }))
+      const formattedEdges = currentVersion.edges.map((edge) => ({
+        ...edge,
+        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
+      }))
+      setNodes(formattedNodes)
+      setEdges(formattedEdges)
+      setPlatform(currentVersion.platform)
     }
-  }, [editModeState.isEditMode, isEditMode, currentVersion])
+  }, [isEditMode, currentVersion])
 
   // Load version when currentVersion changes
   useEffect(() => {

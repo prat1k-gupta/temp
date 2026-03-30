@@ -290,6 +290,31 @@ describe("convertToFsWhatsApp", () => {
     expect(result.trigger_keywords).toEqual(["message", "hi"])
   })
 
+  it("passes trigger_match_type and trigger_ref to output", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Match Type Test", undefined, undefined, ["hello"], "exact", "claim free sample")
+    expect(result.trigger_keywords).toEqual(["hello"])
+    expect(result.trigger_match_type).toBe("exact")
+    expect(result.trigger_ref).toBe("claim free sample")
+  })
+
+  it("omits trigger_match_type and trigger_ref when not provided", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", { label: "Q", question: "Hi?" }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "No Match Type", undefined, undefined, ["hello"])
+    expect(result.trigger_match_type).toBeUndefined()
+    expect(result.trigger_ref).toBeUndefined()
+  })
+
   it("uses question text for step names instead of label", () => {
     const nodes = [
       node("start-1", "start"),

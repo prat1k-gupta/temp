@@ -7,6 +7,7 @@ export interface Trigger {
   title: string
   description: string
   icon?: string
+  comingSoon?: boolean
 }
 
 export const PLATFORM_TRIGGERS: Record<Platform, Trigger[]> = {
@@ -37,18 +38,19 @@ export const PLATFORM_TRIGGERS: Record<Platform, Trigger[]> = {
       description: "Triggered when user sends any message",
     },
     {
-      id: "whatsapp-ctwa",
-      platform: "whatsapp",
-      category: "Click-to-WhatsApp Ad",
-      title: "User clicks a CTWA Ad",
-      description: "Triggered when user clicks a WhatsApp ad",
-    },
-    {
       id: "whatsapp-url",
       platform: "whatsapp",
       category: "WhatsApp URL",
       title: "User clicks a link",
       description: "Triggered when user clicks a WhatsApp link",
+    },
+    {
+      id: "whatsapp-ctwa",
+      platform: "whatsapp",
+      category: "Click-to-WhatsApp Ad",
+      title: "User clicks a CTWA Ad",
+      description: "Triggered when user clicks a WhatsApp ad",
+      comingSoon: true,
     },
   ],
   instagram: [

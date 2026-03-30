@@ -34,6 +34,9 @@ export async function GET(_request: NextRequest) {
       name: f.name,
       flowSlug: f.flow_slug,
       variables: f.variables || [],
+      triggerKeywords: f.trigger_keywords || [],
+      triggerMatchType: f.trigger_match_type || "contains_whole_word",
+      triggerRef: f.trigger_ref || "",
     }))
 
     return NextResponse.json({ flows })

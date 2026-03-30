@@ -36,6 +36,7 @@ export async function fsWhatsAppProxy(options: ProxyOptions): Promise<NextRespon
   try {
     const fetchOptions: RequestInit = {
       method: options.method || "GET",
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": config.apiKey,

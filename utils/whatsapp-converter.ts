@@ -47,6 +47,8 @@ export interface FsWhatsAppFlow {
   description?: string
   whatsapp_account?: string
   trigger_keywords?: string[]
+  trigger_match_type?: string
+  trigger_ref?: string
   initial_message?: string
   completion_message?: string
   enabled?: boolean
@@ -158,6 +160,8 @@ export function convertToFsWhatsApp(
   flowDescription?: string,
   triggerIds?: string[],
   triggerKeywords?: string[],
+  triggerMatchType?: string,
+  triggerRef?: string,
   flowSlug?: string,
   whatsappAccount?: string,
 ): FsWhatsAppFlow {
@@ -646,6 +650,8 @@ export function convertToFsWhatsApp(
     description: flowDescription,
     whatsapp_account: whatsappAccount || undefined,
     trigger_keywords: customKeywords,
+    trigger_match_type: triggerMatchType || undefined,
+    trigger_ref: triggerRef || undefined,
     enabled: true,
     flow_slug: flowSlug || undefined,
     steps,

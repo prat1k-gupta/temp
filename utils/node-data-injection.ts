@@ -88,35 +88,41 @@ export function injectNodeCallbacks(
       ...(node.type === "start" && flowContext && {
         flowDescription: flowContext.currentFlow?.description || "",
         triggerKeywords: ((data.triggerKeywords as string[])?.length ? data.triggerKeywords as string[] : undefined) ?? flowContext.currentFlow?.triggerKeywords ?? EMPTY_KEYWORDS,
-        onFlowUpdate: (updates: { description?: string; triggerKeywords?: string[] }) => {
+        triggerMatchType: (data.triggerMatchType as string) || flowContext.currentFlow?.triggerMatchType || "contains_whole_word",
+        triggerRef: (data.triggerRef as string) || flowContext.currentFlow?.triggerRef || "",
+        publishedFlowId: flowContext.currentFlow?.publishedFlowId || "",
+        waPhoneNumber: flowContext.currentFlow?.waPhoneNumber || "",
+        onFlowUpdate: (updates: { description?: string; triggerKeywords?: string[]; triggerMatchType?: string; triggerRef?: string }) => {
           if (flowContext.flowId) {
             const flowUpdates: Record<string, any> = {}
             if (updates.description !== undefined) flowUpdates.description = updates.description
             if (updates.triggerKeywords !== undefined) flowUpdates.triggerKeywords = updates.triggerKeywords
+            if (updates.triggerMatchType !== undefined) flowUpdates.triggerMatchType = updates.triggerMatchType
+            if (updates.triggerRef !== undefined) flowUpdates.triggerRef = updates.triggerRef
             if (Object.keys(flowUpdates).length > 0) {
               updateFlow(flowContext.flowId, flowUpdates)
               flowContext.setCurrentFlow((prev) => (prev ? { ...prev, ...flowUpdates } : null))
-              // Persist to DB
               if (flowContext.saveFlowFields) {
                 flowContext.saveFlowFields(flowUpdates)
               }
-              // Sync trigger keywords to fs-whatsapp if flow is published
+              // Sync trigger fields to fs-whatsapp if flow is published
               if (
-                updates.triggerKeywords &&
-                updates.triggerKeywords.length > 0 &&
                 flowContext.currentFlow?.publishedFlowId &&
                 flowContext.currentFlow?.platform === "whatsapp"
               ) {
-                fetch("/api/whatsapp/update-keywords", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    flowId: flowContext.currentFlow.publishedFlowId,
-                    triggerKeywords: updates.triggerKeywords,
-                  }),
-                }).catch(() => {
-                  // Silent fail — keywords are still saved locally
-                })
+                const syncPayload: Record<string, any> = {
+                  flowId: flowContext.currentFlow.publishedFlowId,
+                }
+                if (updates.triggerKeywords !== undefined) syncPayload.triggerKeywords = updates.triggerKeywords
+                if (updates.triggerMatchType !== undefined) syncPayload.triggerMatchType = updates.triggerMatchType
+                if (updates.triggerRef !== undefined) syncPayload.triggerRef = updates.triggerRef
+                if (Object.keys(syncPayload).length > 1) {
+                  fetch("/api/whatsapp/update-keywords", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(syncPayload),
+                  }).catch(() => {})
+                }
               }
             }
           }

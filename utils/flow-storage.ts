@@ -26,6 +26,8 @@ export interface FlowData {
   triggerId?: string // Backwards compatibility
   triggerIds?: string[] // Multiple triggers support
   triggerKeywords?: string[] // Custom keywords that trigger this flow (WhatsApp)
+  triggerMatchType?: string // How keywords are matched: exact, contains, contains_whole_word, starts_with
+  triggerRef?: string // Unique ref keyword for wa.me link trigger
   publishedFlowId?: string // fs-whatsapp flow ID after first publish
   flowSlug?: string // Flow slug from fs-whatsapp (frozen after first publish)
   waAccountId?: string // Selected WhatsApp Business account ID
@@ -99,7 +101,9 @@ export function createFlow(
   platform: Platform = "web",
   triggerId?: string,
   triggerKeywords?: string[],
-  waAccountId?: string
+  waAccountId?: string,
+  triggerMatchType?: string,
+  triggerRef?: string,
 ): FlowData {
   const newFlow: FlowData = {
     id: `flow-${Date.now()}`,
@@ -109,6 +113,8 @@ export function createFlow(
     triggerId,
     triggerIds: triggerId ? [triggerId] : [],
     triggerKeywords: triggerKeywords || [],
+    triggerMatchType: triggerMatchType || "contains_whole_word",
+    triggerRef: triggerRef || "",
     ...(waAccountId ? { waAccountId } : {}),
     nodes: [
       {
@@ -121,6 +127,8 @@ export function createFlow(
           triggerId,
           triggerIds: triggerId ? [triggerId] : [],
           triggerKeywords: triggerKeywords || [],
+          triggerMatchType: triggerMatchType || "contains_whole_word",
+          triggerRef: triggerRef || "",
         },
         draggable: false,
         selectable: true, // Allow selection to edit triggers

@@ -46,6 +46,11 @@ MagicFlow (React)
 - Template message node with parameter mappings
 - AI flow generation (Haiku for create, Sonnet for edit)
 - AI template generation with named variables
+- Action node (set variables + manage tags in one step)
+- API node success/failure handles with dual routing
+- WhatsApp Flows node with form builder and lifecycle management
+- Cross-flow clipboard
+- Shadcn component migration (replaced raw HTML selects/inputs)
 
 **FS Chat runtime:**
 - E.164 phone number normalization
@@ -53,16 +58,21 @@ MagicFlow (React)
 - Contact variables persisted across flows
 - Global/cross-flow variable injection
 - Failed template error visibility in chat
+- API node success/failure routing with error logging and system variables
+- Action node (set variables + manage tags)
+- WhatsApp Flows lifecycle, new components, response field persistence
+- Typing indicator + read receipts on incoming messages
+- Webhook outbox processor with advisory locks and retry logic
 
 ---
 
-## Phase 1 — Launch Blockers (Week 1-2)
+## Phase 1 — Launch Blockers
 
 Features first. These work on localStorage and don't depend on database/auth. The goal is: **run a full Freestand marketing campaign end-to-end.**
 
 Three features block launch. Without them, existing BotPenguin flows can't be migrated.
 
-### 1.1 API Node Success/Failure Handles ⚡ Day 1-2
+### 1.1 API Node Success/Failure Handles ✅
 
 The eligibility check flow (API call to Sampling Central → branch on result) breaks silently if the API fails. Currently, a failed API call proceeds with empty variables → wrong routing → approving ineligible consumers.
 
@@ -75,7 +85,9 @@ The eligibility check flow (API call to Sampling Central → branch on result) b
 - Store `sessionData["_api_status"] = "success"` or `"error"` after fetch
 - Branch to success/failure next step based on status (~20 lines)
 
-### 1.2 Tagging Node ⚡ Day 2-3
+> Shipped: magic-flow #10, fs-whatsapp #12
+
+### 1.2 Tagging Node ✅
 
 Every Freestand flow tags contacts for future targeting (`sampled_product_x`, `region_north`). Without tagging: no audience segmentation, no re-sampling suppression, no follow-up targeting.
 
@@ -91,7 +103,9 @@ Every Freestand flow tags contacts for future targeting (`sampled_product_x`, `r
 - Inject `contact.Tags` into `sessionData["_tags"]` at session start
 - Condition evaluator: support "has tag" / "doesn't have tag" checks
 
-### 1.3 WhatsApp Flows Node ⚡ Day 3-5
+> Shipped as "Action Node" (combined set variables + manage tags): magic-flow #12, fs-whatsapp #13
+
+### 1.3 WhatsApp Flows Node ✅
 
 Freestand uses Meta's WhatsApp Flows (interactive forms) in existing campaigns. Can't migrate those flows without this node.
 
@@ -106,19 +120,18 @@ Freestand uses Meta's WhatsApp Flows (interactive forms) in existing campaigns. 
 - `nfm_reply` response parsing works
 - **Gap:** form responses only stored in session data, not persisted to `contact_variables`
 
+> Shipped: magic-flow (a2844d6), fs-whatsapp #14
+
 ---
 
-### 1.4 Typing Indicator + API Timeout Config (quick win)
+### 1.4 Typing Indicator + API Timeout Config ✅ (partial)
 
-- **Typing indicator** — send `typing_on` status before every bot reply and before API calls. WhatsApp Cloud API now supports this. Auto-dismisses after 25s or when bot responds.
+- ~~**Typing indicator** — send `typing_on` status before every bot reply and before API calls. WhatsApp Cloud API now supports this. Auto-dismisses after 25s or when bot responds.~~
 - **API timeout dropdown** — configurable per API node (5s/10s/15s/30s), server-side hard cap at 30s. Dropdown in both MagicFlow and FS Chat properties panel.
-- **Mark as read** — send blue ticks immediately on message receipt (already have `MarkMessageRead`)
+- ~~**Mark as read** — send blue ticks immediately on message receipt (already have `MarkMessageRead`)~~
 
-### 1.5 Variable Uniqueness Check (quick win, anytime)
+> Typing indicator + read receipts shipped: fs-whatsapp #15. API timeout config not yet implemented.
 
-- Warn/prevent duplicate `storeAs` names across the flow
-- Visual indicator on nodes with conflicting variable names
-- Small effort — validation check, not a feature
 
 ---
 
@@ -260,12 +273,7 @@ Conditional screen routing in WhatsApp Flows via backend endpoint. Currently onl
 
 **Depends on:** Phase 1 WhatsApp Flows node (static) being stable
 
-### 3.3 Variable Uniqueness Check
-
-- Warn/prevent duplicate `storeAs` names across the flow
-- Visual indicator on nodes with conflicting variable names
-
-### 3.4 Subflows (Call by Reference)
+### 3.3 Subflows (Call by Reference)
 
 - Changes propagate to all flows using the subflow
 - Templates (current) = call by value, Subflows = call by reference
@@ -369,7 +377,7 @@ Per-step execution trace for debugging flow runs. Currently API errors are saved
 
 | Item | Issue | Priority |
 |------|-------|----------|
-| Replace primitive HTML with shadcn components | [#17](https://github.com/freestandtech/magic-flow/issues/17) | High |
+| Replace primitive HTML with shadcn components ✅ | [#17](https://github.com/freestandtech/magic-flow/issues/17) | Done |
 | AI-generated flows have overlapping nodes | [#7](https://github.com/freestandtech/magic-flow/issues/7) | High |
 | Standardize AI flow JSON naming/redirection | [#2](https://github.com/freestandtech/magic-flow/issues/2) | High |
 | API Fetch node: compact UI + improved panel | [#8](https://github.com/freestandtech/magic-flow/issues/8) | Medium |
@@ -412,8 +420,13 @@ Replace raw HTML primitives (`<select>`, `<input>`, custom dropdowns) with shadc
 
 ## Timeline Target
 
-**End of first week of April:**
-- Phase 1 complete (tagging, API handles, variables, WhatsApp Flows)
+**Phase 1 — ✅ Complete** (as of late March 2026)
+- API handles, action node (tags + variables), WhatsApp Flows, typing indicator all shipped
 - Flows publishable to FS Chat and triggerable via API from Sampling Central
 
-**Phase 2 follows immediately after** — database + auth + React Query to make MagicFlow multi-user for Freestand customers.
+**Remaining before Phase 2:**
+- API timeout config (1.4 partial)
+- Variable uniqueness check (1.5)
+- Phase 1.5 quick wins (FLOW button in template builder, variables Phase 5)
+
+**Phase 2 follows** — database + auth + React Query to make MagicFlow multi-user for Freestand customers.

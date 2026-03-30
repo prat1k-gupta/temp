@@ -8,10 +8,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { Loader2, Layout, Globe, Plus, X } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import type { Platform } from "@/types"
-import { Badge } from "@/components/ui/badge"
-import { getTriggersByPlatform } from "@/constants/triggers"
+import { TriggerConfigPanel, isTriggerConfigInvalid, getSaveData, type TriggerConfigState } from "@/components/trigger-config-panel"
 
 interface FlowSetupModalProps {
   open: boolean
@@ -20,8 +19,11 @@ interface FlowSetupModalProps {
     name: string
     platform: Platform
     triggerId: string
+    triggerIds?: string[]
     description?: string
     triggerKeywords?: string[]
+    triggerMatchType?: string
+    triggerRef?: string
     waAccountId?: string
     waPhoneNumber?: string
   }) => Promise<void>
@@ -31,16 +33,22 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   const [flowName, setFlowName] = useState("")
   const [flowDescription, setFlowDescription] = useState("")
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("whatsapp")
-  const [selectedTrigger, setSelectedTrigger] = useState<string>("")
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreating, setIsCreating] = useState(false)
-  const [triggerKeywords, setTriggerKeywords] = useState<string[]>([])
-  const [keywordInput, setKeywordInput] = useState("")
+  const [conflictWarnings, setConflictWarnings] = useState<Record<string, string>>({})
+  const [refConflict, setRefConflict] = useState<string | null>(null)
+  const [triggerConfig, setTriggerConfig] = useState<TriggerConfigState>({
+    selectedTriggers: [],
+    triggerKeywords: [],
+    triggerMatchType: "contains_whole_word",
+    triggerRef: "",
+  })
 
   // WhatsApp account selection
   const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
   const [waAccountsLoading, setWaAccountsLoading] = useState(false)
   const [selectedWaAccountId, setSelectedWaAccountId] = useState("")
+  const [waPhoneNumber, setWaPhoneNumber] = useState("")
 
   useEffect(() => {
     if (selectedPlatform === "whatsapp" && open) {
@@ -61,92 +69,88 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }, [selectedPlatform, open])
 
-  const triggers = getTriggersByPlatform(selectedPlatform)
-  const filteredTriggers = triggers.filter(
-    trigger =>
-      trigger.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trigger.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trigger.category.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
   const getPlatformIcon = (platform: Platform, size: "sm" | "md" | "lg" = "md") => {
-    const sizeClasses = {
-      sm: "w-4 h-4",
-      md: "w-5 h-5",
-      lg: "w-8 h-8"
-    }
-    
+    const sizeClasses = { sm: "w-4 h-4", md: "w-5 h-5", lg: "w-8 h-8" }
     switch (platform) {
-      case "web":
-        return <WebIcon className={sizeClasses[size]} />
-      case "whatsapp":
-        return <WhatsAppIcon className={sizeClasses[size]} />
-      case "instagram":
-        return <InstagramIcon className={sizeClasses[size]} />
+      case "web": return <WebIcon className={sizeClasses[size]} />
+      case "whatsapp": return <WhatsAppIcon className={sizeClasses[size]} />
+      case "instagram": return <InstagramIcon className={sizeClasses[size]} />
     }
-  }
-
-  const getTriggerIcon = (trigger: (typeof triggers)[0]) => {
-    if (trigger.icon) {
-      const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-        Layout,
-        Globe,
-      }
-      const IconComponent = iconMap[trigger.icon]
-      if (IconComponent) {
-        return <IconComponent className="w-4 h-4" />
-      }
-    }
-    // Fallback to platform icon if no specific icon
-    return getPlatformIcon(selectedPlatform, "sm")
   }
 
   const getPlatformColor = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "bg-blue-500"
-      case "whatsapp":
-        return "bg-green-500"
-      case "instagram":
-        return "bg-pink-500"
-    }
+    switch (platform) { case "web": return "bg-blue-500"; case "whatsapp": return "bg-green-500"; case "instagram": return "bg-pink-500" }
   }
 
-  const addKeyword = () => {
-    const keyword = keywordInput.trim().toLowerCase()
-    if (keyword && !triggerKeywords.includes(keyword)) {
-      setTriggerKeywords([...triggerKeywords, keyword])
+  const handleTriggerChange = (newState: TriggerConfigState) => {
+    if (newState.triggerRef !== triggerConfig.triggerRef && refConflict) {
+      setRefConflict(null)
     }
-    setKeywordInput("")
-  }
-
-  const removeKeyword = (keyword: string) => {
-    setTriggerKeywords(triggerKeywords.filter(k => k !== keyword))
+    setTriggerConfig(newState)
   }
 
   const handleComplete = async () => {
-    if (flowName.trim() && selectedTrigger && !isCreating) {
+    const saveData = getSaveData(triggerConfig)
+    if (flowName.trim() && saveData.selectedTriggers.length > 0 && !isCreating) {
       setIsCreating(true)
+
+      // Check conflicts before creating
+      if (selectedPlatform === "whatsapp" && (saveData.triggerKeywords.length > 0 || saveData.triggerRef)) {
+        try {
+          const res = await fetch("/api/whatsapp/flows")
+          if (res.ok) {
+            const result = await res.json()
+            const otherFlows = result.flows || []
+            const warnings: Record<string, string> = {}
+            let refConflictName: string | null = null
+            for (const flow of otherFlows) {
+              for (const kw of saveData.triggerKeywords) {
+                if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
+                  warnings[kw] = flow.name
+                }
+              }
+              if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
+                refConflictName = flow.name
+              }
+            }
+            setConflictWarnings(warnings)
+            setRefConflict(refConflictName)
+            // Ref conflict: hard block
+            if (refConflictName) {
+              setIsCreating(false)
+              return
+            }
+            // Keyword conflict: show warning first time, proceed on second click
+            if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
+              setIsCreating(false)
+              return
+            }
+          }
+        } catch {
+          // Network error — create anyway
+        }
+      }
+
       try {
         await onComplete({
           name: flowName,
           platform: selectedPlatform,
-          triggerId: selectedTrigger,
+          triggerId: saveData.selectedTriggers[0],
+          triggerIds: saveData.selectedTriggers,
           description: flowDescription.trim() || undefined,
-          triggerKeywords: triggerKeywords.length > 0 ? triggerKeywords : undefined,
+          triggerKeywords: saveData.triggerKeywords.length > 0 ? saveData.triggerKeywords : undefined,
+          triggerMatchType: saveData.triggerMatchType,
+          triggerRef: saveData.triggerRef || undefined,
           waAccountId: selectedPlatform === "whatsapp" && selectedWaAccountId ? selectedWaAccountId : undefined,
+          waPhoneNumber: selectedPlatform === "whatsapp" ? waAccounts.find(a => a.id === selectedWaAccountId)?.phone_number : undefined,
         })
-        // Reset state only on success
         setFlowName("")
         setFlowDescription("")
         setSelectedPlatform("whatsapp")
-        setSelectedTrigger("")
+        setTriggerConfig({ selectedTriggers: [], triggerKeywords: [], triggerMatchType: "contains_whole_word", triggerRef: "" })
         setSearchQuery("")
-        setTriggerKeywords([])
-        setKeywordInput("")
         setSelectedWaAccountId("")
       } catch (error) {
-        // Error handling is done in parent component
         // Don't reset state on error so user can retry
       } finally {
         setIsCreating(false)
@@ -154,8 +158,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
     }
   }
 
-  const needsKeywords = selectedTrigger === "whatsapp-message" || selectedTrigger === "instagram-message"
-  const canComplete = flowName.trim().length > 0 && selectedTrigger.length > 0 && !isCreating && (!needsKeywords || triggerKeywords.length > 0)
+  const canComplete = flowName.trim().length > 0 && triggerConfig.selectedTriggers.length > 0 && !isCreating && !isTriggerConfigInvalid(triggerConfig, refConflict)
 
   // Prevent closing dialog while creating
   const handleOpenChange = (open: boolean) => {
@@ -166,228 +169,111 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-5xl max-h-[85vh] overflow-hidden flex flex-col" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle className="text-xl">Start automation when...</DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-xl">Start automation when...</DialogTitle>
+            {selectedPlatform === "whatsapp" && (
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">WhatsApp Account</Label>
+                <Select
+                  value={selectedWaAccountId}
+                  onValueChange={setSelectedWaAccountId}
+                  disabled={isCreating || waAccountsLoading}
+                >
+                  <SelectTrigger className="h-8 w-auto min-w-[160px] text-sm border-border shadow-sm">
+                    <SelectValue placeholder={waAccountsLoading ? "Loading..." : "Select account"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {waAccounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name}
+                        {acc.phone_number ? ` (${acc.phone_number})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-5 py-3">
-          {/* Flow Name Input */}
-          <div className="space-y-2 px-1">
-            <Label htmlFor="flow-name" className="text-sm text-muted-foreground">Flow Name</Label>
-            <Input
-              id="flow-name"
-              placeholder="e.g., Customer Support Flow"
-              value={flowName}
-              onChange={(e) => setFlowName(e.target.value)}
-              className="h-10"
-              disabled={isCreating}
-            />
-          </div>
-
-          {/* Flow Description/Context */}
-          <div className="space-y-2 px-1">
-            <Label htmlFor="flow-description" className="text-sm text-muted-foreground">
-              What is this flow about? <span className="text-xs text-muted-foreground/70">(Optional)</span>
-            </Label>
-            <Textarea
-              id="flow-description"
-              placeholder="This will help our smart AI assistant to suggest better interactions. e.g., Customer support flow for handling product inquiries, returns, and technical issues..."
-              value={flowDescription}
-              onChange={(e) => setFlowDescription(e.target.value)}
-              className="min-h-[80px] resize-none"
-              rows={3}
-              disabled={isCreating}
-            />
-            <p className="text-xs text-muted-foreground">
-              Describe the purpose and context of this flow to get better AI suggestions
-            </p>
-          </div>
-
-          {/* Channel Selection */}
-          <div className="space-y-3 px-1">
-            <Label className="text-sm text-muted-foreground">Channel</Label>
-            <div className="flex gap-3">
-              {(["whatsapp", "instagram", "web"] as Platform[]).map((platform) => (
-                <button
-                  key={platform}
-                  onClick={() => {
-                    if (!isCreating) {
-                      setSelectedPlatform(platform)
-                      setSelectedTrigger("") // Reset trigger when changing platform
-                    }
-                  }}
-                  disabled={isCreating}
-                  className={`flex-1 p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                    selectedPlatform === platform
-                      ? "border-accent bg-accent/10"
-                      : "border-border hover:border-accent/50 hover:bg-muted"
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-1.5">
-                    <div className={`w-9 h-9 rounded-lg ${getPlatformColor(platform)} flex items-center justify-center text-white`}>
-                      {getPlatformIcon(platform, "sm")}
-                    </div>
-                    <span className="font-medium text-xs text-card-foreground capitalize">{platform}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Triggers Section */}
-          <div className="space-y-2.5">
-            <div className="flex items-start justify-between px-1 gap-2">
-              <Label className="text-sm text-muted-foreground">
-                {selectedPlatform === "web" ? "Form Type" : "Triggers"}
-              </Label>
-              <p className="text-[11px] text-muted-foreground text-right leading-tight">
-                {selectedPlatform === "web" 
-                  ? "Choose how your form will be displayed"
-                  : `Specific ${selectedPlatform === "whatsapp" ? "WhatsApp" : "Instagram"} event that starts your automation.`}
-              </p>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative px-1">
-              <Input
-                placeholder={`Search in ${selectedPlatform === "web" ? "Web" : selectedPlatform === "whatsapp" ? "WhatsApp" : "Instagram"}`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-10 pl-10"
-                disabled={isCreating}
-              />
-              <svg 
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-
-            {/* Trigger Options */}
-            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
-              {filteredTriggers.map((trigger) => (
-                <button
-                  key={trigger.id}
-                  onClick={() => {
-                    if (!isCreating) {
-                      setSelectedTrigger(trigger.id)
-                    }
-                  }}
-                  disabled={isCreating}
-                  className={`w-full p-2.5 rounded-lg border transition-all duration-200 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                    selectedTrigger === trigger.id
-                      ? "border-accent bg-accent/10"
-                      : "border-border hover:border-accent/50 hover:bg-muted"
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className={`w-7 h-7 rounded-full ${getPlatformColor(selectedPlatform)} flex items-center justify-center shrink-0 text-white`}>
-                      {getTriggerIcon(trigger)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] text-muted-foreground mb-0.5">{trigger.category}</div>
-                      <div className="font-medium text-card-foreground text-xs">{trigger.title}</div>
-                      {trigger.description && (
-                        <div className="text-[10px] text-muted-foreground mt-0.5">{trigger.description}</div>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-              {filteredTriggers.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  No triggers found matching "{searchQuery}"
+        <div className="flex-1 overflow-y-auto py-3">
+          <TriggerConfigPanel
+            platform={selectedPlatform}
+            state={triggerConfig}
+            onChange={handleTriggerChange}
+            waPhoneNumber={waAccounts.find(a => a.id === selectedWaAccountId)?.phone_number}
+            disabled={isCreating}
+            layout="full"
+            conflictWarnings={conflictWarnings}
+            refConflict={refConflict}
+            leftColumnHeader={
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="flow-name" className="text-sm text-muted-foreground">Flow Name</Label>
+                  <Input
+                    id="flow-name"
+                    placeholder="e.g., Customer Support Flow"
+                    value={flowName}
+                    onChange={(e) => setFlowName(e.target.value)}
+                    className="h-10 border-border shadow-sm"
+                    disabled={isCreating}
+                  />
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* WhatsApp Account (WhatsApp only) */}
-          {selectedPlatform === "whatsapp" && (
-            <div className="space-y-2 px-1">
-              <Label className="text-sm text-muted-foreground">WhatsApp Account</Label>
-              <Select
-                value={selectedWaAccountId}
-                onValueChange={setSelectedWaAccountId}
-                disabled={isCreating || waAccountsLoading}
-              >
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder={waAccountsLoading ? "Loading accounts..." : "Select WhatsApp account"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {waAccounts.map((acc) => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name}
-                      {acc.phone_number ? ` (${acc.phone_number})` : ""}
-                      {acc.status !== "active" ? ` - ${acc.status}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                The WhatsApp Business account used to deploy and test this flow
-              </p>
-            </div>
-          )}
-
-          {/* Trigger Keywords (WhatsApp only) */}
-          {selectedPlatform === "whatsapp" && (
-            <div className="space-y-2 px-1">
-              <Label className="text-sm text-muted-foreground">
-                Trigger Keywords <span className="text-xs text-muted-foreground/70">(Optional)</span>
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Words that start this flow when a user sends a message (e.g. "hi", "menu", "help")
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  value={keywordInput}
-                  onChange={(e) => setKeywordInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      addKeyword()
-                    }
-                  }}
-                  placeholder="Type a keyword and press Enter"
-                  className="flex-1 h-8 text-sm"
-                  disabled={isCreating}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addKeyword}
-                  disabled={!keywordInput.trim() || isCreating}
-                  className="h-8 px-3"
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
-              {triggerKeywords.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {triggerKeywords.map((keyword) => (
-                    <Badge
-                      key={keyword}
-                      variant="secondary"
-                      className="flex items-center gap-1 px-2 py-0.5 text-xs cursor-pointer hover:bg-destructive/10"
-                      onClick={() => !isCreating && removeKeyword(keyword)}
-                    >
-                      {keyword}
-                      <X className="w-3 h-3" />
-                    </Badge>
-                  ))}
+                <div className="space-y-2">
+                  <Label htmlFor="flow-description" className="text-sm text-muted-foreground">
+                    Description <span className="text-xs text-muted-foreground/70">(Optional)</span>
+                  </Label>
+                  <Textarea
+                    id="flow-description"
+                    placeholder="Describe the purpose and context to get better AI suggestions..."
+                    value={flowDescription}
+                    onChange={(e) => setFlowDescription(e.target.value)}
+                    className="min-h-[60px] resize-none border-border shadow-sm"
+                    rows={2}
+                    disabled={isCreating}
+                  />
                 </div>
-              )}
-            </div>
-          )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Channel</Label>
+                  <div className="flex gap-2">
+                    {(["whatsapp", "instagram", "web"] as Platform[]).map((platform) => (
+                      <button
+                        key={platform}
+                        onClick={() => {
+                          if (!isCreating) {
+                            setSelectedPlatform(platform)
+                            setTriggerConfig({ selectedTriggers: [], triggerKeywords: [], triggerMatchType: "contains_whole_word", triggerRef: "" })
+                          }
+                        }}
+                        disabled={isCreating}
+                        className={`flex-1 p-2.5 rounded-lg transition-all cursor-pointer disabled:opacity-50 ${
+                          selectedPlatform === platform
+                            ? "border-2 border-accent bg-accent/10 shadow-sm"
+                            : "border border-border hover:border-accent/50 hover:bg-muted/50"
+                        }`}
+                      >
+                        <div className="flex flex-col items-center gap-1">
+                          <div className={`w-7 h-7 rounded-lg ${getPlatformColor(platform)} flex items-center justify-center text-white`}>
+                            {getPlatformIcon(platform, "sm")}
+                          </div>
+                          <span className="font-medium text-xs text-card-foreground capitalize">{platform}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </>
+            }
+          />
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={isCreating}>
+          <Button variant="outline" onClick={onClose} disabled={isCreating}>
             Cancel
           </Button>
           <Button 

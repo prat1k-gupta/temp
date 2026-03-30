@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { flowId, triggerKeywords } = await request.json()
+    const { flowId, triggerKeywords, triggerMatchType, triggerRef } = await request.json()
 
     if (!flowId) {
       return NextResponse.json(
@@ -21,9 +21,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!Array.isArray(triggerKeywords) || triggerKeywords.length === 0) {
+    // Build update payload — only include fields that were sent
+    const payload: Record<string, any> = {}
+    if (Array.isArray(triggerKeywords)) {
+      payload.trigger_keywords = triggerKeywords
+    }
+    if (triggerMatchType !== undefined) {
+      payload.trigger_match_type = triggerMatchType
+    }
+    if (triggerRef !== undefined) {
+      payload.trigger_ref = triggerRef
+    }
+
+    if (Object.keys(payload).length === 0) {
       return NextResponse.json(
-        { error: "triggerKeywords must be a non-empty array" },
+        { error: "No trigger fields to update" },
         { status: 400 }
       )
     }
@@ -34,7 +46,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
       },
-      body: JSON.stringify({ trigger_keywords: triggerKeywords }),
+      body: JSON.stringify(payload),
     })
 
     if (!response.ok) {

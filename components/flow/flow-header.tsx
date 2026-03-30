@@ -81,6 +81,8 @@ interface FlowHeaderProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  triggerMatchType?: string
+  triggerRef?: string
   publishedFlowId?: string
   flowSlug?: string
   waAccountId?: string
@@ -132,6 +134,8 @@ export function FlowHeader({
   flowDescription,
   triggerIds,
   triggerKeywords,
+  triggerMatchType,
+  triggerRef,
   publishedFlowId,
   flowSlug,
   waAccountId,
@@ -331,6 +335,8 @@ export function FlowHeader({
             flowDescription={flowDescription}
             triggerIds={triggerIds}
             triggerKeywords={triggerKeywords}
+            triggerMatchType={triggerMatchType}
+            triggerRef={triggerRef}
             publishedFlowId={publishedFlowId}
             flowSlug={flowSlug}
             waAccountId={waAccountId}

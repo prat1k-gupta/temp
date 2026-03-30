@@ -27,6 +27,8 @@ interface ExportModalProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  triggerMatchType?: string
+  triggerRef?: string
   publishedFlowId?: string
   flowSlug?: string
   waAccountId?: string
@@ -35,7 +37,7 @@ interface ExportModalProps {
   onSync?: (updates: { flowSlug?: string; waPhoneNumber?: string; waAccountId?: string }) => void
 }
 
-export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, flowSlug, waAccountId, onPublished, onDisconnect, onSync }: ExportModalProps) {
+export function ExportModal({ flowData, onImportFlow, children, open: controlledOpen, onOpenChange, flowName, flowDescription, triggerIds, triggerKeywords, triggerMatchType, triggerRef, publishedFlowId, flowSlug, waAccountId, onPublished, onDisconnect, onSync }: ExportModalProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setIsOpen = onOpenChange || setInternalOpen
@@ -323,6 +325,8 @@ export function ExportModal({ flowData, onImportFlow, children, open: controlled
                 flowDescription={flowDescription}
                 triggerIds={triggerIds}
                 triggerKeywords={triggerKeywords}
+                triggerMatchType={triggerMatchType}
+                triggerRef={triggerRef}
                 publishedFlowId={publishedFlowId}
                 flowSlug={flowSlug}
                 waAccountId={waAccountId}

@@ -39,6 +39,8 @@ interface PublishModalProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  triggerMatchType?: string
+  triggerRef?: string
   publishedFlowId?: string
   flowSlug?: string
   waAccountId?: string
@@ -61,6 +63,8 @@ export function PublishModal({
   flowDescription,
   triggerIds,
   triggerKeywords,
+  triggerMatchType,
+  triggerRef,
   publishedFlowId,
   flowSlug,
   waAccountId,
@@ -175,6 +179,8 @@ export function PublishModal({
             flowDescription,
             triggerIds,
             triggerKeywords,
+            triggerMatchType,
+            triggerRef,
             flowSlug,
             selectedAccountName,
           )

@@ -63,6 +63,17 @@ AI prompts auto-generate from NODE_TEMPLATES — ensure the `ai` field is comple
 - Platform theme: --primary and --ring change per platform via data-platform attribute on body.
 - Use searchable combobox (Popover+Command) for any dropdown with 5+ items.
 
+## Learnings
+
+- Check shadcn base component source for hardcoded Tailwind classes before overriding — breakpoint prefixes and token names can silently win specificity.
+- Verify CSS variable meanings in globals.css before using token classes — names can be misleading (e.g. `--input` is background, not border).
+- Light mode needs intentional depth layering between nested surfaces. Dark mode hides flat design — always verify both themes.
+- Every modal dismiss path must behave identically. Test Cancel, X, outside click, and Escape separately.
+- If two modals share UI, extract the shared component immediately — don't ship duplicated code planning to refactor later.
+- Prefer single validation on save over real-time checks. Simpler, always fresh, no debounce/cache complexity.
+- When UI sections are conditionally visible, save must actively clear hidden state — don't persist what the user can't see.
+- Next.js server-side `fetch()` caches GET responses by default. API proxy routes must use `cache: "no-store"` or they return stale data silently. Wasted an hour debugging why a new field wasn't showing up.
+
 ## Key Patterns
 
 - Inline editing on nodes: click to edit, useState for edit mode, VariablePickerTextarea for text, StoreAsPill for variable names.

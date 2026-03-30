@@ -291,7 +291,7 @@ export function useFlowPersistence({
   }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow, loadFromDb])
 
   const handleFlowSetupComplete = useCallback(
-    async (data: { name: string; platform: Platform; triggerId: string; description?: string; triggerKeywords?: string[]; waAccountId?: string; waPhoneNumber?: string }) => {
+    async (data: { name: string; platform: Platform; triggerId: string; triggerIds?: string[]; description?: string; triggerKeywords?: string[]; triggerMatchType?: string; triggerRef?: string; waAccountId?: string; waPhoneNumber?: string }) => {
       if (isNewFlow) {
         if (loadFromDb) {
           try {
@@ -303,8 +303,10 @@ export function useFlowPersistence({
                 description: data.description,
                 platform: data.platform,
                 triggerId: data.triggerId,
-                triggerIds: data.triggerId ? [data.triggerId] : [],
+                triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
                 triggerKeywords: data.triggerKeywords || [],
+                triggerMatchType: data.triggerMatchType || "contains_whole_word",
+                triggerRef: data.triggerRef || "",
                 ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
                 ...(data.waPhoneNumber ? { waPhoneNumber: data.waPhoneNumber } : {}),
                 nodes: [
@@ -316,8 +318,10 @@ export function useFlowPersistence({
                       label: "Start",
                       platform: data.platform,
                       triggerId: data.triggerId,
-                      triggerIds: data.triggerId ? [data.triggerId] : [],
+                      triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
                       triggerKeywords: data.triggerKeywords || [],
+                      triggerMatchType: data.triggerMatchType || "contains_whole_word",
+                      triggerRef: data.triggerRef || "",
                     },
                     draggable: false,
                     selectable: true,
@@ -378,7 +382,7 @@ export function useFlowPersistence({
             throw error
           }
         } else {
-          const newFlow = createFlow(data.name, data.description, data.platform, data.triggerId, data.triggerKeywords, data.waAccountId)
+          const newFlow = createFlow(data.name, data.description, data.platform, data.triggerId, data.triggerKeywords, data.waAccountId, data.triggerMatchType, data.triggerRef)
 
           setCurrentFlow(newFlow)
           setNodes(newFlow.nodes)
@@ -393,9 +397,11 @@ export function useFlowPersistence({
           name: data.name,
           platform: data.platform,
           triggerId: data.triggerId,
-          triggerIds: [data.triggerId],
+          triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
           description: data.description,
           triggerKeywords: data.triggerKeywords || [],
+          triggerMatchType: data.triggerMatchType || "contains_whole_word",
+          triggerRef: data.triggerRef || "",
           ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
           nodes: [
             {
@@ -406,8 +412,10 @@ export function useFlowPersistence({
                 label: "Start",
                 platform: data.platform,
                 triggerId: data.triggerId,
-                triggerIds: [data.triggerId],
+                triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
                 triggerKeywords: data.triggerKeywords || [],
+                triggerMatchType: data.triggerMatchType || "contains_whole_word",
+                triggerRef: data.triggerRef || "",
               },
               draggable: true,
               selectable: true,

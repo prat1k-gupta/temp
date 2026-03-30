@@ -17,6 +17,8 @@ interface WhatsAppPublishPanelProps {
   flowDescription?: string
   triggerIds?: string[]
   triggerKeywords?: string[]
+  triggerMatchType?: string
+  triggerRef?: string
   publishedFlowId?: string
   flowSlug?: string
   waAccountId?: string
@@ -27,7 +29,7 @@ interface WhatsAppPublishPanelProps {
 
 type PublishStatus = "idle" | "publishing" | "success" | "error"
 
-export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, publishedFlowId, flowSlug, waAccountId, onPublished, onDisconnect, onSync }: WhatsAppPublishPanelProps) {
+export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, triggerMatchType, triggerRef, publishedFlowId, flowSlug, waAccountId, onPublished, onDisconnect, onSync }: WhatsAppPublishPanelProps) {
   const [showJson, setShowJson] = useState(false)
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
@@ -36,8 +38,8 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
   const isUpdate = !!publishedFlowId
 
   const converted = useMemo(
-    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, flowSlug),
-    [nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, flowSlug]
+    () => convertToFsWhatsApp(nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, triggerMatchType, triggerRef, flowSlug),
+    [nodes, edges, flowName, flowDescription, triggerIds, triggerKeywords, triggerMatchType, triggerRef, flowSlug]
   )
 
   const jsonString = useMemo(() => JSON.stringify(converted, null, 2), [converted])

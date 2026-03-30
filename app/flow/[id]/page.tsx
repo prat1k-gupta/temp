@@ -481,6 +481,12 @@ function MagicFlowInner() {
               return nodeKw?.length ? nodeKw : persistence.currentFlow?.triggerKeywords
             })()
           }
+          triggerMatchType={
+            (nodes.find(n => n.type === "start")?.data?.triggerMatchType as string | undefined) || persistence.currentFlow?.triggerMatchType
+          }
+          triggerRef={
+            (nodes.find(n => n.type === "start")?.data?.triggerRef as string | undefined) || persistence.currentFlow?.triggerRef
+          }
           publishedFlowId={persistence.currentFlow?.publishedFlowId}
           flowSlug={persistence.currentFlow?.flowSlug}
           waAccountId={persistence.currentFlow?.waAccountId}
@@ -579,6 +585,12 @@ function MagicFlowInner() {
               const nodeKw = nodes.find(n => n.type === "start")?.data?.triggerKeywords as string[] | undefined
               return nodeKw?.length ? nodeKw : persistence.currentFlow?.triggerKeywords
             })()
+          }
+          triggerMatchType={
+            (nodes.find(n => n.type === "start")?.data?.triggerMatchType as string | undefined) || persistence.currentFlow?.triggerMatchType
+          }
+          triggerRef={
+            (nodes.find(n => n.type === "start")?.data?.triggerRef as string | undefined) || persistence.currentFlow?.triggerRef
           }
           publishedFlowId={persistence.currentFlow?.publishedFlowId}
           flowSlug={persistence.currentFlow?.flowSlug}

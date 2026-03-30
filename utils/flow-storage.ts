@@ -55,7 +55,7 @@ const CURRENT_FLOW_KEY = "magic-flow-current-flow-id"
  * Map a backend project response to FlowMetadata.
  * Backend uses snake_case; frontend uses camelCase.
  */
-function mapProjectToMetadata(p: any): FlowMetadata {
+export function mapProjectToMetadata(p: any): FlowMetadata {
   return {
     id: p.id,
     name: p.name,
@@ -76,7 +76,7 @@ function mapProjectToMetadata(p: any): FlowMetadata {
  * The backend embeds the latest published version and draft inside the
  * project payload. Prefer draft nodes/edges when available.
  */
-function mapProjectToFlowData(p: any): FlowData {
+export function mapProjectToFlowData(p: any): FlowData {
   // Draft takes priority over published version
   const draft = p.draft
   const latestVersion = p.latest_version || p.latestVersion

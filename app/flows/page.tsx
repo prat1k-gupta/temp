@@ -6,7 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, FileEdit, Database, Loader2, FileText, Layers } from "lucide-react"
+import { Plus, Trash2, Copy, FileEdit, Database, Loader2, FileText, Layers, LogOut } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { getAllFlows, getSharedFlows, createFlow, deleteFlow, deleteSharedFlow, duplicateFlow, updateFlow, type FlowMetadata } from "@/utils/flow-storage"
@@ -14,6 +14,7 @@ import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
 import Link from "next/link"
+import { logout } from "@/lib/auth"
 
 // Freestand LogoClosed component (icon only)
 const LogoClosed = ({ className }: { className?: string }) => (
@@ -354,6 +355,15 @@ export default function FlowsPage() {
                 New Flow
               </Button>
               <ThemeToggle />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={logout}
+                className="cursor-pointer"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>

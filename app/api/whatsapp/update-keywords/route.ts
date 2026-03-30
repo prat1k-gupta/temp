@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { extractAuthToken } from "@/lib/fs-whatsapp-proxy"
 
 export async function POST(request: NextRequest) {
   const apiUrl = process.env.FS_WHATSAPP_API_URL
   const apiKey = process.env.FS_WHATSAPP_API_KEY
 
-  if (!apiUrl || !apiKey) {
+  if (!apiUrl) {
     return NextResponse.json(
       { error: "FS_WHATSAPP_API not configured" },
       { status: 500 }
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const authToken = extractAuthToken(request)
     const { flowId, triggerKeywords, triggerMatchType, triggerRef } = await request.json()
 
     if (!flowId) {
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Build update payload — only include fields that were sent
+    // Build update payload -- only include fields that were sent
     const payload: Record<string, any> = {}
     if (Array.isArray(triggerKeywords)) {
       payload.trigger_keywords = triggerKeywords
@@ -40,12 +42,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`
+    } else if (apiKey) {
+      headers["X-API-Key"] = apiKey
+    }
+
     const response = await fetch(`${apiUrl}/api/chatbot/flows/${flowId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey,
-      },
+      headers,
       body: JSON.stringify(payload),
     })
 

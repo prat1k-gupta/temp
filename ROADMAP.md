@@ -422,11 +422,13 @@ Replace raw HTML primitives (`<select>`, `<input>`, custom dropdowns) with shadc
 
 **Phase 1 — ✅ Complete** (as of late March 2026)
 - API handles, action node (tags + variables), WhatsApp Flows, typing indicator all shipped
+- Trigger match types, ref link triggers, global cancel keywords shipped
 - Flows publishable to FS Chat and triggerable via API from Sampling Central
 
-**Remaining before Phase 2:**
-- API timeout config (1.4 partial)
-- Variable uniqueness check (1.5)
-- Phase 1.5 quick wins (FLOW button in template builder, variables Phase 5)
+**Phase 2 — In Progress** (starting April 2026)
+- Database + auth + React Query to make MagicFlow multi-user
 
-**Phase 2 follows** — database + auth + React Query to make MagicFlow multi-user for Freestand customers.
+**Deferred to Phase 3:**
+- API timeout config (1.4 partial)
+- FLOW button in template builder (1.5)
+- Variables Phase 5 — global editor, inline creation, AI awareness (1.5)

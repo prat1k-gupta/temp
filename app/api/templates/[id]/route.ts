@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server"
-import { fsWhatsAppProxy } from "@/lib/fs-whatsapp-proxy"
+import { fsWhatsAppProxy, extractAuthToken } from "@/lib/fs-whatsapp-proxy"
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  return fsWhatsAppProxy({ path: `/api/templates/${id}`, errorMessage: "Failed to fetch template" })
+  const authToken = extractAuthToken(request)
+  return fsWhatsAppProxy({ path: `/api/templates/${id}`, authToken, errorMessage: "Failed to fetch template" })
 }
 
 export async function PUT(
@@ -14,8 +15,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const authToken = extractAuthToken(request)
   const body = await request.json()
-  return fsWhatsAppProxy({ path: `/api/templates/${id}`, method: "PUT", body, errorMessage: "Failed to update template" })
+  return fsWhatsAppProxy({ path: `/api/templates/${id}`, method: "PUT", body, authToken, errorMessage: "Failed to update template" })
 }
 
 export async function DELETE(
@@ -23,5 +25,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  return fsWhatsAppProxy({ path: `/api/templates/${id}`, method: "DELETE", errorMessage: "Failed to delete template" })
+  const authToken = extractAuthToken(request)
+  return fsWhatsAppProxy({ path: `/api/templates/${id}`, method: "DELETE", authToken, errorMessage: "Failed to delete template" })
 }

@@ -37,8 +37,10 @@ import {
   Copy,
   Link,
   Network,
+  LogOut,
 } from "lucide-react"
 import { toast } from "sonner"
+import { logout } from "@/lib/auth"
 
 interface FlowHeaderProps {
   currentFlow: FlowData | null
@@ -467,6 +469,13 @@ export function FlowHeader({
               <div className="px-2 py-1.5">
                 <ThemeToggle />
               </div>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem onSelect={logout} className="cursor-pointer">
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

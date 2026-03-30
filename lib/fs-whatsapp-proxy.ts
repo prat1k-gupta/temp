@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Shared proxy helper for fs-whatsapp API calls.
@@ -8,10 +8,21 @@ import { NextResponse } from "next/server"
 function getConfig() {
   const apiUrl = process.env.FS_WHATSAPP_API_URL
   const apiKey = process.env.FS_WHATSAPP_API_KEY
-  if (!apiUrl || !apiKey) {
-    return { error: "FS_WHATSAPP_API_URL or FS_WHATSAPP_API_KEY not configured" }
+  if (!apiUrl) {
+    return { error: "FS_WHATSAPP_API_URL is not configured" }
   }
   return { apiUrl, apiKey }
+}
+
+/**
+ * Extract Bearer token from the Authorization header of an incoming request.
+ */
+export function extractAuthToken(request: NextRequest): string | undefined {
+  const header = request.headers.get("Authorization")
+  if (header?.startsWith("Bearer ")) {
+    return header.slice(7)
+  }
+  return undefined
 }
 
 interface ProxyOptions {
@@ -21,6 +32,8 @@ interface ProxyOptions {
   body?: unknown
   /** Error message shown on failure */
   errorMessage?: string
+  /** JWT auth token to forward instead of API key */
+  authToken?: string
 }
 
 /**
@@ -34,13 +47,20 @@ export async function fsWhatsAppProxy(options: ProxyOptions): Promise<NextRespon
   }
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+
+    if (options.authToken) {
+      headers["Authorization"] = `Bearer ${options.authToken}`
+    } else if (config.apiKey) {
+      headers["X-API-Key"] = config.apiKey
+    }
+
     const fetchOptions: RequestInit = {
       method: options.method || "GET",
       cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": config.apiKey,
-      },
+      headers,
     }
     if (options.body !== undefined) {
       fetchOptions.body = JSON.stringify(options.body)

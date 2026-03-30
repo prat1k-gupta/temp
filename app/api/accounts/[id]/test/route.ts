@@ -1,13 +1,16 @@
-import { fsWhatsAppProxy } from "@/lib/fs-whatsapp-proxy"
+import { NextRequest } from "next/server"
+import { fsWhatsAppProxy, extractAuthToken } from "@/lib/fs-whatsapp-proxy"
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const authToken = extractAuthToken(request)
   return fsWhatsAppProxy({
     path: `/api/accounts/${id}/test`,
     method: "POST",
+    authToken,
     errorMessage: "Failed to test account connection",
   })
 }

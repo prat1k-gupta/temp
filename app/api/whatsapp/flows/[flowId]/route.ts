@@ -1,23 +1,32 @@
 import { NextRequest, NextResponse } from "next/server"
+import { extractAuthToken } from "@/lib/fs-whatsapp-proxy"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ flowId: string }> }
 ) {
   const { flowId } = await params
   const apiUrl = process.env.FS_WHATSAPP_API_URL
   const apiKey = process.env.FS_WHATSAPP_API_KEY
 
-  if (!apiUrl || !apiKey) {
+  if (!apiUrl) {
     return NextResponse.json(
-      { error: "FS_WHATSAPP_API_URL or FS_WHATSAPP_API_KEY is not configured" },
+      { error: "FS_WHATSAPP_API_URL is not configured" },
       { status: 500 }
     )
   }
 
   try {
+    const authToken = extractAuthToken(request)
+    const headers: Record<string, string> = {}
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`
+    } else if (apiKey) {
+      headers["X-API-Key"] = apiKey
+    }
+
     const response = await fetch(`${apiUrl}/api/chatbot/flows/${flowId}`, {
-      headers: { "X-API-Key": apiKey },
+      headers,
     })
 
     if (!response.ok) {

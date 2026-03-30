@@ -10,7 +10,7 @@ import {
   createFlowTemplateNode,
 } from "@/utils"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
-import { getFlow } from "@/utils/flow-storage"
+import { getTemplate } from "@/utils/flow-storage"
 import { INTERACTION_THRESHOLDS } from "@/constants"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
@@ -195,7 +195,7 @@ export function useFlowInteractions({
 
       try {
         if (draggedNodeType === "flowTemplate" && draggedNodeMeta?.templateId) {
-          // Resolve template data from default templates or user templates (localStorage)
+          // Resolve template data from default templates or user templates
           const defaultTpl = DEFAULT_TEMPLATES.find((t) => t.id === draggedNodeMeta.templateId)
           let templateNodes: Node[] = []
           let templateEdges: import("@xyflow/react").Edge[] = []
@@ -210,7 +210,7 @@ export function useFlowInteractions({
             templateDescription = defaultTpl.description
             templateAiMetadata = defaultTpl.aiMetadata
           } else {
-            const userTpl = getFlow(draggedNodeMeta.templateId!)
+            const userTpl = getTemplate(draggedNodeMeta.templateId!)
             if (userTpl) {
               templateNodes = userTpl.nodes.filter((n) => n.type !== "start")
               templateEdges = userTpl.edges

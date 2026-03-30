@@ -67,7 +67,7 @@ function MagicFlowInner() {
   const flowId = params?.id as string
   const isNewFlow = flowId === "new"
   const isSetupMode = searchParams?.get("setup") === "true" || isNewFlow
-  const loadFromDb = searchParams?.get("loadFrom") === "db"
+  // loadFromDb removed — all flows go through the API now
 
   // Core ReactFlow state
   const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
@@ -164,7 +164,6 @@ function MagicFlowInner() {
     flowId,
     isNewFlow,
     isSetupMode,
-    loadFromDb,
     nodes,
     edges,
     platform,
@@ -449,7 +448,6 @@ function MagicFlowInner() {
           platform={platform}
           nodes={nodes}
           edges={edges}
-          loadFromDb={loadFromDb}
           flowId={flowId}
           handleBackClick={persistence.handleBackClick}
           handleModeToggle={handleModeToggle}
@@ -517,50 +515,38 @@ function MagicFlowInner() {
           onCreateVersion={async (name, description) => {
             setIsLoadingVersion(true)
             const published = createAndPublishVersion(nodes, edges, platform, name, description)
-            if (published && loadFromDb && persistence.currentFlow) {
+            if (published && persistence.currentFlow) {
               try {
-                const response = await fetch(`/api/flows/${flowId}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    nodes, edges, platform,
-                    name: persistence.currentFlow.name,
-                    description: persistence.currentFlow.description,
-                    triggerId: persistence.currentFlow.triggerId,
-                    triggerIds: persistence.currentFlow.triggerIds,
-                  }),
-                })
-                if (response.ok) {
-                  const updatedFlow = await response.json()
-                  persistence.setCurrentFlow(updatedFlow)
-                }
+                // Save metadata to backend but don't overwrite currentFlow
+                // (updateFlow response lacks nodes/edges — would blank canvas)
+                await import("@/utils/flow-storage").then(m =>
+                  m.updateFlow(flowId, {
+                    name: persistence.currentFlow!.name,
+                    description: persistence.currentFlow!.description,
+                    triggerId: persistence.currentFlow!.triggerId,
+                    triggerIds: persistence.currentFlow!.triggerIds,
+                  })
+                )
               } catch (error) {
-                console.error("[App] Error saving flow to database after publishing:", error)
+                console.error("[App] Error saving flow after publishing:", error)
               }
             }
           }}
           onPublishVersion={async (_versionId, versionName, description) => {
             setIsLoadingVersion(true)
             const published = publishCurrentVersion(nodes, edges, platform, versionName, description)
-            if (published && loadFromDb && persistence.currentFlow) {
+            if (published && persistence.currentFlow) {
               try {
-                const response = await fetch(`/api/flows/${flowId}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    nodes, edges, platform,
-                    name: persistence.currentFlow.name,
-                    description: persistence.currentFlow.description,
-                    triggerId: persistence.currentFlow.triggerId,
-                    triggerIds: persistence.currentFlow.triggerIds,
-                  }),
-                })
-                if (response.ok) {
-                  const updatedFlow = await response.json()
-                  persistence.setCurrentFlow(updatedFlow)
-                }
+                await import("@/utils/flow-storage").then(m =>
+                  m.updateFlow(flowId, {
+                    name: persistence.currentFlow!.name,
+                    description: persistence.currentFlow!.description,
+                    triggerId: persistence.currentFlow!.triggerId,
+                    triggerIds: persistence.currentFlow!.triggerIds,
+                  })
+                )
               } catch (error) {
-                console.error("[App] Error saving flow to database after publishing:", error)
+                console.error("[App] Error saving flow after publishing:", error)
               }
             }
           }}
@@ -668,7 +654,7 @@ function MagicFlowInner() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={persistence.handleDeleteSharedFlow}
+                onClick={persistence.handleDeleteFlow}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete

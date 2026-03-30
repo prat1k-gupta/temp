@@ -452,10 +452,10 @@ export function useNodeOperations({
                 updateFlow(flowId, {
                   triggerIds: updates.triggerIds,
                   triggerId: updates.triggerIds[0],
-                })
+                }).catch(() => {})
               }
               if (node.type === "start" && updates.flowDescription !== undefined && flowId) {
-                updateFlow(flowId, { description: updates.flowDescription })
+                updateFlow(flowId, { description: updates.flowDescription }).catch(() => {})
                 setCurrentFlow((prev) => (prev ? { ...prev, description: updates.flowDescription } : null))
               }
 

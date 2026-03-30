@@ -1,15 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, FileEdit, Database, Loader2, FileText, Layers, LogOut } from "lucide-react"
+import { Plus, Trash2, Copy, Loader2, Layers, LogOut, Search, LayoutGrid, List } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getAllFlows, getSharedFlows, createFlow, deleteFlow, deleteSharedFlow, duplicateFlow, updateFlow, type FlowMetadata } from "@/utils/flow-storage"
+import { getAllFlows, deleteFlow, duplicateFlow, type FlowMetadata } from "@/utils/flow-storage"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
@@ -45,57 +47,58 @@ const LogoClosed = ({ className }: { className?: string }) => (
   </svg>
 )
 
+type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest"
+type PlatformFilter = "all" | Platform
+type ViewMode = "cards" | "table"
+
+function getStatusBadge(flow: FlowMetadata) {
+  if (flow.hasPublished) {
+    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100">Published</Badge>
+  }
+  if (flow.hasDraft) {
+    return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100">Draft</Badge>
+  }
+  return <Badge variant="secondary" className="text-muted-foreground">Not published</Badge>
+}
+
 export default function FlowsPage() {
   const router = useRouter()
   const [flows, setFlows] = useState<FlowMetadata[]>([])
-  const [sharedFlows, setSharedFlows] = useState<FlowMetadata[]>([])
-  const [loadingShared, setLoadingShared] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null)
-  const [isDeletingSharedFlow, setIsDeletingSharedFlow] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [viewMode, setViewMode] = useState<ViewMode>("cards")
+  const [sortOption, setSortOption] = useState<SortOption>("last-updated")
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all")
 
   useEffect(() => {
     loadFlows()
-    loadSharedFlows()
   }, [])
 
-  const loadFlows = () => {
-    const allFlows = getAllFlows()
-    // Sort flows by updatedAt (newest first)
-    const sortedFlows = allFlows.sort((a, b) => {
-      const dateA = new Date(a.updatedAt).getTime()
-      const dateB = new Date(b.updatedAt).getTime()
-      return dateB - dateA // Descending order (newest first)
-    })
-    setFlows(sortedFlows)
-  }
-
-  const loadSharedFlows = async () => {
-    setLoadingShared(true)
+  const loadFlows = async () => {
+    setLoading(true)
     try {
-      const shared = await getSharedFlows()
-      setSharedFlows(shared)
+      const allFlows = await getAllFlows()
+      // Sort flows by updatedAt (newest first)
+      const sortedFlows = allFlows.sort((a, b) => {
+        const dateA = new Date(a.updatedAt).getTime()
+        const dateB = new Date(b.updatedAt).getTime()
+        return dateB - dateA
+      })
+      setFlows(sortedFlows)
     } catch (error) {
-      console.error('Failed to load shared flows:', error)
+      console.error("Failed to load flows:", error)
     } finally {
-      setLoadingShared(false)
+      setLoading(false)
     }
   }
 
   const handleCreateFlow = () => {
-    // Create a temporary flow and navigate to it
-    // The setup modal will appear on the flow editor page
-    const tempFlow = createFlow("New Flow", "", "whatsapp")
-    router.push(`/flow/${tempFlow.id}?setup=true`)
+    router.push("/flow/new")
   }
 
-  const handleCreateSharedFlow = () => {
-    // Navigate to the flow editor in setup mode with loadFrom=db
-    // The setup modal will appear, and on completion the flow is created via API (Redis)
-    router.push(`/flow/new?loadFrom=db`)
-  }
-
-  const handleDeleteFlow = (flowId: string) => {
-    const success = deleteFlow(flowId)
+  const handleDeleteFlow = async (flowId: string) => {
+    const success = await deleteFlow(flowId)
     if (success) {
       toast.success("Flow deleted")
       loadFlows()
@@ -105,62 +108,13 @@ export default function FlowsPage() {
     setFlowToDelete(null)
   }
 
-  const handleDeleteSharedFlow = async (flowId: string) => {
-    const success = await deleteSharedFlow(flowId)
-    if (success) {
-      toast.success("Shared flow deleted")
-      loadSharedFlows()
+  const handleDuplicateFlow = async (flowId: string, flowName: string) => {
+    const duplicated = await duplicateFlow(flowId)
+    if (duplicated) {
+      toast.success(`Flow "${flowName}" duplicated!`)
+      loadFlows()
     } else {
-      toast.error("Failed to delete shared flow")
-    }
-    setFlowToDelete(null)
-  }
-
-  const handleDuplicateFlow = async (flowId: string, flowName: string, isShared: boolean = false) => {
-    if (isShared) {
-      // For shared flows, fetch from API first
-      try {
-        const response = await fetch(`/api/flows/${flowId}`)
-        if (!response.ok) {
-          toast.error("Failed to fetch shared flow")
-          return
-        }
-        const flowData = await response.json()
-        
-        // Create a new flow in localStorage with the shared flow data
-        const duplicatedFlow = createFlow(
-          `${flowData.name} (Copy)`,
-          flowData.description,
-          flowData.platform,
-          flowData.triggerId
-        )
-        
-        // Update with the full flow data
-        const updated = updateFlow(duplicatedFlow.id, {
-          nodes: flowData.nodes,
-          edges: flowData.edges,
-          triggerIds: flowData.triggerIds,
-        })
-        
-        if (updated) {
-          toast.success(`Flow "${flowName}" duplicated to your flows!`)
-          loadFlows()
-        } else {
-          toast.error("Failed to duplicate flow")
-        }
-      } catch (error) {
-        console.error("Error duplicating shared flow:", error)
-        toast.error("Failed to duplicate flow")
-      }
-    } else {
-      // For local flows, use existing function
-      const duplicated = duplicateFlow(flowId)
-      if (duplicated) {
-        toast.success(`Flow "${flowName}" duplicated!`)
-        loadFlows()
-      } else {
-        toast.error("Failed to duplicate flow")
-      }
+      toast.error("Failed to duplicate flow")
     }
   }
 
@@ -205,38 +159,64 @@ export default function FlowsPage() {
     return date.toLocaleDateString()
   }
 
-  // FlowCard component for reusability
-  const FlowCard = ({ 
-    flow, 
-    onDuplicate, 
-    onDelete, 
+  // Filtered and sorted flows
+  const filteredFlows = useMemo(() => {
+    let result = flows
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter((flow) => flow.name.toLowerCase().includes(query))
+    }
+
+    // Platform filter
+    if (platformFilter !== "all") {
+      result = result.filter((flow) => flow.platform === platformFilter)
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      switch (sortOption) {
+        case "last-updated": {
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        }
+        case "name-asc":
+          return a.name.localeCompare(b.name)
+        case "name-desc":
+          return b.name.localeCompare(a.name)
+        case "newest":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case "oldest":
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        default:
+          return 0
+      }
+    })
+
+    return result
+  }, [flows, searchQuery, platformFilter, sortOption])
+
+  // FlowCard component
+  const FlowCard = ({
+    flow,
+    onDuplicate,
+    onDelete,
     onEdit,
     showActions = true,
-    isShared = false
-  }: { 
+  }: {
     flow: FlowMetadata
     onDuplicate: () => void
     onDelete: () => void
     onEdit: () => void
     showActions?: boolean
-    isShared?: boolean
   }) => (
-    <Card 
+    <Card
       className="group relative overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer border hover:border-accent/50 hover:-translate-y-1"
       onClick={onEdit}
     >
       {/* Platform-colored accent bar */}
       <div className={`absolute top-0 left-0 right-0 h-1 ${getPlatformColor(flow.platform)}`} />
-      
-      {isShared && (
-        <div className="absolute top-2 right-2 z-10">
-          <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-background/80 backdrop-blur-sm">
-            <Database className="w-3 h-3 mr-1" />
-            Shared
-          </Badge>
-        </div>
-      )}
-      
+
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -247,10 +227,11 @@ export default function FlowsPage() {
               <CardTitle className="text-base font-semibold truncate mb-1">
                 {flow.name}
               </CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
                   {getPlatformDisplayName(flow.platform)}
                 </Badge>
+                {getStatusBadge(flow)}
                 <span className="text-xs text-muted-foreground">
                   {formatDate(flow.updatedAt)}
                 </span>
@@ -259,7 +240,7 @@ export default function FlowsPage() {
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="pb-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
@@ -274,7 +255,7 @@ export default function FlowsPage() {
           </div>
         </div>
       </CardContent>
-      
+
       {showActions && (
         <CardFooter className="pt-3 border-t">
           <div className="flex items-center justify-end gap-1 w-full opacity-0 group-hover:opacity-100 transition-opacity">
@@ -288,7 +269,7 @@ export default function FlowsPage() {
               }}
             >
               <Copy className="w-3.5 h-3.5" />
-              {isShared ? 'Copy' : 'Duplicate'}
+              Duplicate
             </Button>
             <Button
               variant="ghost"
@@ -307,6 +288,89 @@ export default function FlowsPage() {
       )}
     </Card>
   )
+
+  // Table view component
+  const FlowTable = () => (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/50">
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Platform</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+            <th className="text-right font-medium text-muted-foreground px-4 py-3">Nodes</th>
+            <th className="text-right font-medium text-muted-foreground px-4 py-3">Edges</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Last Updated</th>
+            <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredFlows.map((flow) => (
+            <tr
+              key={flow.id}
+              className="border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => router.push(`/flow/${flow.id}`)}
+            >
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className={`${getPlatformColor(flow.platform)} p-1.5 rounded-md text-white shrink-0`}>
+                    {getPlatformIcon(flow.platform)}
+                  </div>
+                  <span className="font-medium truncate max-w-[250px]">{flow.name}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                  {getPlatformDisplayName(flow.platform)}
+                </Badge>
+              </td>
+              <td className="px-4 py-3">
+                {getStatusBadge(flow)}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">{flow.nodeCount}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{flow.edgeCount}</td>
+              <td className="px-4 py-3 text-muted-foreground">{formatDate(flow.updatedAt)}</td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDuplicateFlow(flow.id, flow.name)
+                    }}
+                    title="Duplicate"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFlowToDelete(flow.id)
+                    }}
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const platformFilters: { value: PlatformFilter; label: string }[] = [
+    { value: "all", label: "All" },
+    { value: "whatsapp", label: "WhatsApp" },
+    { value: "instagram", label: "Instagram" },
+    { value: "web", label: "Web" },
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
@@ -371,8 +435,11 @@ export default function FlowsPage() {
 
       {/* Content */}
       <div className="container mx-auto px-6 py-10">
-        {/* Your Flows Section */}
-        {flows.length === 0 && sharedFlows.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center min-h-[70vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : flows.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[70vh]">
             <div className="relative">
               {/* Animated gradient circles in background */}
@@ -380,7 +447,7 @@ export default function FlowsPage() {
                 <div className="w-32 h-32 bg-[#052762]/20 rounded-full blur-3xl animate-pulse" />
                 <div className="w-32 h-32 bg-[#2872F4]/20 rounded-full blur-3xl animate-pulse delay-75 -ml-16" />
               </div>
-              
+
               {/* Main icon */}
               <div className="relative mb-8">
                 <button
@@ -394,21 +461,21 @@ export default function FlowsPage() {
                 </button>
               </div>
             </div>
-            
+
             <h2 className="text-3xl font-bold text-foreground mb-3">Start Your Journey</h2>
             <p className="text-muted-foreground mb-8 max-w-md text-center leading-relaxed">
               Create your first flow and bring your conversational experiences to life across WhatsApp, Instagram, and Web.
             </p>
-            
-            <Button 
-              onClick={handleCreateFlow} 
-              size="lg" 
+
+            <Button
+              onClick={handleCreateFlow}
+              size="lg"
               className="gap-2 h-12 px-8 text-base shadow-lg hover:shadow-xl transition-all bg-[#052762] hover:bg-[#0A49B7] text-white"
             >
               <Plus className="w-5 h-5" />
               Create Your First Flow
             </Button>
-            
+
             {/* Feature highlights */}
             <div className="mt-16 grid grid-cols-3 gap-8 max-w-2xl">
               <div className="text-center">
@@ -435,102 +502,118 @@ export default function FlowsPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-12">
-            {/* Your Flows Section */}
-            {flows.length > 0 && (
+          <div className="space-y-6">
+            {/* Title row */}
+            <div className="flex items-center justify-between">
               <div>
-                <div className="mb-8 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground mb-1">Your Flows</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {flows.length} {flows.length === 1 ? 'flow' : 'flows'} • Click to edit
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      <span className="text-sm text-muted-foreground">All systems ready</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {flows.map((flow) => (
-                    <FlowCard
-                      key={flow.id}
-                      flow={flow}
-                      onDuplicate={() => handleDuplicateFlow(flow.id, flow.name, false)}
-                      onDelete={() => setFlowToDelete(flow.id)}
-                      onEdit={() => router.push(`/flow/${flow.id}`)}
-                      showActions={true}
-                    />
-                  ))}
-                </div>
+                <h2 className="text-2xl font-bold text-foreground mb-1">Your Flows</h2>
+                <p className="text-sm text-muted-foreground">
+                  {filteredFlows.length} of {flows.length} {flows.length === 1 ? 'flow' : 'flows'}
+                </p>
               </div>
-            )}
-
-            {/* Shared Flows Section */}
-            <div>
-              <div className="mb-8 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Database className="w-5 h-5 text-muted-foreground" />
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground mb-1">Shared Flows</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {loadingShared ? 'Loading...' : `${sharedFlows.length} ${sharedFlows.length === 1 ? 'flow' : 'flows'} from database`}
-                    </p>
-                  </div>
-                </div>
-                {!loadingShared && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={loadSharedFlows}
-                      className="gap-2"
-                    >
-                      <FileEdit className="w-4 h-4" />
-                      Refresh
-                    </Button>
-                    <Button
-                      onClick={handleCreateSharedFlow}
-                      size="sm"
-                      className="gap-2 bg-[#052762] hover:bg-[#0A49B7] text-white"
-                    >
-                      <Plus className="w-4 h-4" />
-                      New Shared Flow
-                    </Button>
-                  </div>
-                )}
-              </div>
-              
-              {loadingShared ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : sharedFlows.length === 0 ? (
-                <div className="text-center py-12 border border-dashed rounded-lg bg-muted/20">
-                  <Database className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-muted-foreground">No shared flows found in the database</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {sharedFlows.map((flow) => (
-                    <FlowCard
-                      key={flow.id}
-                      flow={flow}
-                      onDuplicate={() => handleDuplicateFlow(flow.id, flow.name, true)}
-                      onDelete={() => {
-                        setIsDeletingSharedFlow(true)
-                        setFlowToDelete(flow.id)
-                      }}
-                      onEdit={() => router.push(`/flow/${flow.id}?loadFrom=db`)}
-                      showActions={true}
-                      isShared={true}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
+
+            {/* Toolbar: search + filters + sort + view toggle */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              {/* Left side: search + platform filter */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search flows..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 w-full sm:w-[260px]"
+                  />
+                </div>
+
+                {/* Platform filter */}
+                <div className="flex items-center gap-1">
+                  {platformFilters.map((pf) => (
+                    <Button
+                      key={pf.value}
+                      variant={platformFilter === pf.value ? "default" : "outline"}
+                      size="sm"
+                      className={`cursor-pointer text-xs h-8 ${
+                        platformFilter === pf.value
+                          ? "bg-[#052762] text-white hover:bg-[#0A49B7]"
+                          : ""
+                      }`}
+                      onClick={() => setPlatformFilter(pf.value)}
+                    >
+                      {pf.value !== "all" && (
+                        <span className="mr-1">{getPlatformIcon(pf.value as Platform)}</span>
+                      )}
+                      {pf.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right side: sort + view toggle */}
+              <div className="flex items-center gap-2">
+                <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last-updated">Last updated</SelectItem>
+                    <SelectItem value="name-asc">Name A-Z</SelectItem>
+                    <SelectItem value="name-desc">Name Z-A</SelectItem>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="oldest">Oldest</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center border rounded-md">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-8 w-8 p-0 rounded-r-none cursor-pointer ${viewMode === "cards" ? "bg-muted" : ""}`}
+                    onClick={() => setViewMode("cards")}
+                    title="Card view"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-8 w-8 p-0 rounded-l-none cursor-pointer ${viewMode === "table" ? "bg-muted" : ""}`}
+                    onClick={() => setViewMode("table")}
+                    title="Table view"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Content: cards or table */}
+            {filteredFlows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Search className="w-10 h-10 text-muted-foreground/40 mb-4" />
+                <p className="text-lg font-medium text-foreground mb-1">No flows found</p>
+                <p className="text-sm text-muted-foreground">
+                  Try adjusting your search or filters
+                </p>
+              </div>
+            ) : viewMode === "cards" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredFlows.map((flow) => (
+                  <FlowCard
+                    key={flow.id}
+                    flow={flow}
+                    onDuplicate={() => handleDuplicateFlow(flow.id, flow.name)}
+                    onDelete={() => setFlowToDelete(flow.id)}
+                    onEdit={() => router.push(`/flow/${flow.id}`)}
+                    showActions={true}
+                  />
+                ))}
+              </div>
+            ) : (
+              <FlowTable />
+            )}
           </div>
         )}
       </div>
@@ -539,14 +622,13 @@ export default function FlowsPage() {
       <AlertDialog open={!!flowToDelete} onOpenChange={(open) => {
         if (!open) {
           setFlowToDelete(null)
-          setIsDeletingSharedFlow(false)
         }
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this {isDeletingSharedFlow ? 'shared ' : ''}flow and all its data.
+              This action cannot be undone. This will permanently delete this flow and all its data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -554,11 +636,7 @@ export default function FlowsPage() {
             <AlertDialogAction
               onClick={() => {
                 if (flowToDelete) {
-                  if (isDeletingSharedFlow) {
-                    handleDeleteSharedFlow(flowToDelete)
-                  } else {
-                    handleDeleteFlow(flowToDelete)
-                  }
+                  handleDeleteFlow(flowToDelete)
                 }
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -571,4 +649,3 @@ export default function FlowsPage() {
     </div>
   )
 }
-

@@ -26,7 +26,7 @@ import {
   getPinnedTemplates,
   setPinnedTemplates,
 } from "@/constants/default-templates"
-import { getAllTemplates, createTemplate, getFlow } from "@/utils/flow-storage"
+import { getAllTemplates, createTemplate } from "@/utils/flow-storage"
 import type { FlowMetadata } from "@/utils/flow-storage"
 import { useRouter } from "next/navigation"
 

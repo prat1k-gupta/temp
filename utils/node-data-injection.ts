@@ -1,7 +1,6 @@
 import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
 import type { ButtonData, OptionData } from "@/types"
-import { updateFlow } from "@/utils/flow-storage"
 import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
 
 interface NodeCallbacks {
@@ -100,7 +99,6 @@ export function injectNodeCallbacks(
             if (updates.triggerMatchType !== undefined) flowUpdates.triggerMatchType = updates.triggerMatchType
             if (updates.triggerRef !== undefined) flowUpdates.triggerRef = updates.triggerRef
             if (Object.keys(flowUpdates).length > 0) {
-              updateFlow(flowContext.flowId, flowUpdates)
               flowContext.setCurrentFlow((prev) => (prev ? { ...prev, ...flowUpdates } : null))
               if (flowContext.saveFlowFields) {
                 flowContext.saveFlowFields(flowUpdates)

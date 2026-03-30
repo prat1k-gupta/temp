@@ -26,7 +26,12 @@ class ApiClient {
       throw new Error(error.error || `Request failed: ${response.status}`)
     }
 
-    return response.json()
+    if (response.status === 204 || response.headers.get("content-length") === "0") {
+      return undefined as T
+    }
+    const text = await response.text()
+    if (!text) return undefined as T
+    return JSON.parse(text)
   }
 
   private async request(

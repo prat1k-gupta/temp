@@ -28,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Trash2, Copy, Layers, ArrowLeft, Brain } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getAllTemplates, deleteFlow, duplicateFlow, createTemplate, type FlowMetadata } from "@/utils/flow-storage"
+import { getAllTemplates, deleteTemplate, duplicateTemplate, createTemplate, type FlowMetadata } from "@/utils/flow-storage"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform, TemplateAIMetadata } from "@/types"
@@ -95,7 +95,7 @@ export default function FlowTemplatesPage() {
   }
 
   const handleDeleteTemplate = (templateId: string) => {
-    const success = deleteFlow(templateId)
+    const success = deleteTemplate(templateId)
     if (success) {
       toast.success("Template deleted")
       loadTemplates()
@@ -106,7 +106,7 @@ export default function FlowTemplatesPage() {
   }
 
   const handleDuplicateTemplate = (templateId: string, templateName: string) => {
-    const duplicated = duplicateFlow(templateId, `${templateName} (Copy)`)
+    const duplicated = duplicateTemplate(templateId, `${templateName} (Copy)`)
     if (duplicated) {
       toast.success(`Template "${templateName}" duplicated!`)
       loadTemplates()

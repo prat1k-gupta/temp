@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, TemplateAIMetadata } from "@/types"
-import { getFlow, updateFlow, type FlowData } from "@/utils/flow-storage"
+import { getTemplate, updateTemplate, type FlowData } from "@/utils/flow-storage"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -44,7 +44,7 @@ export function useTemplatePersistence({
   // Load template data
   useEffect(() => {
     if (templateId) {
-      const templateData = getFlow(templateId)
+      const templateData = getTemplate(templateId)
 
       if (templateData) {
         console.log("[Template] Loaded:", {
@@ -78,7 +78,7 @@ export function useTemplatePersistence({
         if (isSavingRef.current) return
 
         isSavingRef.current = true
-        updateFlow(templateId, { nodes, edges, platform })
+        updateTemplate(templateId, { nodes, edges, platform })
         lastSavedDataRef.current = dataToSave
         isSavingRef.current = false
       }, 1000)
@@ -96,7 +96,7 @@ export function useTemplatePersistence({
 
   const handleFlowNameBlur = useCallback(() => {
     if (editingFlowNameValue.trim() && currentFlow && editingFlowNameValue !== currentFlow.name) {
-      const updated = updateFlow(templateId, { name: editingFlowNameValue.trim() })
+      const updated = updateTemplate(templateId, { name: editingFlowNameValue.trim() })
       if (updated) {
         setCurrentFlow(updated)
         toast.success("Template name updated")
@@ -113,12 +113,12 @@ export function useTemplatePersistence({
 
   const saveFlowFields = useCallback((updates: Record<string, any>) => {
     if (!templateId) return
-    updateFlow(templateId, updates)
+    updateTemplate(templateId, updates)
   }, [templateId])
 
   const saveDescription = useCallback((description: string) => {
     if (!templateId) return
-    const updated = updateFlow(templateId, { description })
+    const updated = updateTemplate(templateId, { description })
     if (updated) {
       setCurrentFlow(updated)
     }
@@ -126,7 +126,7 @@ export function useTemplatePersistence({
 
   const saveAIMetadata = useCallback((aiMetadata: TemplateAIMetadata) => {
     if (!templateId) return
-    const updated = updateFlow(templateId, { aiMetadata })
+    const updated = updateTemplate(templateId, { aiMetadata })
     if (updated) {
       setCurrentFlow(updated)
     }

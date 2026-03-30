@@ -644,7 +644,7 @@ export function useFlowAI({
         })
 
         if (updates.description && flowId) {
-          updateFlow(flowId, { description: updates.description })
+          updateFlow(flowId, { description: updates.description }).catch(() => {})
           setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
         }
 

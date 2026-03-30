@@ -56,7 +56,6 @@ interface FlowHeaderProps {
   platform: Platform
   nodes: Node[]
   edges: Edge[]
-  loadFromDb: boolean
   flowId: string
   handleBackClick: () => void
   handleModeToggle: () => void
@@ -109,7 +108,6 @@ export function FlowHeader({
   platform,
   nodes,
   edges,
-  loadFromDb,
   flowId,
   handleBackClick,
   handleModeToggle,
@@ -451,18 +449,14 @@ export function FlowHeader({
                 Take Screenshot
               </DropdownMenuItem>
 
-              {loadFromDb && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => setShowDeleteDialog(true)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Flow
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => setShowDeleteDialog(true)}
+                className="text-destructive focus:text-destructive cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Flow
+              </DropdownMenuItem>
 
               <DropdownMenuSeparator />
 

@@ -58,7 +58,7 @@ import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
 import { changeTracker } from "@/utils/change-tracker"
-import { publishVersion } from "@/utils/version-storage"
+import { usePublishVersion } from "@/hooks/queries"
 
 function MagicFlowInner() {
   const params = useParams()
@@ -116,7 +116,6 @@ function MagicFlowInner() {
   }, [platform])
 
   // Version loading state
-  const [draftStateLoaded, setDraftStateLoaded] = useState(false)
   const [isLoadingVersion, setIsLoadingVersion] = useState(false)
   const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
 
@@ -125,6 +124,7 @@ function MagicFlowInner() {
 
   // --- Hook Instantiation ---
 
+  const publishVersionMutation = usePublishVersion()
   const versionManager = useVersionManager(flowId)
   const {
     editModeState,
@@ -141,8 +141,6 @@ function MagicFlowInner() {
     hasActualChanges,
     getChangesSummary,
     getChangesCount,
-    loadDraftState,
-    saveCurrentStateAsDraft,
     isEditMode,
     currentVersion,
     draftChanges,
@@ -294,7 +292,6 @@ function MagicFlowInner() {
     } else {
       toggleEditMode(setNodes, setEdges, setPlatform)
     }
-    setDraftStateLoaded(false)
   }, [getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
 
   const importFlow = useCallback(
@@ -344,8 +341,9 @@ function MagicFlowInner() {
         setEdges(formattedEdges)
         setPlatform(currentVersion.platform)
       } else if (isEditMode && !isAutoEnteringEditMode) {
-        const draftLoaded = loadDraftState(setNodes, setEdges, setPlatform)
-        if (!draftLoaded && currentVersion) {
+        // Draft is loaded via auto-save (server-side draft included in getFlow response)
+        // If no draft was loaded and we have a published version, show it
+        if (currentVersion) {
           const formattedNodes = currentVersion.nodes.map((node) => ({
             ...node,
             data: node.data || {},
@@ -357,12 +355,10 @@ function MagicFlowInner() {
           setNodes(formattedNodes)
           setEdges(formattedEdges)
           setPlatform(currentVersion.platform)
-        } else if (draftLoaded) {
-          setDraftStateLoaded(true)
         }
       }
     }
-  }, [editModeState.isEditMode, isEditMode, currentVersion, loadDraftState])
+  }, [editModeState.isEditMode, isEditMode, currentVersion])
 
   // Load version when currentVersion changes
   useEffect(() => {
@@ -378,21 +374,16 @@ function MagicFlowInner() {
       setNodes(formattedNodes)
       setEdges(formattedEdges)
       setPlatform(currentVersion.platform)
-      setDraftStateLoaded(false)
       setIsLoadingVersion(false)
     }
-  }, [currentVersion, isEditMode, draftStateLoaded, isLoadingVersion])
+  }, [currentVersion, isEditMode, isLoadingVersion])
 
-  // Save draft state and sync change tracker
+  // Sync change tracker when canvas changes in edit mode
   useEffect(() => {
     if (isEditMode && (nodes.length > 0 || edges.length > 0)) {
       updateDraftChanges()
-      const timeoutId = setTimeout(() => {
-        saveCurrentStateAsDraft(nodes, edges, platform)
-      }, 100)
-      return () => clearTimeout(timeoutId)
     }
-  }, [nodes, edges, platform, isEditMode, saveCurrentStateAsDraft, updateDraftChanges])
+  }, [nodes, edges, platform, isEditMode, updateDraftChanges])
 
   // --- JSX ---
 
@@ -514,40 +505,34 @@ function MagicFlowInner() {
           }}
           onCreateVersion={async (name, description) => {
             setIsLoadingVersion(true)
-            const published = createAndPublishVersion(nodes, edges, platform, name, description)
-            if (published && persistence.currentFlow) {
-              try {
-                // Save metadata to backend but don't overwrite currentFlow
-                // (updateFlow response lacks nodes/edges — would blank canvas)
-                await import("@/utils/flow-storage").then(m =>
-                  m.updateFlow(flowId, {
-                    name: persistence.currentFlow!.name,
-                    description: persistence.currentFlow!.description,
-                    triggerId: persistence.currentFlow!.triggerId,
-                    triggerIds: persistence.currentFlow!.triggerIds,
-                  })
-                )
-              } catch (error) {
-                console.error("[App] Error saving flow after publishing:", error)
+            try {
+              const published = await createAndPublishVersion(nodes, edges, platform, name, description)
+              if (published && persistence.currentFlow) {
+                await persistence.saveFlowFields({
+                  name: persistence.currentFlow.name,
+                  description: persistence.currentFlow.description,
+                  triggerId: persistence.currentFlow.triggerId,
+                  triggerIds: persistence.currentFlow.triggerIds,
+                })
               }
+            } catch (error) {
+              console.error("[App] Error publishing version:", error)
             }
           }}
           onPublishVersion={async (_versionId, versionName, description) => {
             setIsLoadingVersion(true)
-            const published = publishCurrentVersion(nodes, edges, platform, versionName, description)
-            if (published && persistence.currentFlow) {
-              try {
-                await import("@/utils/flow-storage").then(m =>
-                  m.updateFlow(flowId, {
-                    name: persistence.currentFlow!.name,
-                    description: persistence.currentFlow!.description,
-                    triggerId: persistence.currentFlow!.triggerId,
-                    triggerIds: persistence.currentFlow!.triggerIds,
-                  })
-                )
-              } catch (error) {
-                console.error("[App] Error saving flow after publishing:", error)
+            try {
+              const published = await publishCurrentVersion(nodes, edges, platform, versionName, description)
+              if (published && persistence.currentFlow) {
+                await persistence.saveFlowFields({
+                  name: persistence.currentFlow.name,
+                  description: persistence.currentFlow.description,
+                  triggerId: persistence.currentFlow.triggerId,
+                  triggerIds: persistence.currentFlow.triggerIds,
+                })
               }
+            } catch (error) {
+              console.error("[App] Error publishing version:", error)
             }
           }}
         />
@@ -620,10 +605,13 @@ function MagicFlowInner() {
             console.log("Delete version:", versionId)
           }}
           onCreateVersion={async (name, description) => {
-            createNewVersion(nodes, edges, platform, name, description)
+            await createNewVersion(nodes, edges, platform, name, description)
           }}
           onPublishVersion={async (versionId) => {
-            publishVersion(flowId, versionId)
+            await publishVersionMutation.mutateAsync({
+              projectId: flowId,
+              versionId,
+            })
           }}
           isEditMode={isEditMode}
           hasChanges={hasActualChanges(nodes, edges, platform)}

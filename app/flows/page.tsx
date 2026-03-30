@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, Trash2, Copy, Loader2, Layers, LogOut, Search, LayoutGrid, List } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getAllFlows, deleteFlow, duplicateFlow, type FlowMetadata } from "@/utils/flow-storage"
+import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
+import type { FlowMetadata } from "@/utils/flow-storage"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
@@ -63,59 +64,51 @@ function getStatusBadge(flow: FlowMetadata) {
 
 export default function FlowsPage() {
   const router = useRouter()
-  const [flows, setFlows] = useState<FlowMetadata[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: flows = [], isLoading: loading } = useFlows()
+  const deleteFlowMutation = useDeleteFlow()
+  const duplicateFlowMutation = useDuplicateFlow()
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState<ViewMode>("cards")
   const [sortOption, setSortOption] = useState<SortOption>("last-updated")
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all")
 
-  useEffect(() => {
-    loadFlows()
-  }, [])
-
-  const loadFlows = async () => {
-    setLoading(true)
-    try {
-      const allFlows = await getAllFlows()
-      // Sort flows by updatedAt (newest first)
-      const sortedFlows = allFlows.sort((a, b) => {
-        const dateA = new Date(a.updatedAt).getTime()
-        const dateB = new Date(b.updatedAt).getTime()
-        return dateB - dateA
-      })
-      setFlows(sortedFlows)
-    } catch (error) {
-      console.error("Failed to load flows:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleCreateFlow = () => {
     router.push("/flow/new")
   }
 
   const handleDeleteFlow = async (flowId: string) => {
-    const success = await deleteFlow(flowId)
-    if (success) {
-      toast.success("Flow deleted")
-      loadFlows()
-    } else {
-      toast.error("Failed to delete flow")
-    }
+    deleteFlowMutation.mutate(flowId, {
+      onSuccess: (success) => {
+        if (success) {
+          toast.success("Flow deleted")
+        } else {
+          toast.error("Failed to delete flow")
+        }
+      },
+      onError: () => {
+        toast.error("Failed to delete flow")
+      },
+    })
     setFlowToDelete(null)
   }
 
-  const handleDuplicateFlow = async (flowId: string, flowName: string) => {
-    const duplicated = await duplicateFlow(flowId)
-    if (duplicated) {
-      toast.success(`Flow "${flowName}" duplicated!`)
-      loadFlows()
-    } else {
-      toast.error("Failed to duplicate flow")
-    }
+  const handleDuplicateFlow = (flowId: string, flowName: string) => {
+    duplicateFlowMutation.mutate(
+      { flowId },
+      {
+        onSuccess: (duplicated) => {
+          if (duplicated) {
+            toast.success(`Flow "${flowName}" duplicated!`)
+          } else {
+            toast.error("Failed to duplicate flow")
+          }
+        },
+        onError: () => {
+          toast.error("Failed to duplicate flow")
+        },
+      },
+    )
   }
 
   const getPlatformIcon = (platform: Platform) => {
@@ -196,6 +189,9 @@ export default function FlowsPage() {
     return result
   }, [flows, searchQuery, platformFilter, sortOption])
 
+  const isDuplicating = duplicateFlowMutation.isPending
+  const isDeleting = deleteFlowMutation.isPending
+
   // FlowCard component
   const FlowCard = ({
     flow,
@@ -263,12 +259,13 @@ export default function FlowsPage() {
               variant="ghost"
               size="sm"
               className="h-8 px-3 text-xs gap-1.5"
+              disabled={isDuplicating}
               onClick={(e) => {
                 e.stopPropagation()
                 onDuplicate()
               }}
             >
-              <Copy className="w-3.5 h-3.5" />
+              {isDuplicating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
               Duplicate
             </Button>
             <Button
@@ -336,13 +333,14 @@ export default function FlowsPage() {
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 cursor-pointer"
+                    disabled={isDuplicating}
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDuplicateFlow(flow.id, flow.name)
                     }}
                     title="Duplicate"
                   >
-                    <Copy className="w-3.5 h-3.5" />
+                    {isDuplicating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
                   </Button>
                   <Button
                     variant="ghost"
@@ -639,8 +637,10 @@ export default function FlowsPage() {
                   handleDeleteFlow(flowToDelete)
                 }
               }}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

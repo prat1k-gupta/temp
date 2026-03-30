@@ -1,16 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
-import { getFlow, updateFlow, createFlow, deleteFlow, saveDraft, type FlowData } from "@/utils/flow-storage"
+import type { FlowData } from "@/utils/flow-storage"
+import { useFlow, useCreateFlow, useUpdateFlow, useDeleteFlow, useAutoSave } from "@/hooks/queries"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 
 /**
- * Migrate old super nodes (name, email, dob, address) to flowTemplate nodes.
- * Wraps the super node data into internalNodes within a flowTemplate node.
+ * Migrate old apiFetch edges from unnamed handle to "success" handle
  */
-// Migrate old apiFetch edges from unnamed handle to "success" handle
 function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; migrated: boolean } {
   const apiFetchIds = new Set(nodes.filter((n) => n.type === "apiFetch").map((n) => n.id))
   if (apiFetchIds.size === 0) return { edges, migrated: false }
@@ -26,6 +25,9 @@ function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; mi
   return { edges: newEdges, migrated }
 }
 
+/**
+ * Migrate old super nodes (name, email, dob, address) to flowTemplate nodes.
+ */
 function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated: boolean } {
   const SUPER_NODE_TYPES = new Set(["name", "email", "dob", "address"])
   let migrated = false
@@ -37,12 +39,10 @@ function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated:
     const data = node.data as any
     const nodeType = node.type as string
 
-    // Find matching default template for internal nodes
     const defaultTemplate = DEFAULT_TEMPLATES.find(
       (t) => t.name.toLowerCase() === nodeType
     )
 
-    // Build internal nodes from the super node's data
     const internalNodes: Node[] = defaultTemplate
       ? JSON.parse(JSON.stringify(defaultTemplate.nodes)).map((n: Node) => ({
           ...n,
@@ -114,16 +114,24 @@ export function useFlowPersistence({
   const searchParams = useSearchParams()
 
   const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
-  const [isLoadingFromDb, setIsLoadingFromDb] = useState(false)
   const [flowLoaded, setFlowLoaded] = useState(false)
   const [isEditingFlowName, setIsEditingFlowName] = useState(false)
   const [editingFlowNameValue, setEditingFlowNameValue] = useState("")
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
-  const isSavingRef = useRef(false)
-  const lastSavedDataRef = useRef<string>("")
   const currentFlowRef = useRef<FlowData | null>(null)
   currentFlowRef.current = currentFlow
+
+  // --- React Query hooks ---
+  const shouldLoad = !isSetupMode && !isNewFlow
+  const flowQuery = useFlow(shouldLoad ? flowId : "")
+  const createFlowMutation = useCreateFlow()
+  const updateFlowMutation = useUpdateFlow(flowId)
+  const deleteFlowMutation = useDeleteFlow()
+
+  // Auto-save via React Query mutation (replaces manual debounce)
+  const autoSaveEnabled = !!flowId && !!currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0
+  const { isSaving } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled)
 
   // Sync editing value when flow changes
   useEffect(() => {
@@ -132,107 +140,55 @@ export function useFlowPersistence({
     }
   }, [currentFlow?.name, isEditingFlowName])
 
-  // Load flow data when flowId changes
+  // Load flow data from React Query cache/fetch
   useEffect(() => {
-    if (flowId && !isSetupMode && !isNewFlow) {
-      const loadFlowData = async () => {
-        console.log("[App] Loading flow for flowId:", flowId)
-        setIsLoadingFromDb(true)
+    if (!shouldLoad || !flowQuery.data || flowLoaded) return
 
-        try {
-          const flowData = await getFlow(flowId)
+    const flowData = { ...flowQuery.data }
+    console.log("[App] Flow data loaded:", {
+      name: flowData.name,
+      nodes: flowData.nodes?.length || 0,
+      edges: flowData.edges?.length || 0,
+      platform: flowData.platform,
+    })
 
-          if (flowData) {
-            console.log("[App] Flow data loaded:", {
-              name: flowData.name,
-              nodes: flowData.nodes?.length || 0,
-              edges: flowData.edges?.length || 0,
-              platform: flowData.platform,
-            })
+    // Migrate super nodes -> flow template nodes
+    const { nodes: migratedNodes, migrated } = migrateSuperNodesToTemplates(flowData.nodes)
+    if (migrated) flowData.nodes = migratedNodes
 
-            // Migrate super nodes -> flow template nodes
-            const { nodes: migratedNodes, migrated } = migrateSuperNodesToTemplates(flowData.nodes)
-            if (migrated) {
-              flowData.nodes = migratedNodes
-              updateFlow(flowId, { nodes: migratedNodes }).catch(() => {})
-            }
+    // Migrate old apiFetch edges (unnamed handle -> "success")
+    const { edges: migratedEdges, migrated: edgesMigrated } = migrateApiFetchEdges(flowData.nodes, flowData.edges)
+    if (edgesMigrated) flowData.edges = migratedEdges
 
-            // Migrate old apiFetch edges (unnamed handle -> "success")
-            const { edges: migratedEdges, migrated: edgesMigrated } = migrateApiFetchEdges(flowData.nodes, flowData.edges)
-            if (edgesMigrated) {
-              flowData.edges = migratedEdges
-              updateFlow(flowId, { edges: migratedEdges }).catch(() => {})
-            }
-
-            setCurrentFlow(flowData)
-            setNodes(flowData.nodes)
-            setEdges(flowData.edges)
-            setPlatform(flowData.platform)
-            setFlowLoaded(true)
-          } else {
-            console.log("[App] No flow data found for flowId:", flowId)
-          }
-        } catch (error) {
-          console.error("[App] Error loading flow:", error)
-          toast.error("Failed to load flow")
-        } finally {
-          setIsLoadingFromDb(false)
-        }
-      }
-
-      loadFlowData()
+    // Persist migrations in a single call to avoid races
+    if (migrated || edgesMigrated) {
+      const updates: Record<string, any> = {}
+      if (migrated) updates.nodes = flowData.nodes
+      if (edgesMigrated) updates.edges = flowData.edges
+      updateFlowMutation.mutate(updates)
     }
-  }, [flowId, isSetupMode, isNewFlow])
 
-  // Auto-save flow data when nodes, edges, or platform change
-  useEffect(() => {
-    if (flowId && currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && !isSavingRef.current) {
-      const dataToSave = JSON.stringify({ nodes, edges, platform })
-
-      if (dataToSave === lastSavedDataRef.current) {
-        return
-      }
-
-      const timeoutId = setTimeout(async () => {
-        if (isSavingRef.current) {
-          return
-        }
-
-        isSavingRef.current = true
-        console.log("[App] Auto-saving flow data for flowId:", flowId)
-
-        try {
-          await saveDraft(flowId, nodes, edges, platform)
-          lastSavedDataRef.current = dataToSave
-          console.log("[App] Flow draft saved successfully")
-        } catch (error) {
-          console.error("[App] Error saving flow draft:", error)
-        } finally {
-          isSavingRef.current = false
-        }
-      }, 1000)
-
-      return () => {
-        clearTimeout(timeoutId)
-        isSavingRef.current = false
-      }
-    }
-  }, [nodes, edges, platform, flowId, isSetupMode, isNewFlow])
+    setCurrentFlow(flowData)
+    setNodes(flowData.nodes)
+    setEdges(flowData.edges)
+    setPlatform(flowData.platform)
+    setFlowLoaded(true)
+  }, [flowQuery.data, shouldLoad, flowLoaded])
 
   const handleFlowSetupComplete = useCallback(
     async (data: { name: string; platform: Platform; triggerId: string; triggerIds?: string[]; description?: string; triggerKeywords?: string[]; triggerMatchType?: string; triggerRef?: string; waAccountId?: string; waPhoneNumber?: string }) => {
       if (isNewFlow) {
         try {
-          const newFlow = await createFlow(
-            data.name,
-            data.description,
-            data.platform,
-            data.triggerId,
-            data.triggerKeywords,
-            data.waAccountId,
-            data.triggerMatchType,
-            data.triggerRef,
-          )
+          const newFlow = await createFlowMutation.mutateAsync({
+            name: data.name,
+            description: data.description,
+            platform: data.platform,
+            triggerId: data.triggerId,
+            triggerKeywords: data.triggerKeywords,
+            waAccountId: data.waAccountId,
+            triggerMatchType: data.triggerMatchType,
+            triggerRef: data.triggerRef,
+          })
 
           setCurrentFlow(newFlow)
           setNodes(newFlow.nodes)
@@ -279,51 +235,55 @@ export function useFlowPersistence({
           throw error
         }
       } else if (flowId) {
-        const updatedFlow = await updateFlow(flowId, {
-          name: data.name,
-          platform: data.platform,
-          triggerId: data.triggerId,
-          triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
-          description: data.description,
-          triggerKeywords: data.triggerKeywords || [],
-          triggerMatchType: data.triggerMatchType || "contains_whole_word",
-          triggerRef: data.triggerRef || "",
-          ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
-          nodes: [
-            {
-              id: "1",
-              type: "start",
-              position: { x: 250, y: 25 },
-              data: {
-                label: "Start",
-                platform: data.platform,
-                triggerId: data.triggerId,
-                triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
-                triggerKeywords: data.triggerKeywords || [],
-                triggerMatchType: data.triggerMatchType || "contains_whole_word",
-                triggerRef: data.triggerRef || "",
+        try {
+          const updatedFlow = await updateFlowMutation.mutateAsync({
+            name: data.name,
+            platform: data.platform,
+            triggerId: data.triggerId,
+            triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
+            description: data.description,
+            triggerKeywords: data.triggerKeywords || [],
+            triggerMatchType: data.triggerMatchType || "contains_whole_word",
+            triggerRef: data.triggerRef || "",
+            ...(data.waAccountId ? { waAccountId: data.waAccountId } : {}),
+            nodes: [
+              {
+                id: "1",
+                type: "start",
+                position: { x: 250, y: 25 },
+                data: {
+                  label: "Start",
+                  platform: data.platform,
+                  triggerId: data.triggerId,
+                  triggerIds: data.triggerIds || (data.triggerId ? [data.triggerId] : []),
+                  triggerKeywords: data.triggerKeywords || [],
+                  triggerMatchType: data.triggerMatchType || "contains_whole_word",
+                  triggerRef: data.triggerRef || "",
+                },
+                draggable: true,
+                selectable: true,
               },
-              draggable: true,
-              selectable: true,
-            },
-          ],
-        })
+            ],
+          })
 
-        if (updatedFlow) {
-          setCurrentFlow(updatedFlow)
-          setNodes(updatedFlow.nodes)
-          setEdges(updatedFlow.edges)
-          setPlatform(updatedFlow.platform)
-          router.replace(`/flow/${flowId}`)
-          toast.success(`Flow "${data.name}" created!`)
+          if (updatedFlow) {
+            setCurrentFlow(updatedFlow)
+            setNodes(updatedFlow.nodes)
+            setEdges(updatedFlow.edges)
+            setPlatform(updatedFlow.platform)
+            router.replace(`/flow/${flowId}`)
+            toast.success(`Flow "${data.name}" created!`)
+          }
+        } catch (error) {
+          console.error("[App] Error updating flow:", error)
+          toast.error("Failed to update flow")
         }
       }
     },
-    [flowId, isNewFlow, router, setNodes, setEdges, setPlatform]
+    [flowId, isNewFlow, router, setNodes, setEdges, setPlatform, createFlowMutation, updateFlowMutation]
   )
 
   const handleBackClick = useCallback(() => {
-    console.log("[App] Back button clicked, checking source url:", window.location.href)
     if (window.location.href.includes("freestand") || searchParams?.get("scSource") === "true") {
       router.push("/client/campaigns")
     } else {
@@ -334,50 +294,61 @@ export function useFlowPersistence({
   const handleDeleteFlow = useCallback(async () => {
     if (!flowId) return
 
-    const success = await deleteFlow(flowId)
-    if (success) {
-      toast.success("Flow deleted")
-      if (window.location.href.includes("freestand") || searchParams?.get("scSource") === "true") {
-        router.push("/client/campaigns")
-      } else {
-        router.push("/flows")
-      }
-    } else {
-      toast.error("Failed to delete flow")
-    }
+    deleteFlowMutation.mutate(flowId, {
+      onSuccess: (success) => {
+        if (success) {
+          toast.success("Flow deleted")
+          if (window.location.href.includes("freestand") || searchParams?.get("scSource") === "true") {
+            router.push("/client/campaigns")
+          } else {
+            router.push("/flows")
+          }
+        } else {
+          toast.error("Failed to delete flow")
+        }
+      },
+      onError: () => {
+        toast.error("Failed to delete flow")
+      },
+    })
     setShowDeleteDialog(false)
-  }, [flowId, router, searchParams])
+  }, [flowId, router, searchParams, deleteFlowMutation])
 
   const handleFlowNameBlur = useCallback(async () => {
     if (editingFlowNameValue.trim() && currentFlow && editingFlowNameValue !== currentFlow.name) {
-      const updated = await updateFlow(flowId, { name: editingFlowNameValue.trim() })
-      if (updated) {
-        setCurrentFlow(updated)
-        toast.success("Flow name updated")
-      } else {
+      try {
+        const updated = await updateFlowMutation.mutateAsync({ name: editingFlowNameValue.trim() })
+        if (updated) {
+          setCurrentFlow(updated)
+          toast.success("Flow name updated")
+        } else {
+          toast.error("Failed to update flow name")
+          setEditingFlowNameValue(currentFlow.name)
+        }
+      } catch {
         toast.error("Failed to update flow name")
-        setEditingFlowNameValue(currentFlow.name)
+        if (currentFlow) setEditingFlowNameValue(currentFlow.name)
       }
     }
     setIsEditingFlowName(false)
     if (!editingFlowNameValue.trim() || (currentFlow && editingFlowNameValue === currentFlow.name)) {
       if (currentFlow) setEditingFlowNameValue(currentFlow.name)
     }
-  }, [editingFlowNameValue, currentFlow, flowId])
+  }, [editingFlowNameValue, currentFlow, updateFlowMutation])
 
   const saveFlowFields = useCallback(async (updates: Record<string, any>) => {
     if (!flowId) return
     try {
-      await updateFlow(flowId, updates)
+      await updateFlowMutation.mutateAsync(updates)
     } catch (error) {
       console.error("[App] Error saving flow fields:", error)
     }
-  }, [flowId])
+  }, [flowId, updateFlowMutation])
 
   return {
     currentFlow,
     setCurrentFlow,
-    isLoadingFromDb,
+    isLoadingFromDb: flowQuery.isLoading && shouldLoad,
     flowLoaded,
     setFlowLoaded,
     isEditingFlowName,
@@ -391,5 +362,7 @@ export function useFlowPersistence({
     handleDeleteFlow,
     handleFlowNameBlur,
     saveFlowFields,
+    isSaving,
+    isCreating: createFlowMutation.isPending,
   }
 }

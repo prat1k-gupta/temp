@@ -10,7 +10,7 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 /**
  * Migrate old apiFetch edges from unnamed handle to "success" handle
  */
-function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; migrated: boolean } {
+export function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; migrated: boolean } {
   const apiFetchIds = new Set(nodes.filter((n) => n.type === "apiFetch").map((n) => n.id))
   if (apiFetchIds.size === 0) return { edges, migrated: false }
 
@@ -28,7 +28,7 @@ function migrateApiFetchEdges(nodes: Node[], edges: Edge[]): { edges: Edge[]; mi
 /**
  * Migrate old super nodes (name, email, dob, address) to flowTemplate nodes.
  */
-function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated: boolean } {
+export function migrateSuperNodesToTemplates(nodes: Node[]): { nodes: Node[]; migrated: boolean } {
   const SUPER_NODE_TYPES = new Set(["name", "email", "dob", "address"])
   let migrated = false
 

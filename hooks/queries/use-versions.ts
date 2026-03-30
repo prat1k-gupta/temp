@@ -9,7 +9,7 @@ import { versionKeys, flowKeys } from "./query-keys"
 // Backend response → frontend type mappers
 // ---------------------------------------------------------------------------
 
-interface VersionResponse {
+export interface VersionResponse {
   id: string
   project_id: string
   version_number: number
@@ -34,7 +34,7 @@ interface DraftResponse {
   updated_at: string
 }
 
-function mapVersion(v: VersionResponse): FlowVersion {
+export function mapVersion(v: VersionResponse): FlowVersion {
   return {
     id: v.id,
     version: v.version_number,

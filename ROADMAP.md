@@ -209,26 +209,35 @@ magic_flow_drafts            — auto-saved current work (per user per project)
 
 > Shipped: magic-flow #23
 
-### 2.5 Remove Proxy (Direct API Calls)
+### 2.5 Remove Proxy ✅
 
-With JWT auth in place, the Next.js proxy layer is unnecessary. `apiClient` should call fs-whatsapp directly.
+- `apiClient` calls fs-whatsapp directly via `NEXT_PUBLIC_FS_WHATSAPP_URL`
+- Deleted 20 proxy route files + `lib/fs-whatsapp-proxy.ts`
+- Response envelope unwrapping moved to `apiClient`
+- `lib/whatsapp-api.ts` for chatbot endpoint response shaping
+- 13 routes remain (auth, AI, test-api, campaigns, debug — server secrets)
+- Auto-save architecture rewritten: gated on `isEditMode`, baseline seeding, flush on toggle
 
-- Set `NEXT_PUBLIC_FS_WHATSAPP_URL` as public env var
-- Update `apiClient` to call fs-whatsapp directly, handle response envelope (`result.data`)
-- Configure CORS on fs-whatsapp for magic-flow origin
-- Delete ~30 proxy route files under `app/api/`
-- Delete `lib/fs-whatsapp-proxy.ts`
-- Keep auth proxy routes (`/api/auth/*`) for token refresh (cookies need same-origin)
+> Shipped: magic-flow #24
 
-### 2.6 Remaining localStorage → DB
+### 2.6 Remove localStorage ✅
 
-Move last localStorage dependencies to server:
+- Edit mode derived from server draft existence — no localStorage
+- Change tracker stored in `magic_flow_drafts.changes` JSONB with user attribution (userId, userEmail, userName per change)
+- `is_edit_mode` boolean on drafts table
+- Flow templates migrated from localStorage to API (`?type=template` filter)
+- `ai_metadata` JSONB on projects table for template metadata
+- `version-storage.ts` deleted (~350 lines dead code)
+- Debounced node update tracking (500ms collapse for keystrokes)
+- Changes modal: timeline UI with user avatar initials
 
-- **Change tracker** → store in draft record with user attribution (`user_id`, `user_email` from JWT session per change entry)
-- **Edit/view mode** → `is_edit_mode` field on `magic_flow_drafts` table
-- **Flow templates** → use existing `MagicFlowProject` with `type: "template"`, add `ai_metadata` JSONB column, add `type` filter param to list endpoint
+> Shipped: fs-chat #21, magic-flow #25
 
-### 2.5 Variable & Tag Registry [#11](https://github.com/freestandtech/magic-flow/issues/11)
+---
+
+## Phase 3 — Next Up
+
+### 3.1 Variable & Tag Registry [#11](https://github.com/freestandtech/magic-flow/issues/11)
 
 Variables and tags become first-class entities with originator tracking, picker-based creation (no free text), and smart impact checking on change. Prevents silent cross-flow breakage and data orphaning.
 
@@ -240,18 +249,17 @@ Variables and tags become first-class entities with originator tracking, picker-
 - Zero runtime changes — `processTemplate`, `saveContactVariable`, converter all unchanged.
 - Full design: `docs/variable-tag-registry-plan.md`
 
-### 2.6 Test API via Go Backend (Single Source of Truth)
+### 3.2 Test API via Go Backend [#9](https://github.com/freestandtech/magic-flow/issues/9)
 
-Route test API calls through Go's `fetchApiResponse` instead of Next.js proxy. Ensures test uses the exact same variable replacement, timeout, and header handling as production. Blocked on Phase 2 (backend always available). See [#9](https://github.com/freestandtech/magic-flow/issues/9).
+Route test API calls through Go's `fetchApiResponse` instead of Next.js proxy. Ensures test uses the exact same variable replacement, timeout, and header handling as production.
 
-### 2.7 Embedded Signup (Connect WhatsApp)
+### 3.3 Embedded Signup (Connect WhatsApp)
 
 - FS Chat backend fully implemented (`/api/embedded-signup/*`)
 - MagicFlow needs: Facebook SDK loading, `FB.login()` flow, postMessage listener for `WA_EMBEDDED_SIGNUP` events, completion call
-- New proxy routes for embedded-signup endpoints
 - ~150 lines of React (Vue reference: `useFacebookSDK.ts`)
 
-### 2.8 Media Storage (S3/GCS) [#13](https://github.com/freestandtech/magic-flow/issues/13)
+### 3.4 Media Storage (S3/GCS) [#13](https://github.com/freestandtech/magic-flow/issues/13)
 
 Template messages with image/video/document headers need publicly accessible media URLs. Currently users must host media themselves and paste URLs. We need our own storage so users can upload directly.
 
@@ -407,13 +415,15 @@ Per-step execution trace for debugging flow runs. Currently API errors are saved
 | Item | Issue | Priority |
 |------|-------|----------|
 | Replace primitive HTML with shadcn components ✅ | [#17](https://github.com/freestandtech/magic-flow/issues/17) | Done |
+| Version history modal UI redesign | [#26](https://github.com/freestandtech/magic-flow/issues/26) | High |
+| API Fetch response mapping key collision | [#27](https://github.com/freestandtech/magic-flow/issues/27) | High |
 | AI-generated flows have overlapping nodes | [#7](https://github.com/freestandtech/magic-flow/issues/7) | High |
 | Standardize AI flow JSON naming/redirection | [#2](https://github.com/freestandtech/magic-flow/issues/2) | High |
 | API Fetch node: compact UI + improved panel | [#8](https://github.com/freestandtech/magic-flow/issues/8) | Medium |
 | Account references: string → UUID FK | — | Medium |
 | Docs inaccuracies (field names in API reference) | — | Low |
 | `interface{}` → `any` in Go handlers | — | Low |
-| Drop Next.js, move to Vite (once API proxies removed) | — | Later |
+| Drop Next.js, move to Vite (proxies removed ✅) | — | Later |
 
 ### Shadcn Component Migration [#17](https://github.com/freestandtech/magic-flow/issues/17)
 
@@ -454,10 +464,9 @@ Replace raw HTML primitives (`<select>`, `<input>`, custom dropdowns) with shadc
 - Trigger match types, ref link triggers, global cancel keywords shipped
 - Flows publishable to FS Chat and triggerable via API from Sampling Central
 
-**Phase 2 — In Progress** (March-April 2026)
-- 2.1-2.4 ✅ Auth, backend tables, storage swap, React Query all shipped
-- 2.5 next: remove proxy layer (direct JWT calls to fs-whatsapp)
-- 2.6: remaining localStorage → DB (change tracker, edit mode, templates)
+**Phase 2 — ✅ Complete** (March 2026)
+- 2.1-2.6 all shipped: Auth, backend tables, storage swap, React Query, proxy removal, localStorage removal
+- MagicFlow is now fully multi-user with server-backed persistent storage
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

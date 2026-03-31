@@ -31,6 +31,8 @@ interface DraftResponse {
   nodes: any[]
   edges: any[]
   platform: Platform
+  is_edit_mode: boolean
+  changes: FlowChange[]
   updated_at: string
 }
 
@@ -174,6 +176,8 @@ interface SaveDraftParams {
   nodes: Node[]
   edges: Edge[]
   platform: Platform
+  isEditMode: boolean
+  changes?: any[] // undefined = don't overwrite server's existing changes
 }
 
 /**
@@ -185,26 +189,35 @@ export function useSaveDraft() {
 
   return useMutation({
     mutationFn: async (params: SaveDraftParams) => {
+      const body: Record<string, any> = {
+        nodes: params.nodes,
+        edges: params.edges,
+        platform: params.platform,
+        is_edit_mode: params.isEditMode,
+      }
+      // Only send changes when user has new ones — avoids overwriting server data
+      if (params.changes !== undefined) {
+        body.changes = params.changes
+      }
       await apiClient.put(
         `/api/magic-flow/projects/${params.projectId}/draft`,
-        {
-          nodes: params.nodes,
-          edges: params.edges,
-          platform: params.platform,
-        },
+        body,
       )
       return params // return for onSuccess
     },
     onSuccess: (_data, params) => {
-      // Optimistic set — we know exactly what was saved, no need to refetch
+      // Optimistic set — merge with existing cache, don't overwrite changes if not sent
       queryClient.setQueryData(
         versionKeys.draft(params.projectId),
-        {
+        (old: any) => ({
+          ...old,
           nodes: params.nodes,
           edges: params.edges,
           platform: params.platform,
+          is_edit_mode: params.isEditMode,
+          ...(params.changes !== undefined ? { changes: params.changes } : {}),
           updated_at: new Date().toISOString(),
-        },
+        }),
       )
     },
   })

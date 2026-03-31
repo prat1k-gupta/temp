@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { useSaveDraft } from "./use-versions"
+import { changeTracker } from "@/utils/change-tracker"
 
 const AUTO_SAVE_DELAY_MS = 1000
 
@@ -17,6 +18,7 @@ export function useAutoSave(
   edges: Edge[],
   platform: Platform,
   enabled: boolean,
+  isEditMode: boolean,
 ) {
   const saveDraft = useSaveDraft()
   const lastSavedRef = useRef<string>("")
@@ -26,9 +28,18 @@ export function useAutoSave(
 
   const save = useCallback(
     (n: Node[], e: Edge[], p: Platform) => {
-      saveDraft.mutate({ projectId, nodes: n, edges: e, platform: p })
+      saveDraft.mutate({
+        projectId,
+        nodes: n,
+        edges: e,
+        platform: p,
+        isEditMode,
+        // Only send changes when user has added new ones this session.
+        // Undefined = don't overwrite server's existing changes.
+        changes: changeTracker.isDirty() ? changeTracker.getChanges() : undefined,
+      })
     },
-    [projectId, saveDraft.mutate],
+    [projectId, saveDraft.mutate, isEditMode],
   )
 
   // Flush helper — saves pending data immediately

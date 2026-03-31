@@ -5,7 +5,6 @@ import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
 import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft, versionKeys } from '@/hooks/queries'
 import { apiClient } from '@/lib/api-client'
 import { changeTracker } from '@/utils/change-tracker'
-import { getEditModeState, saveEditModeState } from '@/utils/version-storage'
 
 /**
  * Format nodes/edges for ReactFlow (ensure data/style objects exist).
@@ -42,60 +41,34 @@ export function useVersionManager(flowId: string) {
   // Derived: latest published version from the server-fetched list
   const latestPublishedVersion = versionsQuery.data?.find(v => v.isPublished) ?? null
 
-  // Initialize edit mode — check server draft first, then localStorage, then defaults
+  // Initialize edit mode — derived entirely from server state
   const hasDraft = !!draftQuery.data
   useEffect(() => {
     if (versionsQuery.isLoading || !versionsQuery.data || draftQuery.isLoading) return
 
     changeTracker.setFlowId(flowId)
 
-    const storedEditMode = getEditModeState(flowId)
-    const isFirstVisit = storedEditMode === null
+    // Load changes from server draft into the tracker
+    const serverChanges = draftQuery.data?.changes || []
+    changeTracker.loadChanges(serverChanges)
 
-    if (isFirstVisit) {
-      if (hasDraft) {
-        // Draft exists on server — start in edit mode regardless of published state
-        setEditModeState({
-          isEditMode: true,
-          hasUnsavedChanges: true,
-          currentVersion: latestPublishedVersion,
-          draftChanges: []
-        })
-        saveEditModeState(flowId, true)
-        changeTracker.startTracking()
-      } else if (latestPublishedVersion) {
-        // No draft, has published version — start in view mode
-        setEditModeState({
-          isEditMode: false,
-          hasUnsavedChanges: false,
-          currentVersion: latestPublishedVersion,
-          draftChanges: []
-        })
-        saveEditModeState(flowId, false)
-      } else {
-        // No draft, no published version — start in edit mode
-        setEditModeState({
-          isEditMode: true,
-          hasUnsavedChanges: false,
-          currentVersion: null,
-          draftChanges: []
-        })
-        saveEditModeState(flowId, true)
-        changeTracker.startTracking()
-      }
-    } else {
-      // Subsequent visit — restore stored edit mode
-      const draftChanges = changeTracker.getChanges()
+    if (hasDraft || !latestPublishedVersion) {
+      // Draft exists or no published version — edit mode
       setEditModeState({
-        isEditMode: storedEditMode,
-        hasUnsavedChanges: draftChanges.length > 0,
+        isEditMode: true,
+        hasUnsavedChanges: hasDraft && serverChanges.length > 0,
         currentVersion: latestPublishedVersion,
-        draftChanges
+        draftChanges: serverChanges
       })
-
-      if (storedEditMode) {
-        changeTracker.startTracking()
-      }
+      changeTracker.startTracking()
+    } else {
+      // No draft, has published version — view mode
+      setEditModeState({
+        isEditMode: false,
+        hasUnsavedChanges: false,
+        currentVersion: latestPublishedVersion,
+        draftChanges: []
+      })
     }
   }, [flowId, versionsQuery.isLoading, draftQuery.isLoading, hasDraft, latestPublishedVersion?.id])
 
@@ -147,7 +120,6 @@ export function useVersionManager(flowId: string) {
           hasUnsavedChanges: changeTracker.getChangesCount() > 0
         }))
         changeTracker.startTracking()
-        saveEditModeState(flowId, true)
       })
     } else {
       // Exiting edit mode — revert to published version
@@ -169,7 +141,6 @@ export function useVersionManager(flowId: string) {
         }))
         changeTracker.clearChanges()
         changeTracker.stopTracking()
-        saveEditModeState(flowId, false)
       } else {
         // No published version — cannot exit edit mode
         return
@@ -197,9 +168,8 @@ export function useVersionManager(flowId: string) {
         hasUnsavedChanges: true
       }))
       changeTracker.startTracking(currentNodes, currentEdges, currentPlatform)
-      saveEditModeState(flowId, true)
     }
-  }, [editModeState.isEditMode, flowId])
+  }, [editModeState.isEditMode])
 
   /**
    * Exit edit mode
@@ -292,7 +262,6 @@ export function useVersionManager(flowId: string) {
     })
     changeTracker.clearChanges()
     changeTracker.stopTracking()
-    saveEditModeState(flowId, false)
 
     // Delete draft since we just published
     deleteDraftMutation.mutate(flowId)
@@ -321,7 +290,6 @@ export function useVersionManager(flowId: string) {
         isEditMode: false,
         currentVersion: publishedVersion
       }))
-      saveEditModeState(flowId, false)
 
       deleteDraftMutation.mutate(flowId)
       return publishedVersion
@@ -435,7 +403,6 @@ export function useVersionManager(flowId: string) {
         draftChanges: preservedChanges
       }))
       changeTracker.pauseTracking()
-      saveEditModeState(flowId, false)
     } else {
       // Switch to edit mode — reload draft from server, THEN activate edit mode
       loadDraftOntoCanvas(setNodes, setEdges, setPlatform).then(() => {
@@ -447,7 +414,6 @@ export function useVersionManager(flowId: string) {
           hasUnsavedChanges: currentChanges.length > 0,
           draftChanges: currentChanges
         }))
-        saveEditModeState(flowId, true)
       })
     }
   }, [editModeState.isEditMode, latestPublishedVersion, flowId, loadDraftOntoCanvas])
@@ -473,7 +439,6 @@ export function useVersionManager(flowId: string) {
       })
       changeTracker.clearChanges()
       changeTracker.stopTracking()
-      saveEditModeState(flowId, false)
       deleteDraftMutation.mutate(flowId)
       return true
     } else {
@@ -500,17 +465,10 @@ export function useVersionManager(flowId: string) {
       })
       changeTracker.clearChanges()
       changeTracker.startTracking()
-      saveEditModeState(flowId, true)
       deleteDraftMutation.mutate(flowId)
       return true
     }
   }, [latestPublishedVersion, flowId, deleteDraftMutation])
-
-  // No-op stubs for deprecated localStorage draft methods
-  // (auto-save now handles drafts via useAutoSave in use-flow-persistence)
-  const loadDraftState = useCallback(() => false, [])
-  const saveCurrentStateAsDraft = useCallback(() => {}, [])
-  const savePublishedAsDraftBaseline = useCallback(() => {}, [])
 
   return {
     // State
@@ -540,11 +498,6 @@ export function useVersionManager(flowId: string) {
     getChangesSummary,
     getRecentChanges,
     getChangesCount,
-
-    // Draft state management (stubs — auto-save handles this now)
-    loadDraftState,
-    saveCurrentStateAsDraft,
-    savePublishedAsDraftBaseline,
 
     // Loading / mutation states
     isVersionsLoading: versionsQuery.isLoading,

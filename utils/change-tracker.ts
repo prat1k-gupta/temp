@@ -1,5 +1,9 @@
 import type { FlowChange, Platform } from "@/types"
-import { generateId, getDraftChanges, saveDraftChanges } from "./version-storage"
+import { getUser } from "@/lib/auth"
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
 
 /**
  * Change tracker for capturing user actions
@@ -7,17 +11,19 @@ import { generateId, getDraftChanges, saveDraftChanges } from "./version-storage
 export class ChangeTracker {
   private changes: FlowChange[] = []
   private isTracking: boolean = false
+  private hasDirtyChanges: boolean = false // true only when user added new changes this session
   private initialState: {
     nodes: any[]
     edges: any[]
     platform: Platform
   } | null = null
   private flowId: string | null = null
+  // Debounce node updates: pending updates per nodeId, flushed after 500ms of inactivity
+  private pendingNodeUpdates: Map<string, { timer: ReturnType<typeof setTimeout>; firstOldData: any; latestNewData: any; oldType?: string; newType?: string }> = new Map()
 
   constructor(flowId?: string) {
     if (flowId) {
       this.flowId = flowId
-      this.loadDraftChanges()
     }
   }
 
@@ -26,7 +32,6 @@ export class ChangeTracker {
    */
   setFlowId(flowId: string): void {
     this.flowId = flowId
-    this.loadDraftChanges()
   }
 
   /**
@@ -70,21 +75,11 @@ export class ChangeTracker {
   }
 
   /**
-   * Load draft changes from localStorage
+   * Load changes from an external source (e.g. server draft)
    */
-  private loadDraftChanges(): void {
-    if (this.flowId) {
-      this.changes = getDraftChanges(this.flowId)
-    }
-  }
-
-  /**
-   * Save changes to localStorage
-   */
-  private saveChanges(): void {
-    if (this.flowId) {
-      saveDraftChanges(this.flowId, this.changes)
-    }
+  loadChanges(changes: FlowChange[]): void {
+    this.changes = changes
+    this.hasDirtyChanges = false // loaded from server, not user-initiated
   }
 
   /**
@@ -107,16 +102,20 @@ export class ChangeTracker {
       return
     }
 
+    const user = getUser()
     const change: FlowChange = {
       id: generateId(),
       type,
       timestamp: new Date().toISOString(),
       data,
-      description
+      description,
+      userId: user?.id,
+      userEmail: user?.email,
+      userName: user?.full_name,
     }
 
     this.changes.push(change)
-    this.saveChanges()
+    this.hasDirtyChanges = true
   }
 
   /**
@@ -134,44 +133,52 @@ export class ChangeTracker {
   }
 
   /**
-   * Track node update with smart change detection
+   * Track node update with debouncing — collapses rapid changes (typing) into one entry.
    */
   trackNodeUpdate(nodeId: string, oldData: any, newData: any, oldType?: string, newType?: string): void {
-    console.log('[Change Tracker] Checking node update for:', nodeId)
-    console.log('[Change Tracker] Old data:', oldData)
-    console.log('[Change Tracker] New data:', newData)
-    console.log('[Change Tracker] Type change:', oldType, '→', newType)
-    
-    // First check if there's any difference at all
+    if (!this.isTracking) return
+
     const hasAnyChange = JSON.stringify(oldData) !== JSON.stringify(newData)
     const hasTypeChange = oldType && newType && oldType !== newType
-    console.log('[Change Tracker] Has any change:', hasAnyChange, 'Has type change:', hasTypeChange)
-    
-    if (!hasAnyChange && !hasTypeChange) {
-      console.log('[Change Tracker] No changes detected - data is identical')
-      return
-    }
-    
-    // Check for node type transitions first
+    if (!hasAnyChange && !hasTypeChange) return
+
+    // Type transitions are immediate (not debounced)
     if (hasTypeChange) {
       const transitionReason = this.detectTransitionReason(oldType!, newType!, oldData, newData)
       if (transitionReason) {
-        console.log('[Change Tracker] Detected node type transition:', transitionReason)
-        this.addChange('node_update', { 
-          nodeId, 
-          oldData, 
-          newData, 
+        this.addChange('node_update', {
+          nodeId, oldData, newData,
           changes: [{ property: 'nodeType', oldValue: oldType, newValue: newType }],
           transitionReason
         }, transitionReason)
         return
       }
     }
-    
-    // Try to detect specific changes
+
+    // Debounce property changes (typing, slider drags, etc.)
+    const pending = this.pendingNodeUpdates.get(nodeId)
+    if (pending) {
+      clearTimeout(pending.timer)
+      pending.latestNewData = newData
+      pending.newType = newType
+    }
+
+    const entry = pending || { firstOldData: oldData, latestNewData: newData, oldType, newType, timer: undefined as any }
+
+    entry.timer = setTimeout(() => {
+      this.pendingNodeUpdates.delete(nodeId)
+      this.flushNodeUpdate(nodeId, entry.firstOldData, entry.latestNewData, entry.oldType, entry.newType)
+    }, 500)
+
+    this.pendingNodeUpdates.set(nodeId, entry)
+  }
+
+  /**
+   * Flush a debounced node update — called after 500ms of inactivity.
+   */
+  private flushNodeUpdate(nodeId: string, oldData: any, newData: any, oldType?: string, newType?: string): void {
     const changes = this.detectNodeChanges(oldData, newData)
-    console.log('[Change Tracker] Detected specific changes:', changes)
-    
+
     if (changes.length > 0) {
       // Use smart change description
       const changeDescription = this.formatNodeChangeDescription(changes, nodeId)
@@ -246,14 +253,16 @@ export class ChangeTracker {
       'required', 'type', 'style', 'color', 'size', 'nodeType'
     ]
     
-    // Properties to ignore (technical/internal)
-    const ignoredProperties = [
-      'id', 'onNodeUpdate', 'onAddButton', 'onAddOption', 'onAddConnection', 
-      'onDelete', 'onConnect', 'onDisconnect', '_timestamp', '__id', 
-      'position', 'selected', 'dragging', 'data', 'sourcePosition', 
+    // Properties to ignore (technical/internal/callbacks)
+    const ignoredProperties = new Set([
+      'id', 'onNodeUpdate', 'onAddButton', 'onAddOption', 'onAddConnection',
+      'onDelete', 'onConnect', 'onDisconnect', 'onConvert', 'onOpenFlowBuilder',
+      'onRemoveButton', 'onRemoveOption', 'onUpdateButton', 'onUpdateOption',
+      '_timestamp', '__id',
+      'position', 'selected', 'dragging', 'data', 'sourcePosition',
       'targetPosition', 'sourceHandle', 'targetHandle', 'animated',
       'hidden', 'deletable', 'selectable', 'dragHandle', 'dragHandleClass'
-    ]
+    ])
     
     // Get all properties from both objects
     const allKeys = new Set([...Object.keys(oldData || {}), ...Object.keys(newData || {})])
@@ -261,13 +270,17 @@ export class ChangeTracker {
     
     for (const prop of allKeys) {
       // Skip ignored properties
-      if (ignoredProperties.includes(prop)) {
-        console.log(`[Change Tracker] Skipping ignored property: ${prop}`)
+      if (ignoredProperties.has(prop)) {
         continue
       }
-      
+
       const oldValue = oldData?.[prop]
       const newValue = newData?.[prop]
+
+      // Skip functions (injected callbacks like onConvert, onOpenFlowBuilder)
+      if (typeof oldValue === 'function' || typeof newValue === 'function') {
+        continue
+      }
       
       console.log(`[Change Tracker] Checking ${prop}:`, { oldValue, newValue })
       
@@ -363,8 +376,13 @@ export class ChangeTracker {
       return `Changed type: ${oldValue || 'unknown'} → ${newValue || 'unknown'}`
     }
     
-    // Generic change
-    return `Updated ${property}: ${oldValue || 'empty'} → ${newValue || 'empty'}`
+    // Generic change — safely format values that might be objects
+    const fmt = (v: any) => {
+      if (v === null || v === undefined || v === '') return 'empty'
+      if (typeof v === 'object') return JSON.stringify(v).length > 50 ? `{${Object.keys(v).length} properties}` : JSON.stringify(v)
+      return String(v)
+    }
+    return `Updated ${property}: ${fmt(oldValue)} → ${fmt(newValue)}`
   }
 
   /**
@@ -424,7 +442,14 @@ export class ChangeTracker {
   clearChanges(): void {
     console.log('[Change Tracker] clearChanges called, clearing', this.changes.length, 'changes')
     this.changes = []
-    this.saveChanges()
+    this.hasDirtyChanges = false
+  }
+
+  /**
+   * Whether user has added new changes this session (not just loaded from server)
+   */
+  isDirty(): boolean {
+    return this.hasDirtyChanges
   }
 
   /**

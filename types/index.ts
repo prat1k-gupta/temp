@@ -203,6 +203,9 @@ export interface FlowChange {
   timestamp: string
   data: any
   description: string
+  userId?: string
+  userEmail?: string
+  userName?: string
 }
 
 export interface EditModeState {

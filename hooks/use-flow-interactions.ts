@@ -182,7 +182,7 @@ export function useFlowInteractions({
   }, [])
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       event.preventDefault()
 
       if (!draggedNodeType) return
@@ -210,7 +210,7 @@ export function useFlowInteractions({
             templateDescription = defaultTpl.description
             templateAiMetadata = defaultTpl.aiMetadata
           } else {
-            const userTpl = getTemplate(draggedNodeMeta.templateId!)
+            const userTpl = await getTemplate(draggedNodeMeta.templateId!)
             if (userTpl) {
               templateNodes = userTpl.nodes.filter((n) => n.type !== "start")
               templateEdges = userTpl.edges

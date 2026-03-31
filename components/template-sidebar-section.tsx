@@ -51,7 +51,7 @@ export function TemplateSidebarSection({
 
   // Load user templates and pinned state
   useEffect(() => {
-    setUserTemplates(getAllTemplates())
+    getAllTemplates().then(setUserTemplates)
     setPinnedIds(getPinnedTemplates())
   }, [])
 
@@ -65,7 +65,7 @@ export function TemplateSidebarSection({
     })
   }, [])
 
-  const handleCreateTemplate = useCallback(() => {
+  const handleCreateTemplate = useCallback(async () => {
     if (!newTemplateName.trim()) return
     const aiMetadata: TemplateAIMetadata | undefined =
       (newTemplateDescription.trim() || newTemplateWhenToUse.trim())
@@ -74,8 +74,9 @@ export function TemplateSidebarSection({
             whenToUse: newTemplateWhenToUse.trim(),
           }
         : undefined
-    createTemplate(newTemplateName.trim(), "", newTemplatePlatform, [], [], aiMetadata)
-    setUserTemplates(getAllTemplates())
+    await createTemplate(newTemplateName.trim(), "", newTemplatePlatform, [], [], aiMetadata)
+    const updated = await getAllTemplates()
+    setUserTemplates(updated)
     setNewTemplateName("")
     setNewTemplatePlatform(platform)
     setNewTemplateDescription("")

@@ -44,24 +44,24 @@ export function useTemplatePersistence({
   // Load template data
   useEffect(() => {
     if (templateId) {
-      const templateData = getTemplate(templateId)
+      getTemplate(templateId).then((templateData) => {
+        if (templateData) {
+          console.log("[Template] Loaded:", {
+            name: templateData.name,
+            nodes: templateData.nodes.length,
+            edges: templateData.edges.length,
+            platform: templateData.platform,
+          })
 
-      if (templateData) {
-        console.log("[Template] Loaded:", {
-          name: templateData.name,
-          nodes: templateData.nodes.length,
-          edges: templateData.edges.length,
-          platform: templateData.platform,
-        })
-
-        setCurrentFlow(templateData)
-        setNodes(templateData.nodes)
-        setEdges(templateData.edges)
-        setPlatform(templateData.platform)
-        setFlowLoaded(true)
-      } else {
-        console.log("[Template] Not found for id:", templateId)
-      }
+          setCurrentFlow(templateData)
+          setNodes(templateData.nodes)
+          setEdges(templateData.edges)
+          setPlatform(templateData.platform)
+          setFlowLoaded(true)
+        } else {
+          console.log("[Template] Not found for id:", templateId)
+        }
+      })
     }
   }, [templateId])
 
@@ -74,11 +74,11 @@ export function useTemplatePersistence({
         return
       }
 
-      const timeoutId = setTimeout(() => {
+      const timeoutId = setTimeout(async () => {
         if (isSavingRef.current) return
 
         isSavingRef.current = true
-        updateTemplate(templateId, { nodes, edges, platform })
+        await updateTemplate(templateId, { nodes, edges, platform })
         lastSavedDataRef.current = dataToSave
         isSavingRef.current = false
       }, 1000)
@@ -94,9 +94,9 @@ export function useTemplatePersistence({
     router.push("/flow-templates")
   }, [router])
 
-  const handleFlowNameBlur = useCallback(() => {
+  const handleFlowNameBlur = useCallback(async () => {
     if (editingFlowNameValue.trim() && currentFlow && editingFlowNameValue !== currentFlow.name) {
-      const updated = updateTemplate(templateId, { name: editingFlowNameValue.trim() })
+      const updated = await updateTemplate(templateId, { name: editingFlowNameValue.trim() })
       if (updated) {
         setCurrentFlow(updated)
         toast.success("Template name updated")
@@ -111,22 +111,22 @@ export function useTemplatePersistence({
     }
   }, [editingFlowNameValue, currentFlow, templateId])
 
-  const saveFlowFields = useCallback((updates: Record<string, any>) => {
+  const saveFlowFields = useCallback(async (updates: Record<string, any>) => {
     if (!templateId) return
-    updateTemplate(templateId, updates)
+    await updateTemplate(templateId, updates)
   }, [templateId])
 
-  const saveDescription = useCallback((description: string) => {
+  const saveDescription = useCallback(async (description: string) => {
     if (!templateId) return
-    const updated = updateTemplate(templateId, { description })
+    const updated = await updateTemplate(templateId, { description })
     if (updated) {
       setCurrentFlow(updated)
     }
   }, [templateId])
 
-  const saveAIMetadata = useCallback((aiMetadata: TemplateAIMetadata) => {
+  const saveAIMetadata = useCallback(async (aiMetadata: TemplateAIMetadata) => {
     if (!templateId) return
-    const updated = updateTemplate(templateId, { aiMetadata })
+    const updated = await updateTemplate(templateId, { aiMetadata })
     if (updated) {
       setCurrentFlow(updated)
     }

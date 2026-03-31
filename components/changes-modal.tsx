@@ -244,18 +244,25 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
                         </div>
                         
                         <div className="flex-1 min-w-0 overflow-hidden">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <Badge 
-                              variant="outline" 
-                              className={`text-xs ${getChangeTypeColor(change.type)}`}
-                            >
-                              {getChangeTypeLabel(change.type)}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {formatTimestamp(change.timestamp)}
-                            </span>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge
+                                variant="outline"
+                                className={`text-xs ${getChangeTypeColor(change.type)}`}
+                              >
+                                {getChangeTypeLabel(change.type)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+                                {formatTimestamp(change.timestamp)}
+                              </span>
+                            </div>
+                            {change.userName && (
+                              <span className="text-xs font-medium text-primary whitespace-nowrap">
+                                {change.userName}
+                              </span>
+                            )}
                           </div>
-                          
+
                           <p className="text-sm text-foreground break-words">
                             {change.description}
                           </p>
@@ -301,66 +308,89 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
                 </div>
               ))
             ) : (
-              // Chronological view
-              sortedChanges.map((change, index) => (
-                <div
-                  key={change.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border bg-card"
-                >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {getChangeIcon(change.type)}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <Badge 
-                        variant="outline" 
-                        className={`text-xs ${getChangeTypeColor(change.type)}`}
-                      >
-                        {getChangeTypeLabel(change.type)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatTimestamp(change.timestamp)}
-                      </span>
-                    </div>
-                    
-                    <p className="text-sm text-foreground break-words">
-                      {change.description}
-                    </p>
-                    
-                    {change.data && (
-                      <div className="mt-2 text-xs text-muted-foreground break-words">
-                        {change.type === 'node_add' && change.data.label && (
-                          <span>Label: <strong className="break-all">{change.data.label}</strong></span>
-                        )}
-                        {change.type === 'node_delete' && change.data.label && (
-                          <span>Deleted: <strong className="break-all">{change.data.label}</strong></span>
-                        )}
-                        {change.type === 'node_update' && change.data.changes && (
-                          <div className="space-y-1">
-                            {change.data.changes.map((propChange: any, idx: number) => (
-                              <div key={idx} className="flex items-start gap-2">
-                                <span className="font-medium text-blue-600">{propChange.property}:</span>
-                                <span className="flex-1">
-                                  <span className="text-red-600 line-through">{formatValue(propChange.oldValue)}</span>
-                                  <span className="mx-1">→</span>
-                                  <span className="text-green-600 font-medium">{formatValue(propChange.newValue)}</span>
-                                </span>
-                              </div>
-                            ))}
+              // Chronological timeline view
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-[17px] top-6 bottom-6 w-px bg-border" />
+
+                <div className="space-y-0">
+                  {sortedChanges.map((change) => {
+                    const initials = change.userName
+                      ? change.userName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+                      : null
+
+                    return (
+                      <div key={change.id} className="relative flex items-start gap-3 py-3 group">
+                        {/* Avatar / icon on timeline */}
+                        <div className="flex-shrink-0 z-10">
+                          {initials ? (
+                            <div className="w-[34px] h-[34px] rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center shadow-sm">
+                              <span className="text-[10px] font-semibold">{initials}</span>
+                            </div>
+                          ) : (
+                            <div className="w-[34px] h-[34px] rounded-full bg-muted border-2 border-background flex items-center justify-center shadow-sm">
+                              {getChangeIcon(change.type)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            {change.userName && (
+                              <span className="text-sm font-semibold text-foreground">{change.userName}</span>
+                            )}
+                            <span className="text-sm text-muted-foreground">{change.description}</span>
                           </div>
-                        )}
-                        {change.type === 'platform_change' && change.data.from && change.data.to && (
-                          <span>From <strong>{change.data.from}</strong> to <strong>{change.data.to}</strong></span>
-                        )}
-                        {change.type === 'flow_import' && change.data.nodeCount && (
-                          <span>Imported <strong>{change.data.nodeCount} nodes</strong> and <strong>{change.data.edgeCount} connections</strong></span>
-                        )}
+
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] px-1.5 py-0 h-[18px] ${getChangeTypeColor(change.type)}`}
+                            >
+                              {getChangeTypeLabel(change.type)}
+                            </Badge>
+                            <span className="text-[11px] text-muted-foreground/50">
+                              {formatTimestamp(change.timestamp)}
+                            </span>
+                          </div>
+
+                          {change.data && (
+                            <div className="mt-1.5 text-xs text-muted-foreground break-words">
+                              {change.type === 'node_add' && change.data.label && (
+                                <span>Label: <strong className="break-all">{change.data.label}</strong></span>
+                              )}
+                              {change.type === 'node_delete' && change.data.label && (
+                                <span>Deleted: <strong className="break-all">{change.data.label}</strong></span>
+                              )}
+                              {change.type === 'node_update' && change.data.changes && (
+                                <div className="space-y-1">
+                                  {change.data.changes.map((propChange: any, idx: number) => (
+                                    <div key={idx} className="flex items-start gap-2">
+                                      <span className="font-medium text-blue-600">{propChange.property}:</span>
+                                      <span className="flex-1">
+                                        <span className="text-red-600 line-through">{formatValue(propChange.oldValue)}</span>
+                                        <span className="mx-1">→</span>
+                                        <span className="text-green-600 font-medium">{formatValue(propChange.newValue)}</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {change.type === 'platform_change' && change.data.from && change.data.to && (
+                                <span>From <strong>{change.data.from}</strong> to <strong>{change.data.to}</strong></span>
+                              )}
+                              {change.type === 'flow_import' && change.data.nodeCount && (
+                                <span>Imported <strong>{change.data.nodeCount} nodes</strong> and <strong>{change.data.edgeCount} connections</strong></span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    )
+                  })}
                 </div>
-              ))
+              </div>
             )}
           </div>
         </ScrollArea>

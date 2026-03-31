@@ -154,7 +154,7 @@ function MagicFlowInner() {
 
   // Auto-save: only active in edit mode after flow data has loaded
   const autoSaveEnabled = !!flowId && !!persistence.currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && persistence.flowLoaded && isEditMode
-  const { isSaving, flush: autoSaveFlush } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled)
+  const { isSaving, flush: autoSaveFlush } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled, isEditMode)
 
   const nodeOps = useNodeOperations({
     flowId,
@@ -252,7 +252,7 @@ function MagicFlowInner() {
         nodeCount: internalNodes.length,
         ...(aiMetadata ? { aiMetadata } : {}),
       })
-      // Persist AI metadata to the source template in localStorage
+      // Persist AI metadata to the source template via API
       const templateNode = nodes.find((n) => n.id === nodeId)
       const sourceTemplateId = (templateNode?.data as any)?.sourceTemplateId
       if (sourceTemplateId && aiMetadata) {

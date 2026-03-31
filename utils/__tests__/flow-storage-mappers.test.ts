@@ -69,6 +69,26 @@ describe("mapProjectToMetadata", () => {
     expect(result.createdAt).toBe("2026-01-01")
     expect(result.updatedAt).toBe("2026-02-01")
   })
+
+  it("maps ai_metadata from snake_case", () => {
+    const result = mapProjectToMetadata({
+      id: "1",
+      name: "x",
+      platform: "web",
+      ai_metadata: { description: "test", whenToUse: "always" },
+    })
+    expect(result.aiMetadata).toEqual({ description: "test", whenToUse: "always" })
+  })
+
+  it("maps aiMetadata from camelCase fallback", () => {
+    const result = mapProjectToMetadata({
+      id: "1",
+      name: "x",
+      platform: "web",
+      aiMetadata: { description: "test" },
+    })
+    expect(result.aiMetadata).toEqual({ description: "test" })
+  })
 })
 
 describe("mapProjectToFlowData", () => {
@@ -214,5 +234,25 @@ describe("mapProjectToFlowData", () => {
     expect(result.publishedFlowId).toBe("pf-1")
     expect(result.flowSlug).toBe("slug")
     expect(result.createdAt).toBe("2026-01-01")
+  })
+
+  it("maps ai_metadata from snake_case", () => {
+    const result = mapProjectToFlowData({
+      id: "proj-1",
+      name: "x",
+      platform: "web",
+      ai_metadata: { description: "template desc", whenToUse: "collecting name" },
+    })
+    expect(result.aiMetadata).toEqual({ description: "template desc", whenToUse: "collecting name" })
+  })
+
+  it("maps aiMetadata from camelCase fallback", () => {
+    const result = mapProjectToFlowData({
+      id: "proj-1",
+      name: "x",
+      platform: "web",
+      aiMetadata: { description: "fallback" },
+    })
+    expect(result.aiMetadata).toEqual({ description: "fallback" })
   })
 })

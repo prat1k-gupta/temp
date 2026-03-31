@@ -81,7 +81,7 @@ All server data fetching MUST use TanStack React Query hooks. Never use raw `api
 **Query hooks** (in `hooks/queries/`):
 - Flows: `useFlows()`, `useFlow(id)`, `useCreateFlow()`, `useUpdateFlow(id)`, `useDeleteFlow()`, `useDuplicateFlow()`
 - Versions: `useVersions(projectId)`, `useCreateVersion()`, `usePublishVersion()`, `useSaveDraft()`, `useDeleteDraft()`
-- Auto-save: `useAutoSave(projectId, nodes, edges, platform, enabled)`
+- Auto-save: `useAutoSave(projectId, nodes, edges, platform, enabled, isEditMode)`
 - Accounts: `useAccounts()`
 - Chatbot: `useChatbotFlows()`, `useGlobalVariables()`
 - Templates: `useTemplates(status?)`, `useSyncTemplates()`, `useDeleteTemplate()`, `usePublishTemplate()`, `useSaveTemplate()`, `useDuplicateTemplate()`

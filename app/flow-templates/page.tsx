@@ -52,8 +52,8 @@ export default function FlowTemplatesPage() {
     loadTemplates()
   }, [])
 
-  const loadTemplates = () => {
-    const allTemplates = getAllTemplates()
+  const loadTemplates = async () => {
+    const allTemplates = await getAllTemplates()
     const sorted = allTemplates.sort((a, b) => {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     })
@@ -70,7 +70,7 @@ export default function FlowTemplatesPage() {
     setShowCreateModal(false)
   }
 
-  const handleCreateTemplate = () => {
+  const handleCreateTemplate = async () => {
     if (!newName.trim()) return
 
     const aiMetadata: TemplateAIMetadata | undefined =
@@ -82,7 +82,7 @@ export default function FlowTemplatesPage() {
           }
         : undefined
 
-    const newTemplate = createTemplate(
+    const newTemplate = await createTemplate(
       newName.trim(),
       newDescription.trim(),
       newPlatform,
@@ -94,8 +94,8 @@ export default function FlowTemplatesPage() {
     router.push(`/template/${newTemplate.id}`)
   }
 
-  const handleDeleteTemplate = (templateId: string) => {
-    const success = deleteTemplate(templateId)
+  const handleDeleteTemplate = async (templateId: string) => {
+    const success = await deleteTemplate(templateId)
     if (success) {
       toast.success("Template deleted")
       loadTemplates()
@@ -105,8 +105,8 @@ export default function FlowTemplatesPage() {
     setTemplateToDelete(null)
   }
 
-  const handleDuplicateTemplate = (templateId: string, templateName: string) => {
-    const duplicated = duplicateTemplate(templateId, `${templateName} (Copy)`)
+  const handleDuplicateTemplate = async (templateId: string, templateName: string) => {
+    const duplicated = await duplicateTemplate(templateId, `${templateName} (Copy)`)
     if (duplicated) {
       toast.success(`Template "${templateName}" duplicated!`)
       loadTemplates()

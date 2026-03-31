@@ -10,3 +10,5 @@ export { waFlowKeys, useWhatsAppFlows, useCreateWhatsAppFlow, useUpdateWhatsAppF
 export { useProfile, useUpdateProfile, useChangePassword } from "./use-profile"
 export { useUsers, useCreateUser, useUpdateUser, useDeleteUser, type OrgUser } from "./use-users"
 export { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam, type Team } from "./use-teams"
+export { useChatbotSettings, useUpdateChatbotSettings, type ChatbotSettings } from "./use-chatbot-settings"
+export { useApiKeys, useCreateApiKey, useDeleteApiKey, type ApiKey } from "./use-api-keys"

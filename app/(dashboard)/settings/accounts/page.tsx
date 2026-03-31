@@ -1,16 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import {
   Plus, Pencil, Trash2, Phone, Check, RefreshCw, Loader2,
-  Copy, ExternalLink, AlertCircle, CheckCircle2, Settings2, X,
+  Copy, ExternalLink, AlertCircle, CheckCircle2, Settings2, X, Send,
 } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -24,8 +25,44 @@ import {
 
 import {
   useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount, type Account,
+  accountKeys,
 } from "@/hooks/queries"
 import { apiClient } from "@/lib/api-client"
+import { useFacebookSDK, type EmbeddedSignupResult } from "@/hooks/use-facebook-sdk"
+
+// --- Facebook icon (inline SVG to avoid extra dependency) ---
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </svg>
+  )
+}
+
+// --- Embedded Signup Dialog Steps ---
+type SignupStep = "connect" | "processing" | "payment" | "test"
+
+interface SignupState {
+  step: SignupStep
+  accountId: string | null
+  accountName: string | null
+  error: string | null
+  testPhone: string
+  testSending: boolean
+  testSent: boolean
+}
+
+const INITIAL_SIGNUP_STATE: SignupState = {
+  step: "connect",
+  accountId: null,
+  accountName: null,
+  error: null,
+  testPhone: "",
+  testSending: false,
+  testSent: false,
+}
+
+// --- Helpers ---
 
 interface TestResult {
   success: boolean
@@ -52,6 +89,277 @@ function copyToClipboard(text: string, label: string) {
   toast.success(`${label} copied to clipboard`)
 }
 
+// --- Embedded Signup Dialog ---
+
+function EmbeddedSignupDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const { isLoading: sdkLoading, isSDKReady, error: sdkError, loadSDK, launchEmbeddedSignup } = useFacebookSDK()
+  const [state, setState] = useState<SignupState>(INITIAL_SIGNUP_STATE)
+
+  // Load Facebook SDK when the dialog opens
+  useEffect(() => {
+    if (open && !isSDKReady) {
+      loadSDK().catch(() => {
+        // Error is already set in the hook
+      })
+    }
+  }, [open, isSDKReady, loadSDK])
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setState(INITIAL_SIGNUP_STATE)
+    }
+  }, [open])
+
+  async function handleConnect() {
+    setState((s) => ({ ...s, error: null }))
+    try {
+      const signupResult = await launchEmbeddedSignup()
+      setState((s) => ({ ...s, step: "processing" }))
+      await completeSignup(signupResult)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Embedded Signup failed"
+      setState((s) => ({ ...s, error: msg }))
+    }
+  }
+
+  async function completeSignup(signupResult: EmbeddedSignupResult) {
+    try {
+      const result = await apiClient.post<{ account_id: string; account_name: string }>(
+        "/api/embedded-signup/complete",
+        {
+          code: signupResult.code,
+          waba_id: signupResult.wabaId,
+          phone_number_id: signupResult.phoneNumberId,
+        }
+      )
+      queryClient.invalidateQueries({ queryKey: accountKeys.list() })
+      setState((s) => ({
+        ...s,
+        step: "payment",
+        accountId: result.account_id,
+        accountName: result.account_name,
+      }))
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to complete signup"
+      setState((s) => ({ ...s, step: "connect", error: msg }))
+    }
+  }
+
+  async function handleSendTest() {
+    if (!state.accountId || !state.testPhone.trim()) return
+    setState((s) => ({ ...s, testSending: true, error: null }))
+    try {
+      await apiClient.post("/api/embedded-signup/test-message", {
+        account_id: state.accountId,
+        phone_number: state.testPhone.trim(),
+      })
+      setState((s) => ({ ...s, testSending: false, testSent: true }))
+      toast.success("Test message sent!")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send test message"
+      setState((s) => ({ ...s, testSending: false, error: msg }))
+    }
+  }
+
+  function handleClose() {
+    onOpenChange(false)
+  }
+
+  const showSdkError = sdkError && state.step === "connect"
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {state.step === "connect" && "Connect WhatsApp Business"}
+            {state.step === "processing" && "Setting up your account..."}
+            {state.step === "payment" && "Add a payment method"}
+            {state.step === "test" && "Send a test message"}
+          </DialogTitle>
+          <DialogDescription>
+            {state.step === "connect" && "Sign in with Facebook to connect your WhatsApp Business account automatically."}
+            {state.step === "processing" && "We're configuring your account. This takes a few seconds."}
+            {state.step === "payment" && "A payment method is required by Meta to send messages beyond the test limit."}
+            {state.step === "test" && "Verify everything works by sending a quick test message."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Step 1: Connect */}
+        {state.step === "connect" && (
+          <div className="space-y-4 py-2">
+            {showSdkError && (
+              <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{sdkError}</span>
+              </div>
+            )}
+            {state.error && (
+              <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{state.error}</span>
+              </div>
+            )}
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground space-y-2">
+                <p>This will:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Create or link a WhatsApp Business Account</li>
+                  <li>Register a phone number for messaging</li>
+                  <li>Configure webhooks automatically</li>
+                </ul>
+              </CardContent>
+            </Card>
+            <Button
+              className="w-full cursor-pointer"
+              size="lg"
+              disabled={sdkLoading || (!isSDKReady && !sdkError)}
+              onClick={handleConnect}
+            >
+              {sdkLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FacebookIcon className="h-4 w-4 mr-2" />
+              )}
+              {sdkLoading ? "Loading..." : "Continue with Facebook"}
+            </Button>
+          </div>
+        )}
+
+        {/* Step 2: Processing */}
+        {state.step === "processing" && (
+          <div className="flex flex-col items-center py-8 gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Registering phone number and configuring webhooks...</p>
+          </div>
+        )}
+
+        {/* Step 3: Payment */}
+        {state.step === "payment" && (
+          <div className="space-y-4 py-2">
+            <div className="flex items-start gap-3 p-3 rounded-md bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-200 text-sm">
+              <CheckCircle2 className="h-5 w-5 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">Account connected successfully!</p>
+                {state.accountName && (
+                  <p className="text-green-700 dark:text-green-300 mt-0.5">{state.accountName}</p>
+                )}
+              </div>
+            </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Why add a payment method?</CardTitle>
+                <CardDescription>
+                  Meta requires a valid payment method in your WhatsApp Manager to send messages beyond the free test limit of 1,000 service conversations per month.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <Button
+                  variant="outline"
+                  className="w-full cursor-pointer"
+                  onClick={() => window.open("https://business.facebook.com/billing", "_blank")}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open WhatsApp Manager
+                </Button>
+              </CardContent>
+            </Card>
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setState((s) => ({ ...s, step: "test" }))}
+              >
+                Skip for now
+              </Button>
+              <Button
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setState((s) => ({ ...s, step: "test" }))}
+              >
+                I&apos;ve added payment
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step 4: Test */}
+        {state.step === "test" && (
+          <div className="space-y-4 py-2">
+            {state.testSent ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <CheckCircle2 className="h-10 w-10 text-green-600" />
+                <p className="font-medium">Test message sent!</p>
+                <p className="text-sm text-muted-foreground text-center">
+                  Check the WhatsApp app on the number you entered. If you don&apos;t see it, verify the number has WhatsApp installed.
+                </p>
+                <Button className="cursor-pointer mt-2" onClick={handleClose}>
+                  Done
+                </Button>
+              </div>
+            ) : (
+              <>
+                {state.error && (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{state.error}</span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="test-phone">Phone number (with country code)</Label>
+                  <Input
+                    id="test-phone"
+                    placeholder="e.g., 919876543210"
+                    value={state.testPhone}
+                    onChange={(e) => setState((s) => ({ ...s, testPhone: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the full number without + or spaces. The recipient must have WhatsApp installed.
+                  </p>
+                </div>
+                <DialogFooter className="flex-row gap-2 sm:justify-between">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="cursor-pointer"
+                    onClick={handleClose}
+                  >
+                    Skip
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="cursor-pointer"
+                    disabled={!state.testPhone.trim() || state.testSending}
+                    onClick={handleSendTest}
+                  >
+                    {state.testSending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Send Test
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --- Main Page ---
+
 export default function AccountsPage() {
   const { data: accounts = [], isLoading } = useAccounts()
   const createAccount = useCreateAccount()
@@ -59,6 +367,7 @@ export default function AccountsPage() {
   const deleteAccount = useDeleteAccount()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSignupOpen, setIsSignupOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
   const [testingAccountId, setTestingAccountId] = useState<string | null>(null)
@@ -185,10 +494,16 @@ export default function AccountsPage() {
           <h1 className="text-2xl font-bold">WhatsApp Accounts</h1>
           <p className="text-sm text-muted-foreground">Manage your WhatsApp Business accounts</p>
         </div>
-        <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Account
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsSignupOpen(true)} className="cursor-pointer">
+            <FacebookIcon className="h-4 w-4 mr-2" />
+            Connect with Facebook
+          </Button>
+          <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Account
+          </Button>
+        </div>
       </div>
 
       {/* Webhook URL Info */}
@@ -221,10 +536,16 @@ export default function AccountsPage() {
             <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">No WhatsApp accounts connected</p>
             <p className="text-sm mb-4">Connect your WhatsApp Business account to start sending and receiving messages.</p>
-            <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Account
-            </Button>
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsSignupOpen(true)} className="cursor-pointer">
+                <FacebookIcon className="h-4 w-4 mr-2" />
+                Connect with Facebook
+              </Button>
+              <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Account
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -365,11 +686,15 @@ export default function AccountsPage() {
           </h3>
           <ol className="list-decimal list-inside space-y-3 text-sm text-muted-foreground">
             <li>
-              Go to{" "}
+              <strong className="text-foreground">Recommended:</strong> Click{" "}
+              <strong className="text-foreground">Connect with Facebook</strong> above to set up automatically via Embedded Signup
+            </li>
+            <li>
+              Or go to{" "}
               <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
                 Meta Developer Console <ExternalLink className="h-3 w-3" />
               </a>{" "}
-              and create or select your app
+              and create or select your app for manual setup
             </li>
             <li>Add WhatsApp product to your app and complete the setup</li>
             <li>In WhatsApp &gt; API Setup, copy your <strong className="text-foreground">Phone Number ID</strong> and <strong className="text-foreground">WhatsApp Business Account ID</strong></li>
@@ -473,6 +798,9 @@ export default function AccountsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Embedded Signup Dialog */}
+      <EmbeddedSignupDialog open={isSignupOpen} onOpenChange={setIsSignupOpen} />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!accountToDelete} onOpenChange={(open) => !open && setAccountToDelete(null)}>

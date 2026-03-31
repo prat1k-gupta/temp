@@ -74,7 +74,10 @@ export function useFacebookSDK() {
         document.head.appendChild(script)
       })
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to load Facebook SDK"
+      const raw = e instanceof Error ? e.message : "Failed to load Facebook SDK"
+      const msg = raw.includes("Request failed")
+        ? "Embedded Signup is not configured on the server. Use manual 'Add Account' instead."
+        : raw
       setError(msg)
       throw e
     } finally {

@@ -32,14 +32,25 @@ export interface EmbeddedSignupResult {
   phoneNumberId: string
 }
 
+function isFacebookOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin)
+    return url.hostname === "facebook.com" || url.hostname.endsWith(".facebook.com")
+  } catch {
+    return false
+  }
+}
+
 export function useFacebookSDK() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSDKReady, setIsSDKReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const sdkConfig = useRef<SDKConfig | null>(null)
+  const loadingRef = useRef(false)
 
   const loadSDK = useCallback(async () => {
-    if (isSDKReady) return
+    if (isSDKReady || loadingRef.current) return
+    loadingRef.current = true
     setIsLoading(true)
     setError(null)
 
@@ -48,7 +59,9 @@ export function useFacebookSDK() {
       sdkConfig.current = config
 
       await new Promise<void>((resolve, reject) => {
-        if (document.getElementById("facebook-jssdk")) {
+        // SDK already loaded (e.g. hot-reload)
+        if (window.FB) {
+          setIsSDKReady(true)
           resolve()
           return
         }
@@ -63,6 +76,9 @@ export function useFacebookSDK() {
           setIsSDKReady(true)
           resolve()
         }
+
+        // Script tag exists but FB not ready yet — reassign fbAsyncInit
+        if (document.getElementById("facebook-jssdk")) return
 
         const script = document.createElement("script")
         script.id = "facebook-jssdk"
@@ -82,6 +98,7 @@ export function useFacebookSDK() {
       throw e
     } finally {
       setIsLoading(false)
+      loadingRef.current = false
     }
   }, [isSDKReady])
 
@@ -96,7 +113,7 @@ export function useFacebookSDK() {
       let phoneNumberId = ""
 
       const messageHandler = (event: MessageEvent) => {
-        if (typeof event.origin === "string" && !event.origin.endsWith("facebook.com")) return
+        if (!isFacebookOrigin(event.origin)) return
         try {
           const data = JSON.parse(event.data)
           if (data.type === "WA_EMBEDDED_SIGNUP") {

@@ -118,11 +118,12 @@ function EmbeddedSignupDialog({
       const signupResult = await launchEmbeddedSignup()
       setState((s) => ({ ...s, step: "processing" }))
       await completeSignup(signupResult)
-    } catch {
-      // SDK errors are handled by the hook (sdkError state).
-      // Only set state.error for non-SDK failures (popup cancel, etc.)
+    } catch (err) {
+      // SDK load errors are handled by the hook (sdkError state).
+      // For popup/signup failures, preserve the specific error message.
       if (isSDKReady) {
-        setState((s) => ({ ...s, error: "Setup was cancelled or failed. You can try again." }))
+        const msg = err instanceof Error ? err.message : "Setup was cancelled or failed. You can try again."
+        setState((s) => ({ ...s, error: msg }))
       }
     }
   }

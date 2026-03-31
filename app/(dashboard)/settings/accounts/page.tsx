@@ -102,15 +102,6 @@ function EmbeddedSignupDialog({
   const { isLoading: sdkLoading, isSDKReady, error: sdkError, loadSDK, launchEmbeddedSignup } = useFacebookSDK()
   const [state, setState] = useState<SignupState>(INITIAL_SIGNUP_STATE)
 
-  // Load Facebook SDK when the dialog opens
-  useEffect(() => {
-    if (open && !isSDKReady) {
-      loadSDK().catch(() => {
-        // Error is already set in the hook
-      })
-    }
-  }, [open, isSDKReady, loadSDK])
-
   // Reset state when dialog closes
   useEffect(() => {
     if (!open) {
@@ -121,6 +112,9 @@ function EmbeddedSignupDialog({
   async function handleConnect() {
     setState((s) => ({ ...s, error: null }))
     try {
+      if (!isSDKReady) {
+        await loadSDK()
+      }
       const signupResult = await launchEmbeddedSignup()
       setState((s) => ({ ...s, step: "processing" }))
       await completeSignup(signupResult)
@@ -173,7 +167,8 @@ function EmbeddedSignupDialog({
     onOpenChange(false)
   }
 
-  const showSdkError = sdkError && state.step === "connect"
+  const showError = (sdkError || state.error) && state.step === "connect"
+  const errorMessage = state.error || sdkError
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,16 +191,10 @@ function EmbeddedSignupDialog({
         {/* Step 1: Connect */}
         {state.step === "connect" && (
           <div className="space-y-4 py-2">
-            {showSdkError && (
+            {showError && (
               <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{sdkError}</span>
-              </div>
-            )}
-            {state.error && (
-              <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{state.error}</span>
+                <span>{errorMessage}</span>
               </div>
             )}
             <Card>
@@ -221,7 +210,7 @@ function EmbeddedSignupDialog({
             <Button
               className="w-full cursor-pointer"
               size="lg"
-              disabled={sdkLoading || (!isSDKReady && !sdkError)}
+              disabled={sdkLoading}
               onClick={handleConnect}
             >
               {sdkLoading ? (
@@ -229,7 +218,7 @@ function EmbeddedSignupDialog({
               ) : (
                 <FacebookIcon className="h-4 w-4 mr-2" />
               )}
-              {sdkLoading ? "Loading..." : "Continue with Facebook"}
+              {sdkLoading ? "Connecting..." : "Continue with Facebook"}
             </Button>
           </div>
         )}

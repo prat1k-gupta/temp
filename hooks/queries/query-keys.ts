@@ -15,3 +15,33 @@ export const versionKeys = {
   list: (projectId: string) => [...versionKeys.all(projectId), "list"] as const,
   draft: (projectId: string) => [...versionKeys.all(projectId), "draft"] as const,
 } as const
+
+export const userKeys = {
+  all: ["users"] as const,
+  list: () => [...userKeys.all, "list"] as const,
+} as const
+
+export const teamKeys = {
+  all: ["teams"] as const,
+  list: () => [...teamKeys.all, "list"] as const,
+} as const
+
+export const apiKeyKeys = {
+  all: ["apiKeys"] as const,
+  list: () => [...apiKeyKeys.all, "list"] as const,
+} as const
+
+export const chatbotSettingsKeys = {
+  all: ["chatbotSettings"] as const,
+  detail: () => [...chatbotSettingsKeys.all, "detail"] as const,
+} as const
+
+export const profileKeys = {
+  all: ["profile"] as const,
+  me: () => [...profileKeys.all, "me"] as const,
+} as const
+
+export const orgSettingsKeys = {
+  all: ["orgSettings"] as const,
+  detail: () => [...orgSettingsKeys.all, "detail"] as const,
+} as const

@@ -11,6 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
 import Link from "next/link"
+import { apiClient } from "@/lib/api-client"
 
 // Freestand LogoClosed component (icon only)
 const LogoClosed = ({ className }: { className?: string }) => (
@@ -87,9 +88,7 @@ export default function TemplatesPage() {
       const params = new URLSearchParams()
       if (filterStatus !== "all") params.set("status", filterStatus)
       const qs = params.toString() ? `?${params.toString()}` : ""
-      const response = await fetch(`/api/templates${qs}`)
-      if (!response.ok) throw new Error("Failed to fetch")
-      const data = await response.json()
+      const data = await apiClient.get<any>(`/api/templates${qs}`)
       setTemplates(Array.isArray(data) ? data : data.templates || [])
     } catch {
       toast.error("Failed to load templates")
@@ -105,8 +104,7 @@ export default function TemplatesPage() {
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const response = await fetch("/api/templates/sync", { method: "POST" })
-      if (!response.ok) throw new Error("Sync failed")
+      await apiClient.post("/api/templates/sync")
       toast.success("Templates synced from Meta")
       loadTemplates()
     } catch {
@@ -118,8 +116,7 @@ export default function TemplatesPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const response = await fetch(`/api/templates/${id}`, { method: "DELETE" })
-      if (!response.ok) throw new Error("Delete failed")
+      await apiClient.delete(`/api/templates/${id}`)
       toast.success("Template deleted")
       loadTemplates()
     } catch {
@@ -132,8 +129,7 @@ export default function TemplatesPage() {
     if (submittingId) return
     setSubmittingId(id)
     try {
-      const response = await fetch(`/api/templates/${id}/publish`, { method: "POST" })
-      if (!response.ok) throw new Error("Submit failed")
+      await apiClient.post(`/api/templates/${id}/publish`)
       toast.success("Template submitted to Meta for review")
       loadTemplates()
     } catch {
@@ -145,24 +141,19 @@ export default function TemplatesPage() {
 
   const handleDuplicate = async (template: Template) => {
     try {
-      const response = await fetch("/api/templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          whatsapp_account: template.whatsapp_account,
-          name: `${template.name}_copy`,
-          display_name: `${template.display_name} (Copy)`,
-          language: template.language,
-          category: template.category,
-          header_type: template.header_type || "",
-          header_content: template.header_content || "",
-          body_content: template.body_content,
-          footer_content: template.footer_content || "",
-          buttons: template.buttons || [],
-          sample_values: template.sample_values || [],
-        }),
+      await apiClient.post("/api/templates", {
+        whatsapp_account: template.whatsapp_account,
+        name: `${template.name}_copy`,
+        display_name: `${template.display_name} (Copy)`,
+        language: template.language,
+        category: template.category,
+        header_type: template.header_type || "",
+        header_content: template.header_content || "",
+        body_content: template.body_content,
+        footer_content: template.footer_content || "",
+        buttons: template.buttons || [],
+        sample_values: template.sample_values || [],
       })
-      if (!response.ok) throw new Error("Duplicate failed")
       toast.success("Template duplicated")
       loadTemplates()
     } catch {
@@ -226,16 +217,14 @@ export default function TemplatesPage() {
       })(),
     }
 
-    const response = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      const msg = err.error || err.message || "Save failed"
-      toast.error(msg)
+    try {
+      if (isUpdate) {
+        await apiClient.put(url, payload)
+      } else {
+        await apiClient.post(url, payload)
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Save failed")
       return
     }
 

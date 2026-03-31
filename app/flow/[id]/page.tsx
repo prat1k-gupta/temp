@@ -59,6 +59,7 @@ import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
 import { changeTracker } from "@/utils/change-tracker"
 import { usePublishVersion } from "@/hooks/queries"
+import { apiClient } from "@/lib/api-client"
 
 function MagicFlowInner() {
   const params = useParams()
@@ -91,10 +92,9 @@ function MagicFlowInner() {
   const [availableWhatsAppFlows, setAvailableWhatsAppFlows] = useState<any[]>([])
 
   const refreshWhatsAppFlows = useCallback(() => {
-    fetch("/api/whatsapp-flows")
-      .then((r) => r.ok ? r.json() : null)
+    apiClient.get<any>("/api/whatsapp-flows")
       .then((d) => {
-        const flows = d?.data?.flows || d?.flows || d || []
+        const flows = d?.flows || d || []
         setAvailableWhatsAppFlows(Array.isArray(flows) ? flows.filter((f: any) => f.meta_flow_id) : [])
       })
       .catch(() => {})
@@ -841,43 +841,28 @@ function MagicFlowInner() {
           try {
 
             if (flowId) {
-              const updateRes = await fetch(`/api/whatsapp-flows/${flowId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  name: data.name,
-                  flow_json: { version: data.version, screens: data.screens },
-                }),
+              await apiClient.put(`/api/whatsapp-flows/${flowId}`, {
+                name: data.name,
+                flow_json: { version: data.version, screens: data.screens },
               })
-              if (!updateRes.ok) { const d = await updateRes.json().catch(() => ({})); throw new Error(d?.error || d?.message || "Failed to update flow") }
             } else {
-              const createRes = await fetch("/api/whatsapp-flows", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  name: data.name,
-                  whatsapp_account: data.whatsappAccount,
-                  category: "OTHER",
-                  flow_json: { version: data.version, screens: data.screens },
-                }),
+              const createData = await apiClient.post<any>("/api/whatsapp-flows", {
+                name: data.name,
+                whatsapp_account: data.whatsappAccount,
+                category: "OTHER",
+                flow_json: { version: data.version, screens: data.screens },
               })
-              if (!createRes.ok) { const d = await createRes.json().catch(() => ({})); throw new Error(d?.error || d?.message || "Failed to create flow") }
-              const createData = await createRes.json()
-              flowId = createData?.flow?.id || createData?.data?.flow?.id
+              flowId = createData?.flow?.id
               if (!flowId) throw new Error("Failed to create flow")
             }
 
-            const saveRes = await fetch(`/api/whatsapp-flows/${flowId}/save-to-meta`, { method: "POST" })
-            const saveData = await saveRes.json()
-            if (!saveRes.ok) throw new Error(saveData?.error || saveData?.message || "Failed to save flow to Meta")
-            let metaFlowId = saveData?.flow?.meta_flow_id || saveData?.data?.flow?.meta_flow_id || targetNode.data.whatsappFlowId || ""
-            let flowStatus = saveData?.flow?.status || saveData?.data?.flow?.status || "DRAFT"
+            const saveData = await apiClient.post<any>(`/api/whatsapp-flows/${flowId}/save-to-meta`)
+            let metaFlowId = saveData?.flow?.meta_flow_id || targetNode.data.whatsappFlowId || ""
+            let flowStatus = saveData?.flow?.status || "DRAFT"
 
             if (data.publish) {
-              const pubRes = await fetch(`/api/whatsapp-flows/${flowId}/publish`, { method: "POST" })
-              const pubData = await pubRes.json()
-              if (!pubRes.ok) throw new Error(pubData?.error || pubData?.message || "Failed to publish flow")
-              metaFlowId = pubData?.flow?.meta_flow_id || pubData?.data?.flow?.meta_flow_id || metaFlowId
+              const pubData = await apiClient.post<any>(`/api/whatsapp-flows/${flowId}/publish`)
+              metaFlowId = pubData?.flow?.meta_flow_id || metaFlowId
               flowStatus = pubData?.flow?.status || "PUBLISHED"
             }
 

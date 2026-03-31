@@ -30,6 +30,7 @@ import { extractVariableReferences } from "@/utils/flow-variables"
 import type { FlowVariable } from "@/utils/flow-variables"
 import { AlertTriangle, Braces } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getGlobalVariables, getChatbotFlows } from "@/lib/whatsapp-api"
 
 interface VariablePickerTextareaProps
   extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> {
@@ -59,12 +60,12 @@ async function fetchExternalVariables() {
 
   _fetchPromise = (async () => {
     try {
-      const [settingsRes, flowsRes] = await Promise.all([
-        fetch("/api/whatsapp/settings").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/whatsapp/flows").then((r) => (r.ok ? r.json() : null)),
+      const [settingsResult, flowsResult] = await Promise.all([
+        getGlobalVariables().catch(() => null),
+        getChatbotFlows().catch(() => null),
       ])
-      _cachedGlobals = settingsRes?.globalVariables || {}
-      _cachedCrossFlow = (flowsRes?.flows || [])
+      _cachedGlobals = settingsResult?.globalVariables || {}
+      _cachedCrossFlow = (flowsResult?.flows || [])
         .filter((f: any) => f.flowSlug && f.variables?.length > 0)
         .map((f: any) => ({
           flowName: f.name,

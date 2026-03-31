@@ -20,6 +20,7 @@ import {
   ArrowDown,
 } from "lucide-react"
 import { toast } from "sonner"
+import { apiClient } from "@/lib/api-client"
 
 interface TemplateButton {
   type: "quick_reply" | "url" | "phone_number" | "copy_code"
@@ -114,8 +115,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   const [accountsLoading, setAccountsLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/accounts")
-      .then((res) => res.json())
+    apiClient.get<any>("/api/accounts")
       .then((data) => {
         const list = Array.isArray(data) ? data : data.accounts || []
         setAccounts(list)

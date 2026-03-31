@@ -45,6 +45,7 @@ import {
   Copy,
   Loader2,
 } from "lucide-react"
+import { apiClient } from "@/lib/api-client"
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -756,8 +757,7 @@ export function WhatsAppFlowBuilderModal({ open, onClose, onSave, existingFlow, 
   // Fetch WhatsApp accounts
   useEffect(() => {
     if (open) {
-      fetch("/api/accounts")
-        .then((r) => r.ok ? r.json() : null)
+      apiClient.get<any>("/api/accounts")
         .then((data) => {
           const list = Array.isArray(data) ? data : data?.accounts || []
           setWhatsappAccounts(list)

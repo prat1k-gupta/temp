@@ -65,6 +65,8 @@ import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-var
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
+import { getGlobalVariables } from "@/lib/whatsapp-api"
+import { apiClient } from "@/lib/api-client"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -474,8 +476,7 @@ function ApiTestSection({
   useEffect(() => {
     const hasGlobalVars = templateVars.some((v) => v.startsWith("global."))
     if (hasGlobalVars && Object.keys(fetchedGlobals).length === 0) {
-      fetch("/api/whatsapp/settings")
-        .then((r) => r.ok ? r.json() : null)
+      getGlobalVariables()
         .then((data) => {
           if (data?.globalVariables) setFetchedGlobals(data.globalVariables)
         })
@@ -715,8 +716,7 @@ export function PropertiesPanel({
   useEffect(() => {
     if (selectedNode?.type === "templateMessage") {
       setTemplatesLoading(true)
-      fetch("/api/templates?status=APPROVED")
-        .then((res) => res.json())
+      apiClient.get<any>("/api/templates?status=APPROVED")
         .then((data) => {
           const list = Array.isArray(data) ? data : data.templates || []
           setAvailableTemplates(list)

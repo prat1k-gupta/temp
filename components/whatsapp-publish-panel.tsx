@@ -9,6 +9,8 @@ import { toast } from "sonner"
 import type { Node, Edge } from "@xyflow/react"
 import { convertToFsWhatsApp, type FsWhatsAppFlow } from "@/utils/whatsapp-converter"
 import { collectFlowVariables } from "@/utils/flow-variables"
+import { publishFlowToWhatsApp, getChatbotFlowSlug } from "@/lib/whatsapp-api"
+import { apiClient } from "@/lib/api-client"
 
 interface WhatsAppPublishPanelProps {
   nodes: Node[]
@@ -77,19 +79,10 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
     setPublishStatus("publishing")
     setPublishError("")
     try {
-      const response = await fetch("/api/whatsapp/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...converted,
-          publishedFlowId: publishedFlowId || undefined,
-        }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `Publish failed (${response.status})`)
-      }
-      const result = await response.json()
+      const result = await publishFlowToWhatsApp(
+        { ...converted, publishedFlowId: publishedFlowId || undefined },
+        publishedFlowId,
+      )
       setPublishStatus("success")
 
       // Store the flow ID and slug for future updates
@@ -114,33 +107,30 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
       const updates: { flowSlug?: string; waPhoneNumber?: string; waAccountId?: string } = {}
 
       // Fetch flow slug from fs-whatsapp
-      const flowRes = await fetch(`/api/whatsapp/flows/${publishedFlowId}`)
-      if (flowRes.ok) {
-        const flowData = await flowRes.json()
+      try {
+        const flowData = await getChatbotFlowSlug(publishedFlowId)
         if (flowData.flowSlug) {
           updates.flowSlug = flowData.flowSlug
         }
-      }
+      } catch {}
 
       // Fetch phone number from account
-      const accRes = await fetch("/api/accounts")
-      if (accRes.ok) {
-        const accData = await accRes.json()
+      try {
+        const accData = await apiClient.get<any>("/api/accounts")
         const list = Array.isArray(accData) ? accData : accData.accounts || []
         const acc = waAccountId
           ? list.find((a: any) => a.id === waAccountId)
           : list.find((a: any) => a.is_default_outgoing) || list[0]
         if (acc) {
           updates.waAccountId = acc.id
-          const tcRes = await fetch(`/api/accounts/${acc.id}/test`, { method: "POST" })
-          if (tcRes.ok) {
-            const tcData = await tcRes.json()
+          try {
+            const tcData = await apiClient.post<any>(`/api/accounts/${acc.id}/test`)
             if (tcData.display_phone_number) {
               updates.waPhoneNumber = tcData.display_phone_number.replace(/[^0-9]/g, "")
             }
-          }
+          } catch {}
         }
-      }
+      } catch {}
 
       if (Object.keys(updates).length > 0) {
         onSync(updates)

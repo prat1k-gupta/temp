@@ -2,6 +2,7 @@ import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
 import type { ButtonData, OptionData } from "@/types"
 import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
+import { updateFlowKeywords } from "@/lib/whatsapp-api"
 
 interface NodeCallbacks {
   updateNodeData: (nodeId: string, updates: any, shouldFocus?: boolean) => void
@@ -108,19 +109,14 @@ export function injectNodeCallbacks(
                 flowContext.currentFlow?.publishedFlowId &&
                 flowContext.currentFlow?.platform === "whatsapp"
               ) {
-                const syncPayload: Record<string, any> = {
-                  flowId: flowContext.currentFlow.publishedFlowId,
-                }
-                if (updates.triggerKeywords !== undefined) syncPayload.triggerKeywords = updates.triggerKeywords
-                if (updates.triggerMatchType !== undefined) syncPayload.triggerMatchType = updates.triggerMatchType
-                if (updates.triggerRef !== undefined) syncPayload.triggerRef = updates.triggerRef
-                if (Object.keys(syncPayload).length > 1) {
-                  fetch("/api/whatsapp/update-keywords", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(syncPayload),
-                  }).catch(() => {})
-                }
+                updateFlowKeywords(
+                  flowContext.currentFlow.publishedFlowId,
+                  {
+                    triggerKeywords: updates.triggerKeywords,
+                    triggerMatchType: updates.triggerMatchType,
+                    triggerRef: updates.triggerRef,
+                  },
+                ).catch(() => {})
               }
             }
           }

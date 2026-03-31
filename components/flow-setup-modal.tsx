@@ -11,6 +11,8 @@ import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icon
 import { Loader2 } from "lucide-react"
 import type { Platform } from "@/types"
 import { TriggerConfigPanel, isTriggerConfigInvalid, getSaveData, type TriggerConfigState } from "@/components/trigger-config-panel"
+import { apiClient } from "@/lib/api-client"
+import { getChatbotFlows } from "@/lib/whatsapp-api"
 
 interface FlowSetupModalProps {
   open: boolean
@@ -53,8 +55,7 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   useEffect(() => {
     if (selectedPlatform === "whatsapp" && open) {
       setWaAccountsLoading(true)
-      fetch("/api/accounts")
-        .then((res) => res.json())
+      apiClient.get<any>("/api/accounts")
         .then((data) => {
           const list = Array.isArray(data) ? data : data.accounts || []
           setWaAccounts(list)
@@ -97,34 +98,31 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
       // Check conflicts before creating
       if (selectedPlatform === "whatsapp" && (saveData.triggerKeywords.length > 0 || saveData.triggerRef)) {
         try {
-          const res = await fetch("/api/whatsapp/flows")
-          if (res.ok) {
-            const result = await res.json()
-            const otherFlows = result.flows || []
-            const warnings: Record<string, string> = {}
-            let refConflictName: string | null = null
-            for (const flow of otherFlows) {
-              for (const kw of saveData.triggerKeywords) {
-                if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
-                  warnings[kw] = flow.name
-                }
-              }
-              if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
-                refConflictName = flow.name
+          const result = await getChatbotFlows()
+          const otherFlows = result.flows || []
+          const warnings: Record<string, string> = {}
+          let refConflictName: string | null = null
+          for (const flow of otherFlows) {
+            for (const kw of saveData.triggerKeywords) {
+              if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
+                warnings[kw] = flow.name
               }
             }
-            setConflictWarnings(warnings)
-            setRefConflict(refConflictName)
-            // Ref conflict: hard block
-            if (refConflictName) {
-              setIsCreating(false)
-              return
+            if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
+              refConflictName = flow.name
             }
-            // Keyword conflict: show warning first time, proceed on second click
-            if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
-              setIsCreating(false)
-              return
-            }
+          }
+          setConflictWarnings(warnings)
+          setRefConflict(refConflictName)
+          // Ref conflict: hard block
+          if (refConflictName) {
+            setIsCreating(false)
+            return
+          }
+          // Keyword conflict: show warning first time, proceed on second click
+          if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
+            setIsCreating(false)
+            return
           }
         } catch {
           // Network error — create anyway

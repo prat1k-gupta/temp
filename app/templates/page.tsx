@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
 import Link from "next/link"
-import { apiClient } from "@/lib/api-client"
+import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
 
 // Freestand LogoClosed component (icon only)
 const LogoClosed = ({ className }: { className?: string }) => (
@@ -72,100 +72,62 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [loading, setLoading] = useState(true)
-  const [submittingId, setSubmittingId] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [filterCategory, setFilterCategory] = useState<string>("all")
   const [showBuilder, setShowBuilder] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null)
 
-  const loadTemplates = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (filterStatus !== "all") params.set("status", filterStatus)
-      const qs = params.toString() ? `?${params.toString()}` : ""
-      const data = await apiClient.get<any>(`/api/templates${qs}`)
-      setTemplates(Array.isArray(data) ? data : data.templates || [])
-    } catch {
-      toast.error("Failed to load templates")
-    } finally {
-      setLoading(false)
-    }
-  }, [filterStatus])
+  const { data: templates = [], isLoading: loading } = useTemplates(filterStatus !== "all" ? filterStatus : undefined)
+  const syncMutation = useSyncTemplates()
+  const deleteMutation = useDeleteTemplate()
+  const publishMutation = usePublishTemplate()
+  const duplicateMutation = useDuplicateTemplate()
+  const saveMutation = useSaveTemplate()
 
-  useEffect(() => {
-    loadTemplates()
-  }, [loadTemplates])
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      await apiClient.post("/api/templates/sync")
-      toast.success("Templates synced from Meta")
-      loadTemplates()
-    } catch {
-      toast.error("Failed to sync templates")
-    } finally {
-      setSyncing(false)
-    }
+  const handleSync = () => {
+    syncMutation.mutate(undefined, {
+      onSuccess: () => toast.success("Templates synced from Meta"),
+      onError: () => toast.error("Failed to sync templates"),
+    })
   }
 
-  const handleDelete = async (id: string) => {
-    try {
-      await apiClient.delete(`/api/templates/${id}`)
-      toast.success("Template deleted")
-      loadTemplates()
-    } catch {
-      toast.error("Failed to delete template")
-    }
+  const handleDelete = (id: string) => {
+    deleteMutation.mutate(id, {
+      onSuccess: () => toast.success("Template deleted"),
+      onError: () => toast.error("Failed to delete template"),
+    })
     setTemplateToDelete(null)
   }
 
-  const handleSubmitToMeta = async (id: string) => {
-    if (submittingId) return
-    setSubmittingId(id)
-    try {
-      await apiClient.post(`/api/templates/${id}/publish`)
-      toast.success("Template submitted to Meta for review")
-      loadTemplates()
-    } catch {
-      toast.error("Failed to submit template")
-    } finally {
-      setSubmittingId(null)
-    }
+  const handleSubmitToMeta = (id: string) => {
+    if (publishMutation.isPending) return
+    publishMutation.mutate(id, {
+      onSuccess: () => toast.success("Template submitted to Meta for review"),
+      onError: () => toast.error("Failed to submit template"),
+    })
   }
 
-  const handleDuplicate = async (template: Template) => {
-    try {
-      await apiClient.post("/api/templates", {
-        whatsapp_account: template.whatsapp_account,
-        name: `${template.name}_copy`,
-        display_name: `${template.display_name} (Copy)`,
-        language: template.language,
-        category: template.category,
-        header_type: template.header_type || "",
-        header_content: template.header_content || "",
-        body_content: template.body_content,
-        footer_content: template.footer_content || "",
-        buttons: template.buttons || [],
-        sample_values: template.sample_values || [],
-      })
-      toast.success("Template duplicated")
-      loadTemplates()
-    } catch {
-      toast.error("Failed to duplicate template")
-    }
+  const handleDuplicate = (template: Template) => {
+    duplicateMutation.mutate({
+      whatsapp_account: template.whatsapp_account,
+      name: `${template.name}_copy`,
+      display_name: `${template.display_name} (Copy)`,
+      language: template.language,
+      category: template.category,
+      header_type: template.header_type || "",
+      header_content: template.header_content || "",
+      body_content: template.body_content,
+      footer_content: template.footer_content || "",
+      buttons: template.buttons || [],
+      sample_values: template.sample_values || [],
+    }, {
+      onSuccess: () => toast.success("Template duplicated"),
+      onError: () => toast.error("Failed to duplicate template"),
+    })
   }
 
   const handleSave = async (data: any) => {
-    const isUpdate = !!data.id
-    const url = isUpdate ? `/api/templates/${data.id}` : "/api/templates"
-    const method = isUpdate ? "PUT" : "POST"
-
     // Map builder field names to fs-whatsapp API field names
     const payload: Record<string, any> = {
       whatsapp_account: data.whatsapp_account || "",
@@ -218,20 +180,13 @@ export default function TemplatesPage() {
     }
 
     try {
-      if (isUpdate) {
-        await apiClient.put(url, payload)
-      } else {
-        await apiClient.post(url, payload)
-      }
+      await saveMutation.mutateAsync({ id: data.id, data: payload })
+      toast.success(data.id ? "Template updated" : "Template created")
+      setShowBuilder(false)
+      setEditingTemplate(null)
     } catch (err: any) {
       toast.error(err.message || "Save failed")
-      return
     }
-
-    toast.success(isUpdate ? "Template updated" : "Template created")
-    setShowBuilder(false)
-    setEditingTemplate(null)
-    loadTemplates()
   }
 
   const filteredTemplates = templates.filter((t) => {
@@ -299,10 +254,10 @@ export default function TemplatesPage() {
               <Button
                 variant="outline"
                 onClick={handleSync}
-                disabled={syncing}
+                disabled={syncMutation.isPending}
                 className="gap-2"
               >
-                {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Sync from Meta
               </Button>
               <Button
@@ -423,14 +378,14 @@ export default function TemplatesPage() {
                         variant="ghost"
                         size="sm"
                         className="h-8 px-3 text-xs gap-1.5"
-                        disabled={submittingId === template.id}
+                        disabled={publishMutation.isPending && publishMutation.variables === template.id}
                         onClick={(e) => {
                           e.stopPropagation()
                           handleSubmitToMeta(template.id)
                         }}
                       >
-                        {submittingId === template.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                        {submittingId === template.id ? "Submitting..." : "Submit"}
+                        {publishMutation.isPending && publishMutation.variables === template.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        {publishMutation.isPending && publishMutation.variables === template.id ? "Submitting..." : "Submit"}
                       </Button>
                     )}
                     <Button

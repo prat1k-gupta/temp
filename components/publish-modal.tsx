@@ -26,6 +26,7 @@ import { flattenFlow } from "@/utils/flow-flattener"
 import { validateFlowVariables } from "@/utils/flow-variables"
 import { publishFlowToWhatsApp } from "@/lib/whatsapp-api"
 import { apiClient } from "@/lib/api-client"
+import { useAccounts } from "@/hooks/queries"
 
 interface PublishModalProps {
   changes: FlowChange[]
@@ -81,28 +82,16 @@ export function PublishModal({
   const [publishMode, setPublishMode] = useState<'create' | 'publish'>('create')
 
   // WhatsApp account selection
-  const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
-  const [waAccountsLoading, setWaAccountsLoading] = useState(false)
+  const { data: waAccounts = [], isLoading: waAccountsLoading } = useAccounts()
   const [selectedWaAccountId, setSelectedWaAccountId] = useState(waAccountId || "")
 
-  // Fetch WhatsApp accounts when modal opens
+  // Pre-select stored account or default outgoing when accounts load
   useEffect(() => {
-    if (isOpen && platform === "whatsapp") {
-      setWaAccountsLoading(true)
-      apiClient.get<any>("/api/accounts")
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data.accounts || []
-          setWaAccounts(list)
-          // Pre-select stored account or default outgoing
-          if (!selectedWaAccountId) {
-            const defaultAcc = list.find((a: any) => a.is_default_outgoing) || list[0]
-            if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
-          }
-        })
-        .catch(() => setWaAccounts([]))
-        .finally(() => setWaAccountsLoading(false))
+    if (isOpen && platform === "whatsapp" && waAccounts.length > 0 && !selectedWaAccountId) {
+      const defaultAcc = waAccounts.find((a: any) => a.is_default_outgoing) || waAccounts[0]
+      if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
     }
-  }, [isOpen, platform])
+  }, [isOpen, platform, waAccounts, selectedWaAccountId])
 
   // Initialize with default name when modal opens
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import {
   ReactFlow,
   MiniMap,
@@ -58,8 +58,7 @@ import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
 import { changeTracker } from "@/utils/change-tracker"
-import { usePublishVersion } from "@/hooks/queries"
-import { apiClient } from "@/lib/api-client"
+import { usePublishVersion, useWhatsAppFlows, useUpdateWhatsAppFlow, useCreateWhatsAppFlow, useSaveWhatsAppFlowToMeta, usePublishWhatsAppFlow } from "@/hooks/queries"
 
 function MagicFlowInner() {
   const params = useParams()
@@ -89,25 +88,23 @@ function MagicFlowInner() {
   const [flowBuilderOpen, setFlowBuilderOpen] = useState(false)
   const [flowBuilderMode, setFlowBuilderMode] = useState<"create" | "edit">("create")
   const [flowBuilderNodeId, setFlowBuilderNodeId] = useState<string | null>(null)
-  const [availableWhatsAppFlows, setAvailableWhatsAppFlows] = useState<any[]>([])
 
-  const refreshWhatsAppFlows = useCallback(() => {
-    apiClient.get<any>("/api/whatsapp-flows")
-      .then((d) => {
-        const flows = d?.flows || d || []
-        setAvailableWhatsAppFlows(Array.isArray(flows) ? flows.filter((f: any) => f.meta_flow_id) : [])
-      })
-      .catch(() => {})
-  }, [])
+  const { data: allWhatsAppFlows = [] } = useWhatsAppFlows()
+  const availableWhatsAppFlows = useMemo(
+    () => allWhatsAppFlows.filter((f: any) => f.meta_flow_id),
+    [allWhatsAppFlows]
+  )
+
+  const updateWaFlowMutation = useUpdateWhatsAppFlow()
+  const createWaFlowMutation = useCreateWhatsAppFlow()
+  const saveWaFlowToMetaMutation = useSaveWhatsAppFlowToMeta()
+  const publishWaFlowMutation = usePublishWhatsAppFlow()
 
   const openFlowBuilder = useCallback((nodeId: string, mode: "create" | "edit") => {
     setFlowBuilderNodeId(nodeId)
     setFlowBuilderMode(mode)
     setFlowBuilderOpen(true)
   }, [])
-
-  // Fetch WhatsApp flows on mount
-  useEffect(() => { refreshWhatsAppFlows() }, [refreshWhatsAppFlows])
 
   // Set platform theme on body so portals (dialogs, popovers) inherit the right accent color
   useEffect(() => {
@@ -837,31 +834,34 @@ function MagicFlowInner() {
         onSave={async (data): Promise<string | void> => {
           const targetNode = nodes.find((n) => n.id === flowBuilderNodeId)
           if (!targetNode) return
-          let flowId = data.existingFlowId
+          let waFlowId = data.existingFlowId
           try {
 
-            if (flowId) {
-              await apiClient.put(`/api/whatsapp-flows/${flowId}`, {
-                name: data.name,
-                flow_json: { version: data.version, screens: data.screens },
+            if (waFlowId) {
+              await updateWaFlowMutation.mutateAsync({
+                id: waFlowId,
+                data: {
+                  name: data.name,
+                  flow_json: { version: data.version, screens: data.screens },
+                },
               })
             } else {
-              const createData = await apiClient.post<any>("/api/whatsapp-flows", {
+              const createData = await createWaFlowMutation.mutateAsync({
                 name: data.name,
                 whatsapp_account: data.whatsappAccount,
                 category: "OTHER",
                 flow_json: { version: data.version, screens: data.screens },
               })
-              flowId = createData?.flow?.id
-              if (!flowId) throw new Error("Failed to create flow")
+              waFlowId = createData?.flow?.id
+              if (!waFlowId) throw new Error("Failed to create flow")
             }
 
-            const saveData = await apiClient.post<any>(`/api/whatsapp-flows/${flowId}/save-to-meta`)
+            const saveData = await saveWaFlowToMetaMutation.mutateAsync(waFlowId)
             let metaFlowId = saveData?.flow?.meta_flow_id || targetNode.data.whatsappFlowId || ""
             let flowStatus = saveData?.flow?.status || "DRAFT"
 
             if (data.publish) {
-              const pubData = await apiClient.post<any>(`/api/whatsapp-flows/${flowId}/publish`)
+              const pubData = await publishWaFlowMutation.mutateAsync(waFlowId)
               metaFlowId = pubData?.flow?.meta_flow_id || metaFlowId
               flowStatus = pubData?.flow?.status || "PUBLISHED"
             }
@@ -874,14 +874,13 @@ function MagicFlowInner() {
               responseFields: data.responseFields,
             })
 
-            refreshWhatsAppFlows()
             setFlowBuilderOpen(false)
-            return flowId
+            return waFlowId
           } catch (err: any) {
             console.error("Failed to save WhatsApp Flow:", err)
             // Re-throw so modal catches it — but attach flowId so modal can reuse it on retry
             const error = new Error(err?.message || "Failed to save flow")
-            ;(error as any).flowId = flowId
+            ;(error as any).flowId = waFlowId
             throw error
           }
         }}

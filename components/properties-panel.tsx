@@ -65,8 +65,7 @@ import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-var
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
-import { getGlobalVariables } from "@/lib/whatsapp-api"
-import { apiClient } from "@/lib/api-client"
+import { useGlobalVariables, useTemplates } from "@/hooks/queries"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -445,7 +444,7 @@ function ApiTestSection({
   responseMapping: Record<string, string>
 }) {
   const [testVars, setTestVars] = useState<Record<string, string>>({})
-  const [fetchedGlobals, setFetchedGlobals] = useState<Record<string, string>>({})
+  const { data: fetchedGlobals = {} } = useGlobalVariables()
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{
     status?: number
@@ -471,18 +470,6 @@ function ApiTestSection({
     }
     return Array.from(vars)
   }, [url, body, headers])
-
-  // Fetch global variables once for auto-population
-  useEffect(() => {
-    const hasGlobalVars = templateVars.some((v) => v.startsWith("global."))
-    if (hasGlobalVars && Object.keys(fetchedGlobals).length === 0) {
-      getGlobalVariables()
-        .then((data) => {
-          if (data?.globalVariables) setFetchedGlobals(data.globalVariables)
-        })
-        .catch(() => {})
-    }
-  }, [templateVars, fetchedGlobals])
 
   // Auto-populate system and global variables
   useEffect(() => {
@@ -709,22 +696,8 @@ export function PropertiesPanel({
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<any>(null)
 
-  // Template picker state
-  const [availableTemplates, setAvailableTemplates] = useState<any[]>([])
-  const [templatesLoading, setTemplatesLoading] = useState(false)
-
-  useEffect(() => {
-    if (selectedNode?.type === "templateMessage") {
-      setTemplatesLoading(true)
-      apiClient.get<any>("/api/templates?status=APPROVED")
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data.templates || []
-          setAvailableTemplates(list)
-        })
-        .catch((err) => console.error("Failed to load templates:", err))
-        .finally(() => setTemplatesLoading(false))
-    }
-  }, [selectedNode?.type])
+  // Template picker
+  const { data: availableTemplates = [], isLoading: templatesLoading } = useTemplates("APPROVED")
 
   if (!selectedNode) {
     return null

@@ -11,6 +11,7 @@ import { convertToFsWhatsApp, type FsWhatsAppFlow } from "@/utils/whatsapp-conve
 import { collectFlowVariables } from "@/utils/flow-variables"
 import { publishFlowToWhatsApp, getChatbotFlowSlug } from "@/lib/whatsapp-api"
 import { apiClient } from "@/lib/api-client"
+import { useAccounts } from "@/hooks/queries"
 
 interface WhatsAppPublishPanelProps {
   nodes: Node[]
@@ -36,6 +37,8 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle")
   const [publishError, setPublishError] = useState("")
   const [isSyncing, setIsSyncing] = useState(false)
+
+  const { data: accounts = [] } = useAccounts()
 
   const isUpdate = !!publishedFlowId
 
@@ -114,13 +117,11 @@ export function WhatsAppPublishPanel({ nodes, edges, flowName, flowDescription, 
         }
       } catch {}
 
-      // Fetch phone number from account
+      // Use cached accounts to find the right one
       try {
-        const accData = await apiClient.get<any>("/api/accounts")
-        const list = Array.isArray(accData) ? accData : accData.accounts || []
         const acc = waAccountId
-          ? list.find((a: any) => a.id === waAccountId)
-          : list.find((a: any) => a.is_default_outgoing) || list[0]
+          ? accounts.find((a: any) => a.id === waAccountId)
+          : accounts.find((a: any) => a.is_default_outgoing) || accounts[0]
         if (acc) {
           updates.waAccountId = acc.id
           try {

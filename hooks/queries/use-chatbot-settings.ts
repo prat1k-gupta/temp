@@ -3,16 +3,21 @@ import { apiClient } from "@/lib/api-client"
 import { chatbotSettingsKeys } from "./query-keys"
 
 export interface ChatbotSettings {
-  global_variables: Record<string, string>
+  enabled: boolean
+  greeting_message: string
+  fallback_message: string
+  session_timeout_minutes: number
   cancel_keywords: string[]
-  inactivity_timeout: number
-  welcome_message: string
+  global_variables: Record<string, string>
 }
 
 export function useChatbotSettings() {
   return useQuery<ChatbotSettings>({
     queryKey: chatbotSettingsKeys.detail(),
-    queryFn: () => apiClient.get<ChatbotSettings>("/api/chatbot/settings"),
+    queryFn: async () => {
+      const data = await apiClient.get<any>("/api/chatbot/settings")
+      return data?.settings || data || {}
+    },
   })
 }
 

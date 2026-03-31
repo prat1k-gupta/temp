@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -45,16 +46,22 @@ import {
   type Account,
 } from "@/hooks/queries"
 
-const accountSchema = z.object({
+const createSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  phone_number: z.string().min(1, "Phone number is required"),
-  phone_number_id: z.string().min(1, "Phone Number ID is required"),
-  business_id: z.string().min(1, "Business ID is required"),
-  waba_id: z.string().min(1, "WABA ID is required"),
-  access_token: z.string().min(1, "Access token is required"),
+  phone_number: z.string().optional(),
+  phone_id: z.string().optional(),
+  app_id: z.string().optional(),
+  business_id: z.string().optional(),
+  access_token: z.string().optional(),
 })
 
-type AccountFormValues = z.infer<typeof accountSchema>
+const editSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  access_token: z.string().optional(),
+})
+
+type CreateFormValues = z.infer<typeof createSchema>
+type EditFormValues = z.infer<typeof editSchema>
 
 export default function AccountsPage() {
   const { data: accounts, isLoading } = useAccounts()
@@ -62,69 +69,71 @@ export default function AccountsPage() {
   const updateAccount = useUpdateAccount()
   const deleteAccount = useDeleteAccount()
 
-  const [showDialog, setShowDialog] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
 
-  const form = useForm<AccountFormValues>({
-    resolver: zodResolver(accountSchema),
+  const createForm = useForm<CreateFormValues>({
+    resolver: zodResolver(createSchema),
     defaultValues: {
       name: "",
       phone_number: "",
-      phone_number_id: "",
+      phone_id: "",
+      app_id: "",
       business_id: "",
-      waba_id: "",
       access_token: "",
     },
   })
 
+  const editForm = useForm<EditFormValues>({
+    resolver: zodResolver(editSchema),
+    defaultValues: { name: "", access_token: "" },
+  })
+
   function openCreate() {
-    setEditingAccount(null)
-    form.reset({
+    createForm.reset({
       name: "",
       phone_number: "",
-      phone_number_id: "",
+      phone_id: "",
+      app_id: "",
       business_id: "",
-      waba_id: "",
       access_token: "",
     })
-    setShowDialog(true)
+    setShowCreateDialog(true)
   }
 
   function openEdit(account: Account) {
-    setEditingAccount(account)
-    form.reset({
+    editForm.reset({
       name: account.name,
-      phone_number: account.phone_number,
-      phone_number_id: account.phone_number_id,
-      business_id: account.business_id,
-      waba_id: account.waba_id,
-      access_token: account.access_token,
+      access_token: "",
     })
-    setShowDialog(true)
+    setEditingAccount(account)
   }
 
-  function onSubmit(data: AccountFormValues) {
-    if (editingAccount) {
-      updateAccount.mutate(
-        { id: editingAccount.id, ...data },
-        {
-          onSuccess: () => {
-            toast.success("Account updated")
-            setShowDialog(false)
-          },
-          onError: (err) => toast.error(err.message || "Failed to update account"),
-        }
-      )
-    } else {
-      createAccount.mutate(data, {
+  function onCreateSubmit(data: CreateFormValues) {
+    createAccount.mutate(data, {
+      onSuccess: () => {
+        toast.success("Account added")
+        setShowCreateDialog(false)
+      },
+      onError: (err) => toast.error(err.message || "Failed to add account"),
+    })
+  }
+
+  function onEditSubmit(data: EditFormValues) {
+    if (!editingAccount) return
+    const payload: Record<string, string> = { name: data.name }
+    if (data.access_token) payload.access_token = data.access_token
+    updateAccount.mutate(
+      { id: editingAccount.id, ...payload },
+      {
         onSuccess: () => {
-          toast.success("Account added")
-          setShowDialog(false)
+          toast.success("Account updated")
+          setEditingAccount(null)
         },
-        onError: (err) => toast.error(err.message || "Failed to add account"),
-      })
-    }
+        onError: (err) => toast.error(err.message || "Failed to update account"),
+      }
+    )
   }
 
   function confirmDelete() {
@@ -137,8 +146,6 @@ export default function AccountsPage() {
       onError: (err) => toast.error(err.message || "Failed to delete account"),
     })
   }
-
-  const isPending = createAccount.isPending || updateAccount.isPending
 
   if (isLoading) {
     return (
@@ -185,14 +192,14 @@ export default function AccountsPage() {
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{account.name}</span>
-                    <Badge variant={account.is_active ? "default" : "secondary"}>
-                      {account.is_active ? "Active" : "Inactive"}
+                    <Badge variant={account.status === "active" ? "default" : "secondary"}>
+                      {account.status === "active" ? "Active" : "Inactive"}
                     </Badge>
                   </div>
                   <div className="text-sm text-muted-foreground space-y-0.5">
                     <p>{account.phone_number}</p>
                     <p className="text-xs">
-                      WABA: {account.waba_id} &middot; Business: {account.business_id}
+                      Phone ID: {account.phone_id} &middot; Business: {account.business_id}
                     </p>
                   </div>
                 </div>
@@ -220,17 +227,19 @@ export default function AccountsPage() {
         </div>
       )}
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      {/* Create Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>
-              {editingAccount ? "Edit Account" : "Add WhatsApp Account"}
-            </DialogTitle>
+            <DialogTitle>Add WhatsApp Account</DialogTitle>
+            <DialogDescription>
+              Connect a new WhatsApp Business account. You can also use Embedded Signup to connect automatically.
+            </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <Form {...createForm}>
+            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -243,7 +252,7 @@ export default function AccountsPage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="phone_number"
                 render={({ field }) => (
                   <FormItem>
@@ -256,8 +265,8 @@ export default function AccountsPage() {
                 )}
               />
               <FormField
-                control={form.control}
-                name="phone_number_id"
+                control={createForm.control}
+                name="phone_id"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Phone Number ID</FormLabel>
@@ -269,7 +278,20 @@ export default function AccountsPage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
+                name="app_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>App ID</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Meta App ID" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createForm.control}
                 name="business_id"
                 render={({ field }) => (
                   <FormItem>
@@ -282,20 +304,7 @@ export default function AccountsPage() {
                 )}
               />
               <FormField
-                control={form.control}
-                name="waba_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>WABA ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="WhatsApp Business Account ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
+                control={createForm.control}
                 name="access_token"
                 render={({ field }) => (
                   <FormItem>
@@ -311,14 +320,14 @@ export default function AccountsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setShowDialog(false)}
+                  onClick={() => setShowCreateDialog(false)}
                   className="cursor-pointer"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isPending} className="cursor-pointer">
-                  {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {editingAccount ? "Save Changes" : "Add Account"}
+                <Button type="submit" disabled={createAccount.isPending} className="cursor-pointer">
+                  {createAccount.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Add Account
                 </Button>
               </DialogFooter>
             </form>
@@ -326,6 +335,70 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Dialog */}
+      <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Account</DialogTitle>
+            <DialogDescription>
+              Update account name or access token. Other fields are managed by Meta.
+            </DialogDescription>
+          </DialogHeader>
+          {editingAccount && (
+            <div className="space-y-2 text-sm text-muted-foreground border rounded-md p-3 bg-muted/30">
+              <p>Phone: {editingAccount.phone_number}</p>
+              <p>Phone ID: {editingAccount.phone_id}</p>
+              <p>Business ID: {editingAccount.business_id}</p>
+            </div>
+          )}
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="access_token"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Access Token</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Leave empty to keep current token" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingAccount(null)}
+                  className="cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateAccount.isPending} className="cursor-pointer">
+                  {updateAccount.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
       <AlertDialog open={!!accountToDelete} onOpenChange={(open) => !open && setAccountToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

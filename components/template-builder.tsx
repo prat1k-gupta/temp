@@ -284,7 +284,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                   <SelectContent>
                     {accounts.map((acc) => (
                       <SelectItem key={acc.id} value={acc.name}>
-                        {acc.name}{!acc.is_active ? " (inactive)" : ""}
+                        {acc.name}{acc.status !== "active" ? " (inactive)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

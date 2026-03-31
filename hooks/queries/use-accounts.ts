@@ -10,12 +10,16 @@ export interface Account {
   id: string
   name: string
   phone_number: string
-  phone_number_id: string
+  phone_id: string
+  app_id: string
   business_id: string
-  waba_id: string
-  access_token: string
-  is_active: boolean
-  webhook_verified: boolean
+  webhook_verify_token: string
+  api_version: string
+  is_default_incoming: boolean
+  is_default_outgoing: boolean
+  auto_read_receipt: boolean
+  status: string
+  has_access_token: boolean
   created_at: string
   updated_at: string
 }
@@ -39,11 +43,11 @@ export function useCreateAccount() {
   return useMutation({
     mutationFn: (data: {
       name: string
-      phone_number: string
-      phone_number_id: string
-      business_id: string
-      waba_id: string
-      access_token: string
+      phone_number?: string
+      phone_id?: string
+      app_id?: string
+      business_id?: string
+      access_token?: string
     }) => apiClient.post("/api/accounts", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accountKeys.list() })
@@ -60,11 +64,10 @@ export function useUpdateAccount() {
     }: { id: string } & Partial<{
       name: string
       phone_number: string
-      phone_number_id: string
+      phone_id: string
+      app_id: string
       business_id: string
-      waba_id: string
       access_token: string
-      is_active: boolean
     }>) => apiClient.put(`/api/accounts/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accountKeys.list() })

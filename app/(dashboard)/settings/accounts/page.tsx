@@ -1,148 +1,171 @@
 "use client"
 
 import { useState } from "react"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import { Loader2, Phone, Pencil, Trash2, Plus } from "lucide-react"
+import {
+  Plus, Pencil, Trash2, Phone, Check, RefreshCw, Loader2,
+  Copy, ExternalLink, AlertCircle, CheckCircle2, Settings2, X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
 
 import {
-  useAccounts,
-  useCreateAccount,
-  useUpdateAccount,
-  useDeleteAccount,
-  type Account,
+  useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount, type Account,
 } from "@/hooks/queries"
+import { apiClient } from "@/lib/api-client"
 
-const createSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  phone_number: z.string().optional(),
-  phone_id: z.string().optional(),
-  app_id: z.string().optional(),
-  business_id: z.string().optional(),
-  access_token: z.string().optional(),
-})
+interface TestResult {
+  success: boolean
+  error?: string
+  display_phone_number?: string
+  verified_name?: string
+}
 
-const editSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  access_token: z.string().optional(),
-})
+const WEBHOOK_URL = typeof window !== "undefined"
+  ? `${window.location.origin}/api/webhook`
+  : "/api/webhook"
 
-type CreateFormValues = z.infer<typeof createSchema>
-type EditFormValues = z.infer<typeof editSchema>
+function getStatusColor(status: string) {
+  switch (status) {
+    case "active": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "inactive": return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+    case "error": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    default: return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+  }
+}
+
+function copyToClipboard(text: string, label: string) {
+  navigator.clipboard.writeText(text)
+  toast.success(`${label} copied to clipboard`)
+}
 
 export default function AccountsPage() {
-  const { data: accounts, isLoading } = useAccounts()
+  const { data: accounts = [], isLoading } = useAccounts()
   const createAccount = useCreateAccount()
   const updateAccount = useUpdateAccount()
   const deleteAccount = useDeleteAccount()
 
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
+  const [testingAccountId, setTestingAccountId] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const createForm = useForm<CreateFormValues>({
-    resolver: zodResolver(createSchema),
-    defaultValues: {
-      name: "",
-      phone_number: "",
-      phone_id: "",
-      app_id: "",
-      business_id: "",
-      access_token: "",
-    },
+  const [formData, setFormData] = useState({
+    name: "",
+    app_id: "",
+    phone_id: "",
+    business_id: "",
+    access_token: "",
+    webhook_verify_token: "",
+    api_version: "v21.0",
+    is_default_incoming: false,
+    is_default_outgoing: false,
+    auto_read_receipt: false,
   })
 
-  const editForm = useForm<EditFormValues>({
-    resolver: zodResolver(editSchema),
-    defaultValues: { name: "", access_token: "" },
-  })
+  function updateForm(field: string, value: string | boolean) {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+  }
 
   function openCreate() {
-    createForm.reset({
-      name: "",
-      phone_number: "",
-      phone_id: "",
-      app_id: "",
-      business_id: "",
-      access_token: "",
+    setEditingAccount(null)
+    setFormData({
+      name: "", app_id: "", phone_id: "", business_id: "", access_token: "",
+      webhook_verify_token: "", api_version: "v21.0",
+      is_default_incoming: false, is_default_outgoing: false, auto_read_receipt: false,
     })
-    setShowCreateDialog(true)
+    setIsDialogOpen(true)
   }
 
   function openEdit(account: Account) {
-    editForm.reset({
-      name: account.name,
-      access_token: "",
-    })
     setEditingAccount(account)
-  }
-
-  function onCreateSubmit(data: CreateFormValues) {
-    createAccount.mutate(data, {
-      onSuccess: () => {
-        toast.success("Account added")
-        setShowCreateDialog(false)
-      },
-      onError: (err) => toast.error(err.message || "Failed to add account"),
+    setFormData({
+      name: account.name,
+      app_id: account.app_id || "",
+      phone_id: account.phone_id,
+      business_id: account.business_id,
+      access_token: "",
+      webhook_verify_token: account.webhook_verify_token || "",
+      api_version: account.api_version || "v21.0",
+      is_default_incoming: account.is_default_incoming,
+      is_default_outgoing: account.is_default_outgoing,
+      auto_read_receipt: account.auto_read_receipt,
     })
+    setIsDialogOpen(true)
   }
 
-  function onEditSubmit(data: EditFormValues) {
-    if (!editingAccount) return
-    const payload: Record<string, string> = { name: data.name }
-    if (data.access_token) payload.access_token = data.access_token
-    updateAccount.mutate(
-      { id: editingAccount.id, ...payload },
-      {
-        onSuccess: () => {
-          toast.success("Account updated")
-          setEditingAccount(null)
-        },
-        onError: (err) => toast.error(err.message || "Failed to update account"),
+  async function saveAccount() {
+    if (!formData.name.trim() || !formData.phone_id.trim() || !formData.business_id.trim()) {
+      toast.error("Please fill in all required fields")
+      return
+    }
+    if (!editingAccount && !formData.access_token.trim()) {
+      toast.error("Access token is required for new accounts")
+      return
+    }
+
+    setIsSubmitting(true)
+    const payload = { ...formData }
+    if (editingAccount && !payload.access_token) {
+      delete (payload as any).access_token
+    }
+
+    if (editingAccount) {
+      updateAccount.mutate(
+        { id: editingAccount.id, ...payload },
+        {
+          onSuccess: () => { toast.success("Account updated"); setIsDialogOpen(false) },
+          onError: (err) => toast.error(err.message || "Failed to update account"),
+          onSettled: () => setIsSubmitting(false),
+        }
+      )
+    } else {
+      createAccount.mutate(payload, {
+        onSuccess: () => { toast.success("Account created"); setIsDialogOpen(false) },
+        onError: (err) => toast.error(err.message || "Failed to create account"),
+        onSettled: () => setIsSubmitting(false),
+      })
+    }
+  }
+
+  async function testConnection(account: Account) {
+    setTestingAccountId(account.id)
+    try {
+      const result = await apiClient.post<TestResult>(`/api/accounts/${account.id}/test`)
+      setTestResults((prev) => ({ ...prev, [account.id]: result }))
+      if (result.success) {
+        toast.success("Connection successful!")
+      } else {
+        toast.error("Connection failed: " + (result.error || "Unknown error"))
       }
-    )
+    } catch (err: any) {
+      const message = err.message || "Connection test failed"
+      setTestResults((prev) => ({ ...prev, [account.id]: { success: false, error: message } }))
+      toast.error(message)
+    } finally {
+      setTestingAccountId(null)
+    }
   }
 
   function confirmDelete() {
     if (!accountToDelete) return
     deleteAccount.mutate(accountToDelete.id, {
-      onSuccess: () => {
-        toast.success("Account deleted")
-        setAccountToDelete(null)
-      },
+      onSuccess: () => { toast.success("Account deleted"); setAccountToDelete(null) },
       onError: (err) => toast.error(err.message || "Failed to delete account"),
     })
   }
@@ -156,245 +179,298 @@ export default function AccountsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">WhatsApp Accounts</h1>
           <p className="text-sm text-muted-foreground">Manage your WhatsApp Business accounts</p>
         </div>
-        <Button onClick={openCreate} className="cursor-pointer">
-          <Plus className="mr-2 h-4 w-4" />
+        <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
+          <Plus className="h-4 w-4 mr-2" />
           Add Account
         </Button>
       </div>
 
-      {!accounts || accounts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-          <div className="rounded-full bg-muted p-4">
-            <Phone className="h-8 w-8 text-muted-foreground" />
+      {/* Webhook URL Info */}
+      <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-medium text-blue-900 dark:text-blue-100">Webhook Configuration</h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                Configure this URL in your Meta Developer Console as the webhook callback URL:
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <code className="px-2 py-1 bg-blue-100 dark:bg-blue-900 rounded text-sm font-mono">
+                  {WEBHOOK_URL}
+                </code>
+                <Button variant="ghost" size="sm" className="cursor-pointer" onClick={() => copyToClipboard(WEBHOOK_URL, "Webhook URL")}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="space-y-1">
-            <p className="font-medium">No WhatsApp accounts connected</p>
-            <p className="text-sm text-muted-foreground">
-              Add your first account to start sending messages.
-            </p>
-          </div>
-          <Button onClick={openCreate} className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Your First Account
-          </Button>
-        </div>
+        </CardContent>
+      </Card>
+
+      {/* Account Cards */}
+      {accounts.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg font-medium">No WhatsApp accounts connected</p>
+            <p className="text-sm mb-4">Connect your WhatsApp Business account to start sending and receiving messages.</p>
+            <Button variant="outline" size="sm" onClick={openCreate} className="cursor-pointer">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Account
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-3">
-          {accounts.map((account) => (
-            <Card key={account.id} className="hover:bg-muted/50 transition-colors">
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{account.name}</span>
-                    <Badge variant={account.status === "active" ? "default" : "secondary"}>
-                      {account.status === "active" ? "Active" : "Inactive"}
-                    </Badge>
+        accounts.map((account) => (
+          <Card key={account.id}>
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center flex-shrink-0">
+                    <Phone className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
-                  <div className="text-sm text-muted-foreground space-y-0.5">
-                    <p>{account.phone_number}</p>
-                    <p className="text-xs">
-                      Phone ID: {account.phone_id} &middot; Business: {account.business_id}
-                    </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-lg">{account.name}</h3>
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(account.status)}`}>
+                        {account.status}
+                      </span>
+                    </div>
+
+                    {/* Test Result */}
+                    {testResults[account.id] && (
+                      <div className="mt-2">
+                        {testResults[account.id].success ? (
+                          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span className="text-sm font-medium">Connected</span>
+                            {testResults[account.id].display_phone_number && (
+                              <span className="text-sm text-muted-foreground">
+                                - {testResults[account.id].display_phone_number}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                            <X className="h-4 w-4" />
+                            <span className="text-sm">{testResults[account.id].error}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Account Details */}
+                    <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                      {account.app_id && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">App ID:</span>
+                          <code className="text-xs bg-muted px-1 rounded">{account.app_id}</code>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Phone ID:</span>
+                        <code className="text-xs bg-muted px-1 rounded">{account.phone_id}</code>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 cursor-pointer" onClick={() => copyToClipboard(account.phone_id, "Phone ID")}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Business ID:</span>
+                        <code className="text-xs bg-muted px-1 rounded">{account.business_id}</code>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">API Version:</span>
+                        <span>{account.api_version}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Access Token:</span>
+                        <Badge
+                          variant="outline"
+                          className={account.has_access_token ? "border-green-600 text-green-600" : "border-destructive text-destructive"}
+                        >
+                          {account.has_access_token ? "Configured" : "Missing"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Defaults */}
+                    <div className="mt-3 flex items-center gap-3 flex-wrap">
+                      {account.is_default_incoming && (
+                        <Badge variant="outline"><Check className="h-3 w-3 mr-1" />Default Incoming</Badge>
+                      )}
+                      {account.is_default_outgoing && (
+                        <Badge variant="outline"><Check className="h-3 w-3 mr-1" />Default Outgoing</Badge>
+                      )}
+                      {account.auto_read_receipt && (
+                        <Badge variant="outline"><Check className="h-3 w-3 mr-1" />Auto Read Receipt</Badge>
+                      )}
+                    </div>
+
+                    {/* Webhook Verify Token */}
+                    {account.webhook_verify_token && (
+                      <div className="mt-3 flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Verify Token:</span>
+                        <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono truncate max-w-[200px]">
+                          {account.webhook_verify_token}
+                        </code>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 cursor-pointer" onClick={() => copyToClipboard(account.webhook_verify_token, "Verify Token")}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 ml-4 shrink-0">
+
+                {/* Actions */}
+                <div className="flex items-center gap-1">
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     className="cursor-pointer"
-                    onClick={() => openEdit(account)}
+                    disabled={testingAccountId === account.id}
+                    onClick={() => testConnection(account)}
                   >
+                    {testingAccountId === account.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <RefreshCw className="h-4 w-4" />
+                    }
+                    <span className="ml-1">Test</span>
+                  </Button>
+                  <Button variant="ghost" size="icon" className="cursor-pointer" onClick={() => openEdit(account)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="cursor-pointer text-destructive hover:text-destructive"
-                    onClick={() => setAccountToDelete(account)}
-                  >
+                  <Button variant="ghost" size="icon" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => setAccountToDelete(account)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Add WhatsApp Account</DialogTitle>
-            <DialogDescription>
-              Connect a new WhatsApp Business account. You can also use Embedded Signup to connect automatically.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...createForm}>
-            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
-              <FormField
-                control={createForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Main Business Account" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="phone_number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+91XXXXXXXXXX" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="phone_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="From Meta Business Manager" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="app_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>App ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Meta App ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="business_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Business ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Meta Business ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="access_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Access Token</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Meta access token" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowCreateDialog(false)}
-                  className="cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createAccount.isPending} className="cursor-pointer">
-                  {createAccount.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Add Account
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      {/* Setup Guide */}
+      <Card>
+        <CardContent className="p-6">
+          <h3 className="font-semibold flex items-center gap-2 mb-4">
+            <Settings2 className="h-5 w-5" />
+            Setup Guide
+          </h3>
+          <ol className="list-decimal list-inside space-y-3 text-sm text-muted-foreground">
+            <li>
+              Go to{" "}
+              <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                Meta Developer Console <ExternalLink className="h-3 w-3" />
+              </a>{" "}
+              and create or select your app
+            </li>
+            <li>Add WhatsApp product to your app and complete the setup</li>
+            <li>In WhatsApp &gt; API Setup, copy your <strong className="text-foreground">Phone Number ID</strong> and <strong className="text-foreground">WhatsApp Business Account ID</strong></li>
+            <li>
+              Create a permanent access token in{" "}
+              <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                Business Settings &gt; System Users <ExternalLink className="h-3 w-3" />
+              </a>
+            </li>
+            <li>Configure the webhook URL and verify token in your Meta app settings</li>
+            <li>Subscribe to messages webhook field</li>
+          </ol>
+        </CardContent>
+      </Card>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
-        <DialogContent className="sm:max-w-[500px]">
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Account</DialogTitle>
+            <DialogTitle>{editingAccount ? "Edit" : "Add"} WhatsApp Account</DialogTitle>
             <DialogDescription>
-              Update account name or access token. Other fields are managed by Meta.
+              Connect your WhatsApp Business account using the Meta Cloud API.
             </DialogDescription>
           </DialogHeader>
-          {editingAccount && (
-            <div className="space-y-2 text-sm text-muted-foreground border rounded-md p-3 bg-muted/30">
-              <p>Phone: {editingAccount.phone_number}</p>
-              <p>Phone ID: {editingAccount.phone_id}</p>
-              <p>Business ID: {editingAccount.business_id}</p>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Account Name <span className="text-destructive">*</span></Label>
+              <Input value={formData.name} onChange={(e) => updateForm("name", e.target.value)} placeholder="e.g., Main Business Line" />
             </div>
-          )}
-          <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Account Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="access_token"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Access Token</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Leave empty to keep current token" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditingAccount(null)}
-                  className="cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={updateAccount.isPending} className="cursor-pointer">
-                  {updateAccount.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Changes
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label>Meta App ID</Label>
+              <Input value={formData.app_id} onChange={(e) => updateForm("app_id", e.target.value)} placeholder="e.g., 123456789012345" />
+              <p className="text-xs text-muted-foreground">Found in Meta Developer Console &gt; App Dashboard</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Phone Number ID <span className="text-destructive">*</span></Label>
+              <Input value={formData.phone_id} onChange={(e) => updateForm("phone_id", e.target.value)} placeholder="e.g., 123456789012345" />
+              <p className="text-xs text-muted-foreground">Found in Meta Developer Console &gt; WhatsApp &gt; API Setup</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>WhatsApp Business Account ID <span className="text-destructive">*</span></Label>
+              <Input value={formData.business_id} onChange={(e) => updateForm("business_id", e.target.value)} placeholder="e.g., 987654321098765" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>
+                Access Token{" "}
+                {!editingAccount
+                  ? <span className="text-destructive">*</span>
+                  : <span className="text-muted-foreground">(leave blank to keep existing)</span>
+                }
+              </Label>
+              <Input type="password" value={formData.access_token} onChange={(e) => updateForm("access_token", e.target.value)} placeholder="Permanent access token from System User" />
+              <p className="text-xs text-muted-foreground">Generate in Business Settings &gt; System Users &gt; Generate Token</p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label>API Version</Label>
+              <Input value={formData.api_version} onChange={(e) => updateForm("api_version", e.target.value)} placeholder="v21.0" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Webhook Verify Token</Label>
+              <Input value={formData.webhook_verify_token} onChange={(e) => updateForm("webhook_verify_token", e.target.value)} placeholder="Auto-generated if empty" />
+              <p className="text-xs text-muted-foreground">Used to verify webhook requests from Meta</p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <Label>Options</Label>
+              <div className="flex items-center justify-between">
+                <Label className="font-normal cursor-pointer">Default for incoming messages</Label>
+                <Switch checked={formData.is_default_incoming} onCheckedChange={(v) => updateForm("is_default_incoming", v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="font-normal cursor-pointer">Default for outgoing messages</Label>
+                <Switch checked={formData.is_default_outgoing} onCheckedChange={(v) => updateForm("is_default_outgoing", v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label className="font-normal cursor-pointer">Automatically send read receipts</Label>
+                <Switch checked={formData.auto_read_receipt} onCheckedChange={(v) => updateForm("auto_read_receipt", v)} />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setIsDialogOpen(false)} className="cursor-pointer">Cancel</Button>
+            <Button size="sm" onClick={saveAccount} disabled={isSubmitting} className="cursor-pointer">
+              {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editingAccount ? "Update" : "Create"} Account
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -404,18 +480,12 @@ export default function AccountsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Account</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete{" "}
-              <span className="font-medium">{accountToDelete?.name}</span>? This action cannot be
-              undone and will disconnect this WhatsApp number.
+              Are you sure you want to delete &quot;{accountToDelete?.name}&quot;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteAccount.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

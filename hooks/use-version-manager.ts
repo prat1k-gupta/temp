@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Node, Edge } from '@xyflow/react'
 import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
-import { useVersions, useCreateVersion, usePublishVersion, useDeleteDraft } from '@/hooks/queries'
+import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft } from '@/hooks/queries'
 import { changeTracker } from '@/utils/change-tracker'
 import { getEditModeState, saveEditModeState } from '@/utils/version-storage'
 
@@ -30,6 +30,7 @@ export function useVersionManager(flowId: string) {
 
   // --- React Query hooks ---
   const versionsQuery = useVersions(flowId)
+  const draftQuery = useDraft(flowId)
   const createVersionMutation = useCreateVersion()
   const publishVersionMutation = usePublishVersion()
   const deleteDraftMutation = useDeleteDraft()
@@ -37,9 +38,10 @@ export function useVersionManager(flowId: string) {
   // Derived: latest published version from the server-fetched list
   const latestPublishedVersion = versionsQuery.data?.find(v => v.isPublished) ?? null
 
-  // Initialize edit mode — restore from localStorage (UI preference), then check versions
+  // Initialize edit mode — check server draft first, then localStorage, then defaults
+  const hasDraft = !!draftQuery.data
   useEffect(() => {
-    if (versionsQuery.isLoading || !versionsQuery.data) return
+    if (versionsQuery.isLoading || !versionsQuery.data || draftQuery.isLoading) return
 
     changeTracker.setFlowId(flowId)
 
@@ -47,8 +49,18 @@ export function useVersionManager(flowId: string) {
     const isFirstVisit = storedEditMode === null
 
     if (isFirstVisit) {
-      if (latestPublishedVersion) {
-        // First visit with published version — start in view mode
+      if (hasDraft) {
+        // Draft exists on server — start in edit mode regardless of published state
+        setEditModeState({
+          isEditMode: true,
+          hasUnsavedChanges: true,
+          currentVersion: latestPublishedVersion,
+          draftChanges: []
+        })
+        saveEditModeState(flowId, true)
+        changeTracker.startTracking()
+      } else if (latestPublishedVersion) {
+        // No draft, has published version — start in view mode
         setEditModeState({
           isEditMode: false,
           hasUnsavedChanges: false,
@@ -57,7 +69,7 @@ export function useVersionManager(flowId: string) {
         })
         saveEditModeState(flowId, false)
       } else {
-        // First visit, no published version — start in edit mode
+        // No draft, no published version — start in edit mode
         setEditModeState({
           isEditMode: true,
           hasUnsavedChanges: false,
@@ -81,7 +93,7 @@ export function useVersionManager(flowId: string) {
         changeTracker.startTracking()
       }
     }
-  }, [flowId, versionsQuery.isLoading, latestPublishedVersion?.id])
+  }, [flowId, versionsQuery.isLoading, draftQuery.isLoading, hasDraft, latestPublishedVersion?.id])
 
   /**
    * Toggle edit mode on/off

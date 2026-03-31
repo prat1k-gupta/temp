@@ -10,6 +10,7 @@ import { formatDistanceToNow, format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
@@ -168,7 +169,7 @@ export default function ApiKeysPage() {
                 <TableHead>Key Prefix</TableHead>
                 <TableHead>Last Used</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead>Expires</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="w-[80px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -187,8 +188,10 @@ export default function ApiKeysPage() {
                   <TableCell className="text-muted-foreground text-sm">
                     {formatDate(apiKey.created_at)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {formatDate(apiKey.expires_at)}
+                  <TableCell>
+                    <Badge variant={apiKey.is_active ? "default" : "secondary"}>
+                      {apiKey.is_active ? "Active" : "Revoked"}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Button

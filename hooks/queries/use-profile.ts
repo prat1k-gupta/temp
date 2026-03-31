@@ -3,13 +3,16 @@ import { apiClient } from "@/lib/api-client"
 import { profileKeys } from "./query-keys"
 import { setUser, getUser } from "@/lib/auth"
 
-interface Profile {
+export interface Profile {
   id: string
   email: string
   full_name: string
   role: string
+  is_active: boolean
+  is_available: boolean
   organization_id: string
-  organization_name?: string
+  created_at: string
+  updated_at: string
 }
 
 export function useProfile() {

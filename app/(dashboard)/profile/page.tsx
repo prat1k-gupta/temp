@@ -128,8 +128,8 @@ export default function ProfilePage() {
                 <p className="text-sm capitalize">{profile?.role}</p>
               </div>
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Organization</Label>
-                <p className="text-sm">{profile?.organization_name || "—"}</p>
+                <Label className="text-muted-foreground">Member Since</Label>
+                <p className="text-sm">{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : "—"}</p>
               </div>
               <Button type="submit" disabled={updateProfile.isPending} className="cursor-pointer">
                 {updateProfile.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
@@ -44,7 +45,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { LogoClosed } from "@/components/freestand-logo"
-import { getUser, logout } from "@/lib/auth"
+import { getUser, logout, type AuthUser } from "@/lib/auth"
 import {
   Collapsible,
   CollapsibleContent,
@@ -78,7 +79,8 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { state } = useSidebar()
   const { theme, setTheme } = useTheme()
-  const user = getUser()
+  const [user, setUser] = useState<AuthUser | null>(null)
+  useEffect(() => { setUser(getUser()) }, [])
   const isCollapsed = state === "collapsed"
   const isSettingsActive = pathname.startsWith("/settings")
 

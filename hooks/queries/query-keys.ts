@@ -40,3 +40,13 @@ export const profileKeys = {
   all: ["profile"] as const,
   me: () => [...profileKeys.all, "me"] as const,
 } as const
+
+export const accountKeys = {
+  all: ["accounts"] as const,
+  list: () => [...accountKeys.all, "list"] as const,
+} as const
+
+export const flowApiKeyKeys = {
+  all: ["flowApiKeys"] as const,
+  list: () => [...flowApiKeyKeys.all, "list"] as const,
+} as const

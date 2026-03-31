@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Loader2, Key, Trash2, Plus, Copy, Eye, EyeOff, ExternalLink } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
@@ -50,62 +49,13 @@ import {
   useApiKeys,
   useCreateApiKey,
   useDeleteApiKey,
+  useFlowApiKeys,
+  useCreateFlowApiKey,
+  useDeleteFlowApiKey,
   type ApiKey,
+  type FlowApiKey,
 } from "@/hooks/queries"
 import { useChatbotFlows } from "@/hooks/queries"
-import { apiClient } from "@/lib/api-client"
-
-// ---------------------------------------------------------------------------
-// Flow API Key types & hooks
-// ---------------------------------------------------------------------------
-
-interface FlowApiKey {
-  id: string
-  name: string
-  flow_id: string
-  flow_name: string
-  key: string
-  is_active: boolean
-  expires_at: string | null
-  last_used_at: string | null
-  created_at: string
-}
-
-const flowApiKeyKeys = {
-  all: ["flowApiKeys"] as const,
-  list: () => [...flowApiKeyKeys.all, "list"] as const,
-} as const
-
-function useFlowApiKeys() {
-  return useQuery<FlowApiKey[]>({
-    queryKey: flowApiKeyKeys.list(),
-    queryFn: async () => {
-      const data = await apiClient.get<FlowApiKey[]>("/api/flow-api-keys")
-      return Array.isArray(data) ? data : []
-    },
-  })
-}
-
-function useCreateFlowApiKey() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: { name: string; flow_id: string; expires_at?: string }) =>
-      apiClient.post<FlowApiKey & { key: string }>("/api/flow-api-keys", payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: flowApiKeyKeys.list() })
-    },
-  })
-}
-
-function useDeleteFlowApiKey() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/flow-api-keys/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: flowApiKeyKeys.list() })
-    },
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

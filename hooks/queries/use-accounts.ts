@@ -1,10 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api-client"
+import { accountKeys } from "./query-keys"
 
-export const accountKeys = {
-  all: ["accounts"] as const,
-  list: () => [...accountKeys.all, "list"] as const,
-} as const
+export { accountKeys }
 
 export interface Account {
   id: string
@@ -48,6 +46,11 @@ export function useCreateAccount() {
       app_id?: string
       business_id?: string
       access_token?: string
+      webhook_verify_token?: string
+      api_version?: string
+      is_default_incoming?: boolean
+      is_default_outgoing?: boolean
+      auto_read_receipt?: boolean
     }) => apiClient.post("/api/accounts", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accountKeys.list() })
@@ -68,6 +71,11 @@ export function useUpdateAccount() {
       app_id: string
       business_id: string
       access_token: string
+      webhook_verify_token: string
+      api_version: string
+      is_default_incoming: boolean
+      is_default_outgoing: boolean
+      auto_read_receipt: boolean
     }>) => apiClient.put(`/api/accounts/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accountKeys.list() })

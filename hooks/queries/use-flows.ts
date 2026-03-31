@@ -21,5 +21,8 @@ export function useFlow(id: string) {
     queryKey: flowKeys.detail(id),
     queryFn: () => getFlow(id),
     enabled: !!id && id !== "new",
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }

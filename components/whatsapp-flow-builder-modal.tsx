@@ -45,6 +45,7 @@ import {
   Copy,
   Loader2,
 } from "lucide-react"
+import { useAccounts } from "@/hooks/queries"
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -744,7 +745,7 @@ export function WhatsAppFlowBuilderModal({ open, onClose, onSave, existingFlow, 
   const [selectedCompIdx, setSelectedCompIdx] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
-  const [whatsappAccounts, setWhatsappAccounts] = useState<{ id: string; name: string }[]>([])
+  const { data: whatsappAccounts = [] } = useAccounts()
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [showDeletePageDialog, setShowDeletePageDialog] = useState<number | null>(null)
 
@@ -752,19 +753,6 @@ export function WhatsAppFlowBuilderModal({ open, onClose, onSave, existingFlow, 
   const screens = form.watch("screens")
   const flowName = form.watch("flowName")
   const { isDirty } = form.formState
-
-  // Fetch WhatsApp accounts
-  useEffect(() => {
-    if (open) {
-      fetch("/api/accounts")
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data?.accounts || []
-          setWhatsappAccounts(list)
-        })
-        .catch(() => {})
-    }
-  }, [open])
 
   // Reset state when modal opens
   useEffect(() => {

@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   useCallback,
-  useEffect,
   useMemo,
   type TextareaHTMLAttributes,
 } from "react"
@@ -30,6 +29,7 @@ import { extractVariableReferences } from "@/utils/flow-variables"
 import type { FlowVariable } from "@/utils/flow-variables"
 import { AlertTriangle, Braces } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useGlobalVariables, useChatbotFlows } from "@/hooks/queries"
 
 interface VariablePickerTextareaProps
   extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> {
@@ -42,46 +42,6 @@ interface VariablePickerTextareaProps
   crossFlowVariables?: CrossFlowVariable[]
   showVariableButton?: boolean
   showUnknownWarnings?: boolean
-}
-
-// --- Module-level cache for global/cross-flow variables ---
-let _cachedGlobals: Record<string, string> | null = null
-let _cachedCrossFlow: CrossFlowVariable[] | null = null
-let _fetchPromise: Promise<void> | null = null
-let _lastFetchFailed = false
-let _lastFetchTime = 0
-
-async function fetchExternalVariables() {
-  const now = Date.now()
-  if (_cachedGlobals !== null && _cachedCrossFlow !== null && !_lastFetchFailed) return
-  if (_lastFetchFailed && now - _lastFetchTime < 30_000) return
-  if (_fetchPromise) return _fetchPromise
-
-  _fetchPromise = (async () => {
-    try {
-      const [settingsRes, flowsRes] = await Promise.all([
-        fetch("/api/whatsapp/settings").then((r) => (r.ok ? r.json() : null)),
-        fetch("/api/whatsapp/flows").then((r) => (r.ok ? r.json() : null)),
-      ])
-      _cachedGlobals = settingsRes?.globalVariables || {}
-      _cachedCrossFlow = (flowsRes?.flows || [])
-        .filter((f: any) => f.flowSlug && f.variables?.length > 0)
-        .map((f: any) => ({
-          flowName: f.name,
-          flowSlug: f.flowSlug,
-          variables: f.variables,
-        }))
-      _lastFetchFailed = false
-    } catch {
-      _cachedGlobals = {}
-      _cachedCrossFlow = []
-      _lastFetchFailed = true
-    }
-    _lastFetchTime = Date.now()
-    _fetchPromise = null
-  })()
-
-  return _fetchPromise
 }
 
 // --- Lexical theme ---
@@ -129,22 +89,29 @@ export function VariablePickerTextarea({
     [flowVariables, excludeVariable]
   )
 
-  // --- Lazy-loaded external data ---
-  const [globals, setGlobals] = useState<Record<string, string>>(propGlobals || {})
-  const [crossFlow, setCrossFlow] = useState<CrossFlowVariable[]>(propCrossFlow || [])
-  const [externalLoaded, setExternalLoaded] = useState(false)
+  // --- External data from React Query ---
+  const { data: queryGlobals } = useGlobalVariables()
+  const { data: queryChatbotFlows } = useChatbotFlows()
 
-  const ensureExternalData = useCallback(async () => {
-    if (externalLoaded) return
-    if (propGlobals && propCrossFlow) { setExternalLoaded(true); return }
-    await fetchExternalVariables()
-    if (!propGlobals && _cachedGlobals) setGlobals(_cachedGlobals)
-    if (!propCrossFlow && _cachedCrossFlow) setCrossFlow(_cachedCrossFlow)
-    setExternalLoaded(true)
-  }, [externalLoaded, propGlobals, propCrossFlow])
+  const globals = useMemo(
+    () => propGlobals || queryGlobals || {},
+    [propGlobals, queryGlobals]
+  )
 
-  useEffect(() => { if (propGlobals) setGlobals(propGlobals) }, [propGlobals])
-  useEffect(() => { if (propCrossFlow) setCrossFlow(propCrossFlow) }, [propCrossFlow])
+  const crossFlow = useMemo<CrossFlowVariable[]>(
+    () => propCrossFlow || (queryChatbotFlows || [])
+      .filter((f: any) => f.flowSlug && f.variables?.length > 0)
+      .map((f: any) => ({
+        flowName: f.name,
+        flowSlug: f.flowSlug,
+        variables: f.variables,
+      })),
+    [propCrossFlow, queryChatbotFlows]
+  )
+
+  const ensureExternalData = useCallback(() => {
+    // React Query handles caching and fetching automatically
+  }, [])
 
   // --- Unknown variable warnings (derived state) ---
   const unknownVars = useMemo(() => {

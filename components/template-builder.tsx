@@ -20,6 +20,7 @@ import {
   ArrowDown,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useAccounts } from "@/hooks/queries"
 
 interface TemplateButton {
   type: "quick_reply" | "url" | "phone_number" | "copy_code"
@@ -100,33 +101,18 @@ const emptyTemplate: TemplateData = {
   sample_values: {},
 }
 
-interface WhatsAppAccount {
-  id: string
-  name: string
-  status: string
-}
-
 export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderProps) {
   const [data, setData] = useState<TemplateData>(template || emptyTemplate)
   const [saving, setSaving] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
-  const [accounts, setAccounts] = useState<WhatsAppAccount[]>([])
-  const [accountsLoading, setAccountsLoading] = useState(true)
+  const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
 
+  // Auto-select if only one account and no account set
   useEffect(() => {
-    fetch("/api/accounts")
-      .then((res) => res.json())
-      .then((data) => {
-        const list = Array.isArray(data) ? data : data.accounts || []
-        setAccounts(list)
-        // Auto-select if only one account and no account set
-        if (list.length === 1 && !template?.whatsapp_account) {
-          setData((prev) => ({ ...prev, whatsapp_account: list[0].name }))
-        }
-      })
-      .catch(() => {})
-      .finally(() => setAccountsLoading(false))
-  }, [template?.whatsapp_account])
+    if (accounts.length === 1 && !template?.whatsapp_account) {
+      setData((prev) => ({ ...prev, whatsapp_account: accounts[0].name }))
+    }
+  }, [accounts, template?.whatsapp_account])
 
   const update = useCallback((patch: Partial<TemplateData>) => {
     setData((prev) => ({ ...prev, ...patch }))

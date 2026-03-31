@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Node, Edge } from '@xyflow/react'
 import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
-import { useVersions, useCreateVersion, usePublishVersion, useDeleteDraft } from '@/hooks/queries'
+import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft, versionKeys } from '@/hooks/queries'
+import { apiClient } from '@/lib/api-client'
 import { changeTracker } from '@/utils/change-tracker'
 import { getEditModeState, saveEditModeState } from '@/utils/version-storage'
 
@@ -21,6 +23,8 @@ function formatForReactFlow(nodes: any[], edges: any[]) {
 }
 
 export function useVersionManager(flowId: string) {
+  const queryClient = useQueryClient()
+
   const [editModeState, setEditModeState] = useState<EditModeState>({
     isEditMode: false,
     hasUnsavedChanges: false,
@@ -30,6 +34,7 @@ export function useVersionManager(flowId: string) {
 
   // --- React Query hooks ---
   const versionsQuery = useVersions(flowId)
+  const draftQuery = useDraft(flowId)
   const createVersionMutation = useCreateVersion()
   const publishVersionMutation = usePublishVersion()
   const deleteDraftMutation = useDeleteDraft()
@@ -37,9 +42,10 @@ export function useVersionManager(flowId: string) {
   // Derived: latest published version from the server-fetched list
   const latestPublishedVersion = versionsQuery.data?.find(v => v.isPublished) ?? null
 
-  // Initialize edit mode — restore from localStorage (UI preference), then check versions
+  // Initialize edit mode — check server draft first, then localStorage, then defaults
+  const hasDraft = !!draftQuery.data
   useEffect(() => {
-    if (versionsQuery.isLoading || !versionsQuery.data) return
+    if (versionsQuery.isLoading || !versionsQuery.data || draftQuery.isLoading) return
 
     changeTracker.setFlowId(flowId)
 
@@ -47,8 +53,18 @@ export function useVersionManager(flowId: string) {
     const isFirstVisit = storedEditMode === null
 
     if (isFirstVisit) {
-      if (latestPublishedVersion) {
-        // First visit with published version — start in view mode
+      if (hasDraft) {
+        // Draft exists on server — start in edit mode regardless of published state
+        setEditModeState({
+          isEditMode: true,
+          hasUnsavedChanges: true,
+          currentVersion: latestPublishedVersion,
+          draftChanges: []
+        })
+        saveEditModeState(flowId, true)
+        changeTracker.startTracking()
+      } else if (latestPublishedVersion) {
+        // No draft, has published version — start in view mode
         setEditModeState({
           isEditMode: false,
           hasUnsavedChanges: false,
@@ -57,7 +73,7 @@ export function useVersionManager(flowId: string) {
         })
         saveEditModeState(flowId, false)
       } else {
-        // First visit, no published version — start in edit mode
+        // No draft, no published version — start in edit mode
         setEditModeState({
           isEditMode: true,
           hasUnsavedChanges: false,
@@ -81,7 +97,40 @@ export function useVersionManager(flowId: string) {
         changeTracker.startTracking()
       }
     }
-  }, [flowId, versionsQuery.isLoading, latestPublishedVersion?.id])
+  }, [flowId, versionsQuery.isLoading, draftQuery.isLoading, hasDraft, latestPublishedVersion?.id])
+
+  /**
+   * Load draft from server and set on canvas.
+   * Fetches fresh from API (not cache) to ensure latest auto-saved data.
+   */
+  const loadDraftOntoCanvas = useCallback(async (
+    setNodes: (nodes: Node[]) => void,
+    setEdges: (edges: Edge[]) => void,
+    setPlatform: (platform: Platform) => void,
+  ) => {
+    try {
+      const data = await queryClient.fetchQuery({
+        queryKey: versionKeys.draft(flowId),
+        queryFn: async () => {
+          try {
+            const result = await apiClient.get<any>(`/api/magic-flow/projects/${flowId}/draft`)
+            return result?.draft || result
+          } catch {
+            return null
+          }
+        },
+        staleTime: 0,
+      })
+      if (data?.nodes) {
+        const { formattedNodes, formattedEdges } = formatForReactFlow(data.nodes, data.edges || [])
+        setNodes(formattedNodes)
+        setEdges(formattedEdges)
+        if (data.platform) setPlatform(data.platform as Platform)
+      }
+    } catch {
+      // No draft — stay on current canvas
+    }
+  }, [flowId, queryClient])
 
   /**
    * Toggle edit mode on/off
@@ -90,14 +139,16 @@ export function useVersionManager(flowId: string) {
     const newEditMode = !editModeState.isEditMode
 
     if (newEditMode) {
-      // Entering edit mode
-      setEditModeState(prev => ({
-        ...prev,
-        isEditMode: true,
-        hasUnsavedChanges: changeTracker.getChangesCount() > 0
-      }))
-      changeTracker.startTracking()
-      saveEditModeState(flowId, true)
+      // Entering edit mode — reload draft from server, THEN activate edit mode
+      loadDraftOntoCanvas(setNodes, setEdges, setPlatform).then(() => {
+        setEditModeState(prev => ({
+          ...prev,
+          isEditMode: true,
+          hasUnsavedChanges: changeTracker.getChangesCount() > 0
+        }))
+        changeTracker.startTracking()
+        saveEditModeState(flowId, true)
+      })
     } else {
       // Exiting edit mode — revert to published version
       if (latestPublishedVersion) {
@@ -386,18 +437,20 @@ export function useVersionManager(flowId: string) {
       changeTracker.pauseTracking()
       saveEditModeState(flowId, false)
     } else {
-      // Switch to edit mode
-      changeTracker.resumeTracking()
-      const currentChanges = changeTracker.getChanges()
-      setEditModeState(prev => ({
-        ...prev,
-        isEditMode: true,
-        hasUnsavedChanges: currentChanges.length > 0,
-        draftChanges: currentChanges
-      }))
-      saveEditModeState(flowId, true)
+      // Switch to edit mode — reload draft from server, THEN activate edit mode
+      loadDraftOntoCanvas(setNodes, setEdges, setPlatform).then(() => {
+        changeTracker.resumeTracking()
+        const currentChanges = changeTracker.getChanges()
+        setEditModeState(prev => ({
+          ...prev,
+          isEditMode: true,
+          hasUnsavedChanges: currentChanges.length > 0,
+          draftChanges: currentChanges
+        }))
+        saveEditModeState(flowId, true)
+      })
     }
-  }, [editModeState.isEditMode, latestPublishedVersion, flowId])
+  }, [editModeState.isEditMode, latestPublishedVersion, flowId, loadDraftOntoCanvas])
 
   /**
    * Reset to published version

@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { getTriggersByPlatform } from "@/constants/triggers"
 import { TriggerConfigPanel, MATCH_TYPE_LABELS, isTriggerConfigInvalid, getSaveData, type TriggerConfigState } from "@/components/trigger-config-panel"
 import type { Platform } from "@/types"
+import { useChatbotFlows } from "@/hooks/queries"
 
 export function StartNode({ data, selected }: { data: any; selected?: boolean }) {
   const [isEditingTriggers, setIsEditingTriggers] = useState(false)
@@ -20,6 +21,7 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
   const [isSaving, setIsSaving] = useState(false)
   const [conflictWarnings, setConflictWarnings] = useState<Record<string, string>>({})
   const [refConflict, setRefConflict] = useState<string | null>(null)
+  const { data: chatbotFlows } = useChatbotFlows()
 
   const platform = (data.platform || "web") as Platform
   const allTriggers = getTriggersByPlatform(platform)
@@ -73,45 +75,33 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
 
   const isSaveDisabled = isTriggerConfigInvalid(triggerState, refConflict) || isSaving
 
-  const handleSaveTriggers = async () => {
+  const handleSaveTriggers = () => {
     const saveData = getSaveData(triggerState)
 
     // Check conflicts before saving
     if (platform === "whatsapp" && (saveData.triggerKeywords.length > 0 || saveData.triggerRef)) {
-      setIsSaving(true)
-      try {
-        const res = await fetch("/api/whatsapp/flows")
-        if (res.ok) {
-          const result = await res.json()
-          const otherFlows = (result.flows || []).filter((f: any) => f.id !== data.publishedFlowId)
-          const warnings: Record<string, string> = {}
-          let refConflictName: string | null = null
-          for (const flow of otherFlows) {
-            for (const kw of saveData.triggerKeywords) {
-              if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
-                warnings[kw] = flow.name
-              }
-            }
-            if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
-              refConflictName = flow.name
-            }
-          }
-          setConflictWarnings(warnings)
-          setRefConflict(refConflictName)
-          if (refConflictName) {
-            setIsSaving(false)
-            return
-          }
-          // Keyword conflict: show warning first time, proceed on second click
-          if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
-            setIsSaving(false)
-            return
+      const otherFlows = (chatbotFlows || []).filter((f: any) => f.id !== data.publishedFlowId)
+      const warnings: Record<string, string> = {}
+      let refConflictName: string | null = null
+      for (const flow of otherFlows) {
+        for (const kw of saveData.triggerKeywords) {
+          if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
+            warnings[kw] = flow.name
           }
         }
-      } catch {
-        // Network error — save anyway
+        if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
+          refConflictName = flow.name
+        }
       }
-      setIsSaving(false)
+      setConflictWarnings(warnings)
+      setRefConflict(refConflictName)
+      if (refConflictName) {
+        return
+      }
+      // Keyword conflict: show warning first time, proceed on second click
+      if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
+        return
+      }
     }
 
     if (data.onFlowUpdate) {

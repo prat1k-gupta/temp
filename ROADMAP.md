@@ -163,41 +163,70 @@ Quick wins to improve flow builder productivity.
 
 ## Phase 2 — Database + Auth + React Query
 
-Separate clean effort. Features work on localStorage until this is done.
+Multi-user persistent storage. All flow data in PostgreSQL via FS Chat backend.
 
-### 2.1 React Query Migration
+### 2.1 Auth ✅
 
-Introduce TanStack Query to replace synchronous localStorage patterns with async data fetching. This is the prerequisite for the database swap — once consumers use React Query, the backend can change from localStorage to API without touching any component.
+- Login/register pages, JWT token management (access + refresh)
+- `api-client.ts` with auto-refresh on 401, concurrent refresh dedup
+- Next.js middleware for route protection
+- All proxy routes forward JWT instead of shared API key
 
-**Step 1:** Add React Query provider, wrap app
-**Step 2:** Replace `getAllFlows()` / `getFlow()` calls with `useQuery`
-**Step 3:** Replace `saveFlow()` / `updateFlow()` / `deleteFlow()` with `useMutation`
-**Step 4:** `flow-storage.ts` functions become `queryFn` implementations — still hitting localStorage for now
+> Shipped: magic-flow #21
 
-### 2.2 Go Backend Tables
+### 2.2 Backend Tables ✅
 
 New models in FS Chat's PostgreSQL:
 
 ```
 magic_flow_projects          — flow identity (name, slug, platform, publish target)
 magic_flow_versions          — canvas snapshots (nodes, edges, changes)
-magic_flow_drafts            — auto-saved current work (one per project)
+magic_flow_drafts            — auto-saved current work (per user per project)
 ```
 
-CRUD endpoints for all three. Auto-save endpoint (debounced from frontend).
+11 CRUD endpoints with org-scoping, transactions, pagination.
 
-### 2.3 Storage Swap
+> Shipped: fs-chat #19
 
-Change `flow-storage.ts` queryFn implementations from localStorage to `fetch('/api/...')`. Zero consumer changes needed — React Query handles the async.
+### 2.3 Storage Swap ✅
 
-Version/draft storage can stay in localStorage (session-scoped, not user-scoped).
+- `flow-storage.ts` functions switched from localStorage to `apiClient.get/post/put/delete`
+- Flows page redesigned with search, table/cards views, sort, platform filter, status badges
+- Redis removed, 5 new proxy routes for magic-flow endpoints
+- Feature flag `NEXT_PUBLIC_STORAGE_MODE` gates localStorage fallback (default: `api`)
 
-### 2.4 Auth
+> Shipped: fs-chat #20, magic-flow #22
 
-- Login page → `POST /api/auth/login` on FS Chat
-- JWT storage, auth interceptor on all API calls
-- Protected routes middleware
-- Update proxy routes from single API key to per-user JWT forwarding
+### 2.4 React Query ✅
+
+- TanStack React Query (`@tanstack/react-query`) for all data fetching
+- Query key factory (`flowKeys`, `versionKeys`) for cache management
+- Hooks: `useFlows`, `useFlow`, `useCreateFlow`, `useUpdateFlow`, `useDeleteFlow`, `useDuplicateFlow`
+- Version hooks: `useVersions`, `useCreateVersion`, `usePublishVersion`, `useSaveDraft`, `useDeleteDraft`
+- `useAutoSave` — debounced 1s draft save replacing manual setTimeout
+- Optimistic deletes, `isPending` spinner states on action buttons
+- Version manager migrated from localStorage to API-backed React Query hooks
+
+> Shipped: magic-flow #23
+
+### 2.5 Remove Proxy (Direct API Calls)
+
+With JWT auth in place, the Next.js proxy layer is unnecessary. `apiClient` should call fs-whatsapp directly.
+
+- Set `NEXT_PUBLIC_FS_WHATSAPP_URL` as public env var
+- Update `apiClient` to call fs-whatsapp directly, handle response envelope (`result.data`)
+- Configure CORS on fs-whatsapp for magic-flow origin
+- Delete ~30 proxy route files under `app/api/`
+- Delete `lib/fs-whatsapp-proxy.ts`
+- Keep auth proxy routes (`/api/auth/*`) for token refresh (cookies need same-origin)
+
+### 2.6 Remaining localStorage → DB
+
+Move last localStorage dependencies to server:
+
+- **Change tracker** → store in draft record with user attribution (`user_id`, `user_email` from JWT session per change entry)
+- **Edit/view mode** → `is_edit_mode` field on `magic_flow_drafts` table
+- **Flow templates** → use existing `MagicFlowProject` with `type: "template"`, add `ai_metadata` JSONB column, add `type` filter param to list endpoint
 
 ### 2.5 Variable & Tag Registry [#11](https://github.com/freestandtech/magic-flow/issues/11)
 
@@ -425,8 +454,10 @@ Replace raw HTML primitives (`<select>`, `<input>`, custom dropdowns) with shadc
 - Trigger match types, ref link triggers, global cancel keywords shipped
 - Flows publishable to FS Chat and triggerable via API from Sampling Central
 
-**Phase 2 — In Progress** (starting April 2026)
-- Database + auth + React Query to make MagicFlow multi-user
+**Phase 2 — In Progress** (March-April 2026)
+- 2.1-2.4 ✅ Auth, backend tables, storage swap, React Query all shipped
+- 2.5 next: remove proxy layer (direct JWT calls to fs-whatsapp)
+- 2.6: remaining localStorage → DB (change tracker, edit mode, templates)
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

@@ -24,6 +24,9 @@ import type { FlowChange } from "@/types"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import { flattenFlow } from "@/utils/flow-flattener"
 import { validateFlowVariables } from "@/utils/flow-variables"
+import { publishFlowToWhatsApp } from "@/lib/whatsapp-api"
+import { apiClient } from "@/lib/api-client"
+import { useAccounts } from "@/hooks/queries"
 
 interface PublishModalProps {
   changes: FlowChange[]
@@ -79,29 +82,16 @@ export function PublishModal({
   const [publishMode, setPublishMode] = useState<'create' | 'publish'>('create')
 
   // WhatsApp account selection
-  const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
-  const [waAccountsLoading, setWaAccountsLoading] = useState(false)
+  const { data: waAccounts = [], isLoading: waAccountsLoading } = useAccounts()
   const [selectedWaAccountId, setSelectedWaAccountId] = useState(waAccountId || "")
 
-  // Fetch WhatsApp accounts when modal opens
+  // Pre-select stored account or default outgoing when accounts load
   useEffect(() => {
-    if (isOpen && platform === "whatsapp") {
-      setWaAccountsLoading(true)
-      fetch("/api/accounts")
-        .then((res) => res.json())
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data.accounts || []
-          setWaAccounts(list)
-          // Pre-select stored account or default outgoing
-          if (!selectedWaAccountId) {
-            const defaultAcc = list.find((a: any) => a.is_default_outgoing) || list[0]
-            if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
-          }
-        })
-        .catch(() => setWaAccounts([]))
-        .finally(() => setWaAccountsLoading(false))
+    if (isOpen && platform === "whatsapp" && waAccounts.length > 0 && !selectedWaAccountId) {
+      const defaultAcc = waAccounts.find((a: any) => a.is_default_outgoing) || waAccounts[0]
+      if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
     }
-  }, [isOpen, platform])
+  }, [isOpen, platform, waAccounts, selectedWaAccountId])
 
   // Initialize with default name when modal opens
   useEffect(() => {
@@ -184,27 +174,17 @@ export function PublishModal({
             flowSlug,
             selectedAccountName,
           )
-          const response = await fetch("/api/whatsapp/publish", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...converted,
-              publishedFlowId: publishedFlowId || undefined,
-            }),
-          })
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}))
-            throw new Error(errorData.error || `Publish failed (${response.status})`)
-          }
-          const result = await response.json()
+          const result = await publishFlowToWhatsApp(
+            { ...converted, publishedFlowId: publishedFlowId || undefined },
+            publishedFlowId,
+          )
           if (result.flowId && onPublished) {
             // Fetch the actual phone number from Meta via account test endpoint
             let phoneNumber = waPhoneNumberProp
             if (selectedWaAccountId) {
               try {
                 console.log("[PublishModal] Fetching phone number for account:", selectedWaAccountId)
-                const tcRes = await fetch(`/api/accounts/${selectedWaAccountId}/test`, { method: "POST" })
-                const tcData = await tcRes.json()
+                const tcData = await apiClient.post<any>(`/api/accounts/${selectedWaAccountId}/test`)
                 console.log("[PublishModal] Test connection response:", tcData)
                 if (tcData.display_phone_number) {
                   phoneNumber = tcData.display_phone_number.replace(/[^0-9]/g, "")

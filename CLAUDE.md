@@ -74,6 +74,32 @@ AI prompts auto-generate from NODE_TEMPLATES — ensure the `ai` field is comple
 - When UI sections are conditionally visible, save must actively clear hidden state — don't persist what the user can't see.
 - Next.js server-side `fetch()` caches GET responses by default. API proxy routes must use `cache: "no-store"` or they return stale data silently. Wasted an hour debugging why a new field wasn't showing up.
 
+## Data Fetching — React Query (mandatory)
+
+All server data fetching MUST use TanStack React Query hooks. Never use raw `apiClient.get/post` with `useState + useEffect`.
+
+**Query hooks** (in `hooks/queries/`):
+- Flows: `useFlows()`, `useFlow(id)`, `useCreateFlow()`, `useUpdateFlow(id)`, `useDeleteFlow()`, `useDuplicateFlow()`
+- Versions: `useVersions(projectId)`, `useCreateVersion()`, `usePublishVersion()`, `useSaveDraft()`, `useDeleteDraft()`
+- Auto-save: `useAutoSave(projectId, nodes, edges, platform, enabled)`
+- Accounts: `useAccounts()`
+- Chatbot: `useChatbotFlows()`, `useGlobalVariables()`
+- Templates: `useTemplates(status?)`, `useSyncTemplates()`, `useDeleteTemplate()`, `usePublishTemplate()`, `useSaveTemplate()`, `useDuplicateTemplate()`
+- WhatsApp Flows: `useWhatsAppFlows()`, `useCreateWhatsAppFlow()`, `useUpdateWhatsAppFlow()`, `useSaveWhatsAppFlowToMeta()`, `usePublishWhatsAppFlow()`
+
+**Rules:**
+- GET data → `useQuery` hook. Never `useState + useEffect + fetch`.
+- Write data → `useMutation` hook. Show `isPending` spinner on action buttons.
+- Query keys in `hooks/queries/query-keys.ts`. Follow the factory pattern.
+- Cache invalidation: mutations invalidate related queries via `queryClient.invalidateQueries`.
+- Optimistic updates for deletes (remove from cache immediately, rollback on error).
+- `apiClient` is only used directly inside `queryFn`/`mutationFn` implementations and one-off calls (publish, test account). Components never import `apiClient` for data fetching.
+
+**API routing:**
+- `apiClient` routes requests directly to fs-whatsapp (`NEXT_PUBLIC_FS_WHATSAPP_URL`) for all data endpoints.
+- Auth, AI, test-api, campaigns, debug routes stay on Next.js server (have server-side secrets).
+- `lib/whatsapp-api.ts` has client-side helpers for chatbot endpoints that need response shaping.
+
 ## Key Patterns
 
 - Inline editing on nodes: click to edit, useState for edit mode, VariablePickerTextarea for text, StoreAsPill for variable names.

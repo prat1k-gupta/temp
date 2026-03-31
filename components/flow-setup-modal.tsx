@@ -11,6 +11,7 @@ import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icon
 import { Loader2 } from "lucide-react"
 import type { Platform } from "@/types"
 import { TriggerConfigPanel, isTriggerConfigInvalid, getSaveData, type TriggerConfigState } from "@/components/trigger-config-panel"
+import { useAccounts, useChatbotFlows } from "@/hooks/queries"
 
 interface FlowSetupModalProps {
   open: boolean
@@ -45,29 +46,17 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   })
 
   // WhatsApp account selection
-  const [waAccounts, setWaAccounts] = useState<{ id: string; name: string; status: string; phone_number?: string }[]>([])
-  const [waAccountsLoading, setWaAccountsLoading] = useState(false)
+  const { data: waAccounts = [], isLoading: waAccountsLoading } = useAccounts()
   const [selectedWaAccountId, setSelectedWaAccountId] = useState("")
-  const [waPhoneNumber, setWaPhoneNumber] = useState("")
+  const { data: chatbotFlows } = useChatbotFlows()
 
+  // Auto-select default outgoing or first account when accounts load
   useEffect(() => {
-    if (selectedPlatform === "whatsapp" && open) {
-      setWaAccountsLoading(true)
-      fetch("/api/accounts")
-        .then((res) => res.json())
-        .then((data) => {
-          const list = Array.isArray(data) ? data : data.accounts || []
-          setWaAccounts(list)
-          // Auto-select default outgoing or first account
-          const defaultAcc = list.find((a: any) => a.is_default_outgoing) || list[0]
-          if (defaultAcc && !selectedWaAccountId) {
-            setSelectedWaAccountId(defaultAcc.id)
-          }
-        })
-        .catch(() => setWaAccounts([]))
-        .finally(() => setWaAccountsLoading(false))
+    if (waAccounts.length > 0 && !selectedWaAccountId) {
+      const defaultAcc = waAccounts.find((a: any) => a.is_default_outgoing) || waAccounts[0]
+      if (defaultAcc) setSelectedWaAccountId(defaultAcc.id)
     }
-  }, [selectedPlatform, open])
+  }, [waAccounts, selectedWaAccountId])
 
   const getPlatformIcon = (platform: Platform, size: "sm" | "md" | "lg" = "md") => {
     const sizeClasses = { sm: "w-4 h-4", md: "w-5 h-5", lg: "w-8 h-8" }
@@ -96,38 +85,30 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
 
       // Check conflicts before creating
       if (selectedPlatform === "whatsapp" && (saveData.triggerKeywords.length > 0 || saveData.triggerRef)) {
-        try {
-          const res = await fetch("/api/whatsapp/flows")
-          if (res.ok) {
-            const result = await res.json()
-            const otherFlows = result.flows || []
-            const warnings: Record<string, string> = {}
-            let refConflictName: string | null = null
-            for (const flow of otherFlows) {
-              for (const kw of saveData.triggerKeywords) {
-                if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
-                  warnings[kw] = flow.name
-                }
-              }
-              if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
-                refConflictName = flow.name
-              }
-            }
-            setConflictWarnings(warnings)
-            setRefConflict(refConflictName)
-            // Ref conflict: hard block
-            if (refConflictName) {
-              setIsCreating(false)
-              return
-            }
-            // Keyword conflict: show warning first time, proceed on second click
-            if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
-              setIsCreating(false)
-              return
+        const otherFlows = chatbotFlows || []
+        const warnings: Record<string, string> = {}
+        let refConflictName: string | null = null
+        for (const flow of otherFlows) {
+          for (const kw of saveData.triggerKeywords) {
+            if (flow.triggerKeywords?.some((fkw: string) => fkw.toLowerCase() === kw.toLowerCase()) && !warnings[kw]) {
+              warnings[kw] = flow.name
             }
           }
-        } catch {
-          // Network error — create anyway
+          if (saveData.triggerRef && flow.triggerRef === saveData.triggerRef) {
+            refConflictName = flow.name
+          }
+        }
+        setConflictWarnings(warnings)
+        setRefConflict(refConflictName)
+        // Ref conflict: hard block
+        if (refConflictName) {
+          setIsCreating(false)
+          return
+        }
+        // Keyword conflict: show warning first time, proceed on second click
+        if (Object.keys(warnings).length > 0 && Object.keys(conflictWarnings).length === 0) {
+          setIsCreating(false)
+          return
         }
       }
 

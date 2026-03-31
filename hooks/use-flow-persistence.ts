@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import type { FlowData } from "@/utils/flow-storage"
-import { useFlow, useCreateFlow, useUpdateFlow, useDeleteFlow, useAutoSave } from "@/hooks/queries"
+import { useFlow, useCreateFlow, useUpdateFlow, useDeleteFlow } from "@/hooks/queries"
 import { toast } from "sonner"
 import { useRouter, useSearchParams } from "next/navigation"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
@@ -115,6 +115,7 @@ export function useFlowPersistence({
 
   const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
   const [flowLoaded, setFlowLoaded] = useState(false)
+  const lastDataUpdatedAtRef = useRef<number>(0)
   const [isEditingFlowName, setIsEditingFlowName] = useState(false)
   const [editingFlowNameValue, setEditingFlowNameValue] = useState("")
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -129,10 +130,6 @@ export function useFlowPersistence({
   const updateFlowMutation = useUpdateFlow(flowId)
   const deleteFlowMutation = useDeleteFlow()
 
-  // Auto-save via React Query mutation (replaces manual debounce)
-  const autoSaveEnabled = !!flowId && !!currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0
-  const { isSaving } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled)
-
   // Sync editing value when flow changes
   useEffect(() => {
     if (currentFlow && !isEditingFlowName) {
@@ -140,16 +137,21 @@ export function useFlowPersistence({
     }
   }, [currentFlow?.name, isEditingFlowName])
 
-  // Load flow data from React Query cache/fetch
+  // Load flow data whenever React Query delivers NEW data (stale or fresh).
+  // Uses dataUpdatedAt to re-load when background refetch brings newer data.
+  // Auto-save is gated on flowLoaded, so it only activates after the last load.
   useEffect(() => {
-    if (!shouldLoad || !flowQuery.data || flowLoaded) return
+    if (!shouldLoad || !flowQuery.data || !flowQuery.dataUpdatedAt) return
+    if (flowQuery.dataUpdatedAt === lastDataUpdatedAtRef.current) return
 
+    lastDataUpdatedAtRef.current = flowQuery.dataUpdatedAt
     const flowData = { ...flowQuery.data }
     console.log("[App] Flow data loaded:", {
       name: flowData.name,
       nodes: flowData.nodes?.length || 0,
       edges: flowData.edges?.length || 0,
       platform: flowData.platform,
+      dataUpdatedAt: flowQuery.dataUpdatedAt,
     })
 
     // Migrate super nodes -> flow template nodes
@@ -173,7 +175,7 @@ export function useFlowPersistence({
     setEdges(flowData.edges)
     setPlatform(flowData.platform)
     setFlowLoaded(true)
-  }, [flowQuery.data, shouldLoad, flowLoaded])
+  }, [flowQuery.data, flowQuery.dataUpdatedAt, shouldLoad])
 
   const handleFlowSetupComplete = useCallback(
     async (data: { name: string; platform: Platform; triggerId: string; triggerIds?: string[]; description?: string; triggerKeywords?: string[]; triggerMatchType?: string; triggerRef?: string; waAccountId?: string; waPhoneNumber?: string }) => {
@@ -194,6 +196,7 @@ export function useFlowPersistence({
           setNodes(newFlow.nodes)
           setEdges(newFlow.edges)
           setPlatform(newFlow.platform)
+          setFlowLoaded(true)
 
           // Create campaign for web and whatsapp platforms only
           if (data.platform === "web" || data.platform === "whatsapp") {
@@ -362,7 +365,6 @@ export function useFlowPersistence({
     handleDeleteFlow,
     handleFlowNameBlur,
     saveFlowFields,
-    isSaving,
     isCreating: createFlowMutation.isPending,
   }
 }

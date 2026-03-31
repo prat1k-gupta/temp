@@ -25,9 +25,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, Copy, Layers, ArrowLeft, Brain } from "lucide-react"
+import { Plus, Trash2, Copy, Layers, Brain } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { getAllTemplates, deleteTemplate, duplicateTemplate, createTemplate, type FlowMetadata } from "@/utils/flow-storage"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
@@ -274,44 +273,20 @@ export default function FlowTemplatesPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Header */}
-      <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
-        <div className="container mx-auto px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push("/flows")}
-                className="h-8 w-8 p-0"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-[#052762]">
-                  Flow Templates
-                </h1>
-                <p className="text-xs text-muted-foreground">Reusable flow building blocks</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={() => setShowCreateModal(true)}
-                size="lg"
-                className="gap-2 shadow-md hover:shadow-lg transition-all bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                <Plus className="w-4 h-4" />
-                New Template
-              </Button>
-              <ThemeToggle />
-            </div>
-          </div>
-        </div>
+    <div className="p-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Flow Templates</h1>
+        <Button
+          onClick={() => setShowCreateModal(true)}
+          className="gap-2 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          New Template
+        </Button>
       </div>
 
-      {/* Content */}
-      <div className="container mx-auto px-6 py-10">
+      <div>
         <div className="space-y-12">
           {/* Default Templates Section */}
           <div>

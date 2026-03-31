@@ -98,7 +98,7 @@ export default function ApiKeysPage() {
     createApiKey.mutate(data, {
       onSuccess: (response) => {
         setShowCreateDialog(false)
-        setRevealedKey((response as any)?.key ?? null)
+        setRevealedKey(response?.key ?? null)
       },
       onError: (err) => toast.error(err.message || "Failed to create API key"),
     })

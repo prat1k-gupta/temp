@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { Loader2, Trash2, Plus, X } from "lucide-react"
 
@@ -23,9 +23,11 @@ export default function ChatbotSettingsPage() {
   const [variables, setVariables] = useState<VariableRow[]>([])
   const [keywords, setKeywords] = useState<string[]>([])
   const [newKeyword, setNewKeyword] = useState("")
+  const seeded = useRef(false)
 
   useEffect(() => {
-    if (settings) {
+    if (settings && !seeded.current) {
+      seeded.current = true
       const vars = Object.entries(settings.global_variables ?? {}).map(([key, value]) => ({
         key,
         value,

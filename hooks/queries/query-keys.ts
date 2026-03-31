@@ -40,8 +40,3 @@ export const profileKeys = {
   all: ["profile"] as const,
   me: () => [...profileKeys.all, "me"] as const,
 } as const
-
-export const orgSettingsKeys = {
-  all: ["orgSettings"] as const,
-  detail: () => [...orgSettingsKeys.all, "detail"] as const,
-} as const

@@ -20,13 +20,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import {
   Workflow,
   Layers,
@@ -164,8 +166,8 @@ export function AppSidebar() {
       <SidebarFooter className="border-t">
         <SidebarMenu>
           <SidebarMenuItem>
-            <Popover>
-              <PopoverTrigger asChild>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <SidebarMenuButton
                   size="lg"
                   className="cursor-pointer"
@@ -184,30 +186,27 @@ export function AppSidebar() {
                     </span>
                   </div>
                 </SidebarMenuButton>
-              </PopoverTrigger>
-              <PopoverContent
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
                 side="top"
                 align="start"
-                className="w-56 p-1.5"
+                className="w-56"
               >
-                <div className="text-xs font-medium px-2 py-1 text-muted-foreground">
+                <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
                   My Account
-                </div>
-                <Separator className="my-1" />
-                <Link href="/profile">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start px-2 py-1 h-auto text-sm font-normal cursor-pointer"
-                  >
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="/profile">
                     <User className="mr-2 h-4 w-4" />
                     Profile
-                  </Button>
-                </Link>
-                <Separator className="my-1" />
-                <div className="text-xs font-medium px-2 py-1 text-muted-foreground">
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
                   Theme
-                </div>
-                <div className="flex gap-0.5 px-1.5 py-1">
+                </DropdownMenuLabel>
+                <div className="flex gap-0.5 px-2 py-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -233,17 +232,16 @@ export function AppSidebar() {
                     <Monitor className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <Separator className="my-1" />
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start px-2 py-1 h-auto text-sm font-normal cursor-pointer"
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer"
                   onClick={logout}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out
-                </Button>
-              </PopoverContent>
-            </Popover>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

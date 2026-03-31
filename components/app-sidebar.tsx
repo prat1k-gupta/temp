@@ -168,9 +168,8 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="cursor-pointer"
+                <button
+                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent cursor-pointer"
                 >
                   <Avatar className="h-7 w-7">
                     <AvatarFallback className="text-xs">
@@ -185,7 +184,7 @@ export function AppSidebar() {
                       {user?.email}
                     </span>
                   </div>
-                </SidebarMenuButton>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 side="top"

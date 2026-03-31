@@ -235,7 +235,31 @@ magic_flow_drafts            — auto-saved current work (per user per project)
 
 ---
 
-## Phase 3 — Next Up
+## Phase 2.7 — App Shell + Settings (prerequisite for Phase 3)
+
+MagicFlow needs a proper app shell before Phase 3 features. Currently it's header-only with no navigation to settings, profile, or team management.
+
+### App Shell
+- Sidebar navigation (collapsible) replacing header-only layout
+- Navigation: Flows, Templates, Settings, Profile
+- User avatar + org name in sidebar footer
+
+### Profile Page
+- View/edit user profile (name, email)
+- Reference: `fs-whatsapp/frontend/src/views/profile/ProfileView.vue`
+
+### Settings Pages (priority order)
+1. **Accounts** — WhatsApp Business account management (connect, test, configure)
+2. **Users** — Invite users, manage roles (admin/manager/agent)
+3. **Teams** — Team structure
+4. **Chatbot Settings** — Global variables editor, cancel keywords
+5. **API Keys** — API key management
+
+All backend endpoints already exist in fs-whatsapp — MagicFlow just needs React pages calling them via apiClient.
+
+---
+
+## Phase 3 — Features
 
 ### 3.1 Variable & Tag Registry [#11](https://github.com/freestandtech/magic-flow/issues/11)
 

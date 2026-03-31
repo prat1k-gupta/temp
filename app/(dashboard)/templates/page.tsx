@@ -6,41 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, RefreshCw, Trash2, Copy, FileText, Send, Loader2, ArrowLeft } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { Plus, RefreshCw, Trash2, Copy, FileText, Send, Loader2 } from "lucide-react"
 import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
-import Link from "next/link"
 import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
-
-// Freestand LogoClosed component (icon only)
-const LogoClosed = ({ className }: { className?: string }) => (
-  <svg viewBox='0 0 127 128' fill='none' xmlns='http://www.w3.org/2000/svg' className={className}>
-    <g>
-      <path
-        d='M94.8052 62.1819V102.384C94.7538 104.184 94.7565 105.342 94.7565 105.342H68.3398V62.1819M94.8052 62.1819H68.3398M94.8052 62.1819H98.7703V51.4453L68.3398 51.4453V62.1819'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeMiterlimit='16'
-        strokeLinecap='round'
-      />
-      <path
-        d='M32.6543 62.1819V102.384C32.7057 104.184 32.703 105.342 32.703 105.342H57.2754V62.1819M32.6543 62.1819H57.2754M32.6543 62.1819H28.6892V51.4453L57.2754 51.4453V62.1819'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeMiterlimit='16'
-        strokeLinecap='round'
-      />
-      <path
-        d='M28.6895 41.6827C33.2272 41.6827 51.7948 41.6827 56.2307 41.6827L54.6309 39.8631C49.9526 34.0405 40.9363 28.2184 41.3726 18.3922C41.5859 13.5891 48.4992 8.05709 55.553 15.0442C61.1961 20.6339 62.1221 30.9108 61.8797 35.3505C64.1825 28.8971 70.737 17.0821 78.5326 21.449C88.2771 26.9077 76.3772 37.1701 73.9775 38.1891C72.0577 39.2371 70.1728 40.7122 69.0093 41.3187H98.7717'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeLinecap='square'
-        strokeLinejoin='round'
-      />
-    </g>
-  </svg>
-)
 
 interface Template {
   id: string
@@ -228,56 +197,34 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Header */}
-      <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
-        <div className="container mx-auto px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <Link href="/flows" className="cursor-pointer hover:opacity-80 transition-opacity">
-                  <LogoClosed className="w-12 h-12" />
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-bold text-[#052762]">Templates</h1>
-                  <p className="text-xs text-muted-foreground">WhatsApp message templates</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/flows">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <ArrowLeft className="w-4 h-4" />
-                  Flows
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                onClick={handleSync}
-                disabled={syncMutation.isPending}
-                className="gap-2"
-              >
-                {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Sync from Meta
-              </Button>
-              <Button
-                onClick={() => {
-                  setEditingTemplate(null)
-                  setShowBuilder(true)
-                }}
-                className="gap-2 bg-[#052762] hover:bg-[#0A49B7] text-white"
-              >
-                <Plus className="w-4 h-4" />
-                Create Template
-              </Button>
-              <ThemeToggle />
-            </div>
-          </div>
+    <div className="p-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">WhatsApp Templates</h1>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={handleSync}
+            disabled={syncMutation.isPending}
+            className="gap-2 cursor-pointer"
+          >
+            {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Sync from Meta
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingTemplate(null)
+              setShowBuilder(true)
+            }}
+            className="gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Create Template
+          </Button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="container mx-auto px-6 py-10">
+      <div>
         {/* Filter bar */}
         <div className="flex items-center gap-4 mb-8">
           <Select value={filterStatus} onValueChange={setFilterStatus}>

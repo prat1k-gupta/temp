@@ -8,45 +8,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, Loader2, Layers, LogOut, Search, LayoutGrid, List } from "lucide-react"
+import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
 import type { FlowMetadata } from "@/utils/flow-storage"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
-import Link from "next/link"
-import { logout } from "@/lib/auth"
-
-// Freestand LogoClosed component (icon only)
-const LogoClosed = ({ className }: { className?: string }) => (
-  <svg viewBox='0 0 127 128' fill='none' xmlns='http://www.w3.org/2000/svg' className={className}>
-    <g>
-      <path
-        d='M94.8052 62.1819V102.384C94.7538 104.184 94.7565 105.342 94.7565 105.342H68.3398V62.1819M94.8052 62.1819H68.3398M94.8052 62.1819H98.7703V51.4453L68.3398 51.4453V62.1819'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeMiterlimit='16'
-        strokeLinecap='round'
-      />
-      <path
-        d='M32.6543 62.1819V102.384C32.7057 104.184 32.703 105.342 32.703 105.342H57.2754V62.1819M32.6543 62.1819H57.2754M32.6543 62.1819H28.6892V51.4453L57.2754 51.4453V62.1819'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeMiterlimit='16'
-        strokeLinecap='round'
-      />
-      <path
-        d='M28.6895 41.6827C33.2272 41.6827 51.7948 41.6827 56.2307 41.6827L54.6309 39.8631C49.9526 34.0405 40.9363 28.2184 41.3726 18.3922C41.5859 13.5891 48.4992 8.05709 55.553 15.0442C61.1961 20.6339 62.1221 30.9108 61.8797 35.3505C64.1825 28.8971 70.737 17.0821 78.5326 21.449C88.2771 26.9077 76.3772 37.1701 73.9775 38.1891C72.0577 39.2371 70.1728 40.7122 69.0093 41.3187H98.7717'
-        stroke='#052762'
-        strokeWidth='7'
-        strokeLinecap='square'
-        strokeLinejoin='round'
-      />
-    </g>
-  </svg>
-)
 
 type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest"
 type PlatformFilter = "all" | Platform
@@ -371,95 +339,23 @@ export default function FlowsPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Header with gradient */}
-      <div className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
-        <div className="container mx-auto px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    window.location.href = 'http://localhost:3000';
-                  }}
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-                  aria-label="Go to Freestand Sampling Central"
-                >
-                  <LogoClosed className="w-12 h-12" />
-                </button>
-                <div>
-                  <h1 className="text-2xl font-bold text-[#052762]">
-                    Freestand Flow Builder
-                  </h1>
-                  <p className="text-xs text-muted-foreground">Build conversational experiences</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/templates">
-                <Button variant="outline" size="lg" className="gap-2">
-                  <WhatsAppIcon className="w-4 h-4" />
-                  WhatsApp Templates
-                </Button>
-              </Link>
-              <Link href="/flow-templates">
-                <Button variant="outline" size="lg" className="gap-2">
-                  <Layers className="w-4 h-4" />
-                  Flow Templates
-                </Button>
-              </Link>
-              <Button
-                onClick={handleCreateFlow}
-                size="lg"
-                className="gap-2 shadow-md hover:shadow-lg transition-all bg-[#052762] hover:bg-[#0A49B7] text-white"
-              >
-                <Plus className="w-4 h-4" />
-                New Flow
-              </Button>
-              <ThemeToggle />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={logout}
-                className="cursor-pointer"
-                title="Sign out"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
+    <div className="p-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Flows</h1>
+        <Button onClick={handleCreateFlow} className="gap-2 cursor-pointer">
+          <Plus className="w-4 h-4" />
+          New Flow
+        </Button>
       </div>
 
-      {/* Content */}
-      <div className="container mx-auto px-6 py-10">
+      <div>
         {loading ? (
           <div className="flex items-center justify-center min-h-[70vh]">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : flows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[70vh]">
-            <div className="relative">
-              {/* Animated gradient circles in background */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-32 h-32 bg-[#052762]/20 rounded-full blur-3xl animate-pulse" />
-                <div className="w-32 h-32 bg-[#2872F4]/20 rounded-full blur-3xl animate-pulse delay-75 -ml-16" />
-              </div>
-
-              {/* Main icon */}
-              <div className="relative mb-8">
-                <button
-                  onClick={() => {
-                    window.location.href = 'http://localhost:3000';
-                  }}
-                  className="cursor-pointer hover:opacity-80 transition-opacity"
-                  aria-label="Go to Freestand Sampling Central"
-                >
-                  <LogoClosed className="w-24 h-24" />
-                </button>
-              </div>
-            </div>
-
+          <div className="flex flex-col items-center justify-center min-h-[50vh]">
             <h2 className="text-3xl font-bold text-foreground mb-3">Start Your Journey</h2>
             <p className="text-muted-foreground mb-8 max-w-md text-center leading-relaxed">
               Create your first flow and bring your conversational experiences to life across WhatsApp, Instagram, and Web.
@@ -501,16 +397,6 @@ export default function FlowsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Title row */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground mb-1">Your Flows</h2>
-                <p className="text-sm text-muted-foreground">
-                  {filteredFlows.length} of {flows.length} {flows.length === 1 ? 'flow' : 'flows'}
-                </p>
-              </div>
-            </div>
-
             {/* Toolbar: search + filters + sort + view toggle */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               {/* Left side: search + platform filter */}

@@ -384,7 +384,7 @@ export function PublishModal({
                     <SelectItem key={acc.id} value={acc.id}>
                       {acc.name}
                       {acc.phone_number ? ` (${acc.phone_number})` : ""}
-                      {acc.status !== "active" ? ` - ${acc.status}` : ""}
+                      {acc.status !== "active" ? " - inactive" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

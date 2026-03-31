@@ -7,8 +7,9 @@ const AUTO_SAVE_DELAY_MS = 1000
 
 /**
  * Debounced auto-save hook.
- * Saves draft to server when nodes/edges/platform change.
- * Flushes pending save on unmount (navigating away) so data is never lost.
+ * - Seeds baseline on first enable so server-loaded data isn't re-saved.
+ * - Flushes pending save on unmount and on disable (mode toggle).
+ * - Only active when `enabled` is true (gated on isEditMode in page.tsx).
  */
 export function useAutoSave(
   projectId: string,
@@ -21,22 +22,34 @@ export function useAutoSave(
   const lastSavedRef = useRef<string>("")
   const timerRef = useRef<ReturnType<typeof setTimeout>>()
   const pendingSaveRef = useRef<{ nodes: Node[]; edges: Edge[]; platform: Platform } | null>(null)
+  const initializedRef = useRef(false)
 
-  // Stable save function that doesn't change between renders
   const save = useCallback(
     (n: Node[], e: Edge[], p: Platform) => {
-      saveDraft.mutate({
-        projectId,
-        nodes: n,
-        edges: e,
-        platform: p,
-      })
+      saveDraft.mutate({ projectId, nodes: n, edges: e, platform: p })
     },
     [projectId, saveDraft.mutate],
   )
 
+  // Flush helper — saves pending data immediately
+  const flush = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (pendingSaveRef.current) {
+      const { nodes: n, edges: e, platform: p } = pendingSaveRef.current
+      lastSavedRef.current = JSON.stringify({ nodes: n, edges: e, platform: p })
+      pendingSaveRef.current = null
+      save(n, e, p)
+    }
+  }, [save])
+
+  // Main auto-save effect
   useEffect(() => {
-    if (!enabled || !projectId || projectId === "new" || nodes.length === 0) {
+    if (!enabled || !projectId || projectId === "new" || nodes.length === 0) return
+
+    // On first enable, seed the baseline with current data — don't save it back
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      lastSavedRef.current = JSON.stringify({ nodes, edges, platform })
       return
     }
 
@@ -46,13 +59,9 @@ export function useAutoSave(
       return
     }
 
-    // Track what needs to be saved
     pendingSaveRef.current = { nodes, edges, platform }
 
-    // Clear any pending save
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-    }
+    if (timerRef.current) clearTimeout(timerRef.current)
 
     timerRef.current = setTimeout(() => {
       lastSavedRef.current = snapshot
@@ -61,20 +70,19 @@ export function useAutoSave(
     }, AUTO_SAVE_DELAY_MS)
 
     return () => {
-      // Flush pending save on unmount — don't lose data when navigating away
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-      }
-      if (pendingSaveRef.current) {
-        const { nodes: n, edges: e, platform: p } = pendingSaveRef.current
-        lastSavedRef.current = JSON.stringify({ nodes: n, edges: e, platform: p })
-        pendingSaveRef.current = null
-        save(n, e, p)
-      }
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [nodes, edges, platform, projectId, enabled, save])
 
-  return {
-    isSaving: saveDraft.isPending,
-  }
+  // On disable (switching to view mode) or unmount — flush pending save and reset
+  useEffect(() => {
+    if (!enabled && initializedRef.current) {
+      flush()
+      initializedRef.current = false
+    }
+    // Flush on unmount (navigating away)
+    return () => flush()
+  }, [enabled, flush])
+
+  return { isSaving: saveDraft.isPending, flush }
 }

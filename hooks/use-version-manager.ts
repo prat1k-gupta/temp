@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Node, Edge } from '@xyflow/react'
 import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
-import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft } from '@/hooks/queries'
+import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft, versionKeys } from '@/hooks/queries'
+import { apiClient } from '@/lib/api-client'
 import { changeTracker } from '@/utils/change-tracker'
 import { getEditModeState, saveEditModeState } from '@/utils/version-storage'
 
@@ -21,6 +23,8 @@ function formatForReactFlow(nodes: any[], edges: any[]) {
 }
 
 export function useVersionManager(flowId: string) {
+  const queryClient = useQueryClient()
+
   const [editModeState, setEditModeState] = useState<EditModeState>({
     isEditMode: false,
     hasUnsavedChanges: false,
@@ -96,20 +100,55 @@ export function useVersionManager(flowId: string) {
   }, [flowId, versionsQuery.isLoading, draftQuery.isLoading, hasDraft, latestPublishedVersion?.id])
 
   /**
+   * Load draft from server and set on canvas.
+   * Fetches fresh from API (not cache) to ensure latest auto-saved data.
+   */
+  const loadDraftOntoCanvas = useCallback(async (
+    setNodes: (nodes: Node[]) => void,
+    setEdges: (edges: Edge[]) => void,
+    setPlatform: (platform: Platform) => void,
+  ) => {
+    try {
+      const data = await queryClient.fetchQuery({
+        queryKey: versionKeys.draft(flowId),
+        queryFn: async () => {
+          try {
+            const result = await apiClient.get<any>(`/api/magic-flow/projects/${flowId}/draft`)
+            return result?.draft || result
+          } catch {
+            return null
+          }
+        },
+        staleTime: 0,
+      })
+      if (data?.nodes) {
+        const { formattedNodes, formattedEdges } = formatForReactFlow(data.nodes, data.edges || [])
+        setNodes(formattedNodes)
+        setEdges(formattedEdges)
+        if (data.platform) setPlatform(data.platform as Platform)
+      }
+    } catch {
+      // No draft — stay on current canvas
+    }
+  }, [flowId, queryClient])
+
+  /**
    * Toggle edit mode on/off
    */
   const toggleEditMode = useCallback((setNodes: (nodes: Node[]) => void, setEdges: (edges: Edge[]) => void, setPlatform: (platform: Platform) => void) => {
     const newEditMode = !editModeState.isEditMode
 
     if (newEditMode) {
-      // Entering edit mode
-      setEditModeState(prev => ({
-        ...prev,
-        isEditMode: true,
-        hasUnsavedChanges: changeTracker.getChangesCount() > 0
-      }))
-      changeTracker.startTracking()
-      saveEditModeState(flowId, true)
+      // Entering edit mode — reload draft from server, THEN activate edit mode
+      loadDraftOntoCanvas(setNodes, setEdges, setPlatform).then(() => {
+        setEditModeState(prev => ({
+          ...prev,
+          isEditMode: true,
+          hasUnsavedChanges: changeTracker.getChangesCount() > 0
+        }))
+        changeTracker.startTracking()
+        saveEditModeState(flowId, true)
+      })
     } else {
       // Exiting edit mode — revert to published version
       if (latestPublishedVersion) {
@@ -398,18 +437,20 @@ export function useVersionManager(flowId: string) {
       changeTracker.pauseTracking()
       saveEditModeState(flowId, false)
     } else {
-      // Switch to edit mode
-      changeTracker.resumeTracking()
-      const currentChanges = changeTracker.getChanges()
-      setEditModeState(prev => ({
-        ...prev,
-        isEditMode: true,
-        hasUnsavedChanges: currentChanges.length > 0,
-        draftChanges: currentChanges
-      }))
-      saveEditModeState(flowId, true)
+      // Switch to edit mode — reload draft from server, THEN activate edit mode
+      loadDraftOntoCanvas(setNodes, setEdges, setPlatform).then(() => {
+        changeTracker.resumeTracking()
+        const currentChanges = changeTracker.getChanges()
+        setEditModeState(prev => ({
+          ...prev,
+          isEditMode: true,
+          hasUnsavedChanges: currentChanges.length > 0,
+          draftChanges: currentChanges
+        }))
+        saveEditModeState(flowId, true)
+      })
     }
-  }, [editModeState.isEditMode, latestPublishedVersion, flowId])
+  }, [editModeState.isEditMode, latestPublishedVersion, flowId, loadDraftOntoCanvas])
 
   /**
    * Reset to published version

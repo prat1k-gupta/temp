@@ -42,7 +42,7 @@ import { useSearchParams, useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 // Refactored imports
-import { nodeTypes, initialNodes, initialEdges } from "@/constants/node-types-registry"
+import { nodeTypes } from "@/constants/node-types-registry"
 import { injectNodeCallbacks } from "@/utils/node-data-injection"
 import { useVersionManager } from "@/hooks/use-version-manager"
 import { useFlowPersistence } from "@/hooks/use-flow-persistence"
@@ -58,7 +58,7 @@ import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
 import { changeTracker } from "@/utils/change-tracker"
-import { usePublishVersion, useWhatsAppFlows, useUpdateWhatsAppFlow, useCreateWhatsAppFlow, useSaveWhatsAppFlowToMeta, usePublishWhatsAppFlow } from "@/hooks/queries"
+import { usePublishVersion, useAutoSave, useWhatsAppFlows, useUpdateWhatsAppFlow, useCreateWhatsAppFlow, useSaveWhatsAppFlowToMeta, usePublishWhatsAppFlow } from "@/hooks/queries"
 
 function MagicFlowInner() {
   const params = useParams()
@@ -69,9 +69,10 @@ function MagicFlowInner() {
   const isSetupMode = searchParams?.get("setup") === "true" || isNewFlow
   // loadFromDb removed — all flows go through the API now
 
-  // Core ReactFlow state
-  const [nodes, setNodes, onNodesChangeOriginal] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChangeOriginal] = useEdgesState(initialEdges)
+  // Core ReactFlow state — start empty, real data comes from useFlowPersistence (server)
+  // or handleFlowSetupComplete (new flow). Never start with placeholder nodes.
+  const [nodes, setNodes, onNodesChangeOriginal] = useNodesState([] as Node[])
+  const [edges, setEdges, onEdgesChangeOriginal] = useEdgesState([] as Edge[])
   const [platform, setPlatform] = useState<Platform>("web")
   const [validationErrorIds, setValidationErrorIds] = useState<Set<string>>(new Set())
 
@@ -112,10 +113,6 @@ function MagicFlowInner() {
     return () => { document.body.removeAttribute("data-platform") }
   }, [platform])
 
-  // Version loading state
-  const [isLoadingVersion, setIsLoadingVersion] = useState(false)
-  const [isAutoEnteringEditMode, setIsAutoEnteringEditMode] = useState(false)
-
   const flowElementRef = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
 
@@ -143,18 +140,6 @@ function MagicFlowInner() {
     draftChanges,
   } = versionManager
 
-  // Wrap autoEnterEditMode to set the flag that prevents the version-loading
-  // useEffect from overwriting nodes/edges when switching view→edit mode
-  const wrappedAutoEnterEditMode = useCallback(
-    (sn: any, se: any, sp: any, n: Node[], e: Edge[], p: Platform) => {
-      if (!isEditMode) {
-        setIsAutoEnteringEditMode(true)
-      }
-      autoEnterEditMode(sn, se, sp, n, e, p)
-    },
-    [autoEnterEditMode, isEditMode]
-  )
-
   const persistence = useFlowPersistence({
     flowId,
     isNewFlow,
@@ -167,6 +152,10 @@ function MagicFlowInner() {
     setPlatform,
   })
 
+  // Auto-save: only active in edit mode after flow data has loaded
+  const autoSaveEnabled = !!flowId && !!persistence.currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && persistence.flowLoaded && isEditMode
+  const { isSaving, flush: autoSaveFlush } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled)
+
   const nodeOps = useNodeOperations({
     flowId,
     nodes,
@@ -178,7 +167,7 @@ function MagicFlowInner() {
     onNodesChangeOriginal,
     onEdgesChangeOriginal,
     isEditMode,
-    autoEnterEditMode: wrappedAutoEnterEditMode,
+    autoEnterEditMode,
     updateDraftChanges,
     currentFlow: persistence.currentFlow,
     setCurrentFlow: persistence.setCurrentFlow,
@@ -198,7 +187,7 @@ function MagicFlowInner() {
     setIsPropertiesPanelOpen: nodeOps.setIsPropertiesPanelOpen,
     setNodeToFocus: nodeOps.setNodeToFocus,
     isEditMode,
-    autoEnterEditMode: wrappedAutoEnterEditMode,
+    autoEnterEditMode,
     updateDraftChanges,
   })
 
@@ -214,7 +203,7 @@ function MagicFlowInner() {
     deleteNode: nodeOps.deleteNode,
     setNodeToFocus: nodeOps.setNodeToFocus,
     isEditMode,
-    autoEnterEditMode: wrappedAutoEnterEditMode,
+    autoEnterEditMode,
     updateDraftChanges,
     currentFlow: persistence.currentFlow,
     setCurrentFlow: persistence.setCurrentFlow,
@@ -237,7 +226,7 @@ function MagicFlowInner() {
     updateNodeData: nodeOps.updateNodeData,
     convertNode: nodeOps.convertNode,
     isEditMode,
-    autoEnterEditMode: wrappedAutoEnterEditMode,
+    autoEnterEditMode,
     updateDraftChanges,
     copyNodes: clipboard.copyNodes,
     pasteNodes: clipboard.pasteNodes,
@@ -283,18 +272,19 @@ function MagicFlowInner() {
   // --- Callbacks that stay in page.tsx ---
 
   const handleModeToggle = useCallback(() => {
+    autoSaveFlush() // Flush pending changes before switching modes
     const publishedVersion = getAllVersions().find((v) => v.isPublished)
     if (publishedVersion) {
       toggleViewDraft(setNodes, setEdges, setPlatform)
     } else {
       toggleEditMode(setNodes, setEdges, setPlatform)
     }
-  }, [getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
+  }, [autoSaveFlush, getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
 
   const importFlow = useCallback(
     (importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
       if (!isEditMode) {
-        wrappedAutoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
+        autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
       }
       changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
       updateDraftChanges()
@@ -311,52 +301,14 @@ function MagicFlowInner() {
 
       toast.success(`Flow imported successfully! ${importedNodes.length} nodes, ${importedEdges.length} edges`)
     },
-    [setNodes, setEdges, setPlatform, isEditMode, updateDraftChanges, wrappedAutoEnterEditMode, nodes, edges, platform, nodeOps, clipboard]
+    [setNodes, setEdges, setPlatform, isEditMode, updateDraftChanges, autoEnterEditMode, nodes, edges, platform, nodeOps, clipboard]
   )
 
   // --- Version initialization effects ---
 
-  useEffect(() => {
-    if (isAutoEnteringEditMode && editModeState.isEditMode) {
-      setIsAutoEnteringEditMode(false)
-    }
-  }, [editModeState.isEditMode, isAutoEnteringEditMode])
-
-  // Load published version when in view mode
-  // In edit mode, draft data is already loaded by useFlowPersistence (via useFlow)
-  useEffect(() => {
-    if (!isEditMode && currentVersion) {
-      const formattedNodes = currentVersion.nodes.map((node) => ({
-        ...node,
-        data: node.data || {},
-      }))
-      const formattedEdges = currentVersion.edges.map((edge) => ({
-        ...edge,
-        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
-      }))
-      setNodes(formattedNodes)
-      setEdges(formattedEdges)
-      setPlatform(currentVersion.platform)
-    }
-  }, [isEditMode, currentVersion])
-
-  // Load version when currentVersion changes
-  useEffect(() => {
-    if (currentVersion && (!isEditMode || isLoadingVersion)) {
-      const formattedNodes = currentVersion.nodes.map((node) => ({
-        ...node,
-        data: node.data || {},
-      }))
-      const formattedEdges = currentVersion.edges.map((edge) => ({
-        ...edge,
-        style: edge.style || { stroke: "#6366f1", strokeWidth: 2 },
-      }))
-      setNodes(formattedNodes)
-      setEdges(formattedEdges)
-      setPlatform(currentVersion.platform)
-      setIsLoadingVersion(false)
-    }
-  }, [currentVersion, isEditMode, isLoadingVersion])
+  // Canvas data is loaded by useFlowPersistence (single source of truth).
+  // View/edit mode toggles (toggleEditMode, toggleViewDraft, loadVersion)
+  // set nodes/edges directly — no effects needed.
 
   // Sync change tracker when canvas changes in edit mode
   useEffect(() => {
@@ -484,8 +436,7 @@ function MagicFlowInner() {
             setTimeout(() => setValidationErrorIds(new Set()), 6000)
           }}
           onCreateVersion={async (name, description) => {
-            setIsLoadingVersion(true)
-            try {
+                        try {
               const published = await createAndPublishVersion(nodes, edges, platform, name, description)
               if (published && persistence.currentFlow) {
                 await persistence.saveFlowFields({
@@ -500,8 +451,7 @@ function MagicFlowInner() {
             }
           }}
           onPublishVersion={async (_versionId, versionName, description) => {
-            setIsLoadingVersion(true)
-            try {
+                        try {
               const published = await publishCurrentVersion(nodes, edges, platform, versionName, description)
               if (published && persistence.currentFlow) {
                 await persistence.saveFlowFields({
@@ -575,8 +525,7 @@ function MagicFlowInner() {
           versions={getAllVersions()}
           currentVersion={currentVersion}
           onLoadVersion={(version) => {
-            setIsLoadingVersion(true)
-            loadVersion(version, setNodes, setEdges, setPlatform)
+                        loadVersion(version, setNodes, setEdges, setPlatform)
             nodeOps.setSelectedNode(null)
             clipboard.setSelectedNodes([])
             nodeOps.setIsPropertiesPanelOpen(false)

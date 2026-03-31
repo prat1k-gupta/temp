@@ -15,7 +15,7 @@ export function useWhatsAppFlows() {
   return useQuery<any[]>({
     queryKey: waFlowKeys.list(),
     queryFn: async () => {
-      const data = await apiClient.get<any>("/api/whatsapp-flows")
+      const data = await apiClient.get<any>("/api/flows")
       return data?.flows || data || []
     },
   })
@@ -29,7 +29,7 @@ export function useCreateWhatsAppFlow() {
 
   return useMutation({
     mutationFn: (body: Record<string, any>) =>
-      apiClient.post<any>("/api/whatsapp-flows", body),
+      apiClient.post<any>("/api/flows", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: waFlowKeys.all })
     },
@@ -44,7 +44,7 @@ export function useUpdateWhatsAppFlow() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) =>
-      apiClient.put<any>(`/api/whatsapp-flows/${id}`, data),
+      apiClient.put<any>(`/api/flows/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: waFlowKeys.all })
     },
@@ -59,7 +59,7 @@ export function useSaveWhatsAppFlowToMeta() {
 
   return useMutation({
     mutationFn: (id: string) =>
-      apiClient.post<any>(`/api/whatsapp-flows/${id}/save-to-meta`),
+      apiClient.post<any>(`/api/flows/${id}/save-to-meta`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: waFlowKeys.all })
     },
@@ -74,7 +74,7 @@ export function usePublishWhatsAppFlow() {
 
   return useMutation({
     mutationFn: (id: string) =>
-      apiClient.post<any>(`/api/whatsapp-flows/${id}/publish`),
+      apiClient.post<any>(`/api/flows/${id}/publish`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: waFlowKeys.all })
     },

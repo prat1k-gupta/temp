@@ -39,10 +39,8 @@ export function useCreateFlow() {
         params.triggerMatchType,
         params.triggerRef,
       ),
-    onSuccess: (newFlow) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: flowKeys.lists() })
-      // Seed the detail cache so navigating to the new flow is instant
-      queryClient.setQueryData(flowKeys.detail(newFlow.id), newFlow)
     },
   })
 }
@@ -56,10 +54,9 @@ export function useUpdateFlow(flowId: string) {
   return useMutation({
     mutationFn: (updates: Partial<Omit<FlowData, "id" | "createdAt">>) =>
       updateFlow(flowId, updates),
-    onSuccess: (updatedFlow) => {
-      if (updatedFlow) {
-        queryClient.setQueryData(flowKeys.detail(flowId), updatedFlow)
-      }
+    onSuccess: () => {
+      // Don't update detail cache — would trigger load effect and overwrite canvas.
+      // Canvas is the source of truth while editing.
       queryClient.invalidateQueries({ queryKey: flowKeys.lists() })
     },
   })

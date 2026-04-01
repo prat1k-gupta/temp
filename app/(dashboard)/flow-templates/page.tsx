@@ -275,7 +275,7 @@ export default function FlowTemplatesPage() {
   return (
     <div className="p-6">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border -mx-6 px-6">
         <h1 className="text-2xl font-bold">Flow Templates</h1>
         <Button
           onClick={() => setShowCreateModal(true)}

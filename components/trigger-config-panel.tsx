@@ -102,8 +102,8 @@ export function TriggerConfigPanel({
               isComingSoon
                 ? "border border-border opacity-50 cursor-not-allowed"
                 : isSelected
-                  ? "border-2 border-accent bg-accent/10 shadow-sm cursor-pointer"
-                  : "border border-border hover:border-accent/50 hover:bg-muted/50 cursor-pointer"
+                  ? "border-2 border-primary bg-primary/10 shadow-sm cursor-pointer"
+                  : "border border-border hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
             } disabled:opacity-50`}
           >
             <div className="flex items-center gap-2.5">

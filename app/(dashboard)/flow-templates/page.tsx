@@ -173,7 +173,7 @@ export default function FlowTemplatesPage() {
       onClick={onEdit}
     >
       {/* Indigo accent bar for templates */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${isDefault ? "bg-[#052762]" : "bg-indigo-500"}`} />
+      <div className={`absolute top-0 left-0 right-0 h-1 ${isDefault ? "bg-primary" : "bg-indigo-500"}`} />
 
       {isDefault && (
         <div className="absolute top-2 right-2 z-10">
@@ -195,7 +195,7 @@ export default function FlowTemplatesPage() {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`${isDefault ? "bg-[#052762]" : "bg-indigo-500"} p-2.5 rounded-lg text-white shrink-0 shadow-sm`}>
+            <div className={`${isDefault ? "bg-primary" : "bg-indigo-500"} p-2.5 rounded-lg text-white shrink-0 shadow-sm`}>
               <Layers className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">

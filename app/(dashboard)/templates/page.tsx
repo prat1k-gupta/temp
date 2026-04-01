@@ -271,7 +271,7 @@ export default function TemplatesPage() {
                 setEditingTemplate(null)
                 setShowBuilder(true)
               }}
-              className="gap-2 bg-[#052762] hover:bg-[#0A49B7] text-white"
+              className="gap-2"
             >
               <Plus className="w-4 h-4" />
               Create Your First Template
@@ -288,7 +288,7 @@ export default function TemplatesPage() {
                   setShowBuilder(true)
                 }}
               >
-                <div className="absolute top-0 left-0 right-0 h-1 bg-[#052762]" />
+                <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
 
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">

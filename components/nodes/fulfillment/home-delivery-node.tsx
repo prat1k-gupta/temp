@@ -20,38 +20,19 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
     notificationsEnabled: true
   }
 
-  const getPlatformColor = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "border-blue-100 dark:border-blue-900"
-      case "whatsapp":
-        return "border-green-100 dark:border-green-900"
-      case "instagram":
-        return "border-pink-100 dark:border-pink-900"
-    }
-  }
-
-  const getPlatformRing = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "ring-blue-300/50 dark:ring-blue-600/50"
-      case "whatsapp":
-        return "ring-green-300/50 dark:ring-green-600/50"
-      case "instagram":
-        return "ring-pink-300/50 dark:ring-pink-600/50"
-    }
-  }
+  const platformBorder = "border-platform-accent/20 dark:border-platform-accent/30"
+  const platformRing = "ring-platform-accent/30"
 
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-card ${getPlatformColor(platform)} transition-all ${
-          selected ? `ring-1 ${getPlatformRing(platform)}` : ""
+        className={`min-w-[260px] max-w-[300px] bg-card ${platformBorder} transition-all ${
+          selected ? `ring-1 ${platformRing}` : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-[#052762] rounded-md flex items-center justify-center flex-shrink-0">
+            <div className="w-5 h-5 bg-primary rounded-md flex items-center justify-center flex-shrink-0">
               <Package className="w-3 h-3 text-white" />
             </div>
             <h3 className="text-xs font-medium text-card-foreground flex-1">
@@ -68,7 +49,7 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
           {/* Vendor Information */}
           <div className="space-y-2 pt-1 border-t border-border">
             <div className="flex items-center gap-2">
-              <Truck className="w-3 h-3 text-[#2872F4]" />
+              <Truck className="w-3 h-3 text-primary" />
               <span className="text-[10px] font-medium text-card-foreground">{vendor.name}</span>
             </div>
             <p className="text-[9px] text-muted-foreground leading-relaxed">
@@ -82,7 +63,7 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
                   <Badge
                     key={index}
                     variant="secondary"
-                    className="text-[8px] h-4 px-1.5 bg-blue-50 dark:bg-blue-950/20 text-[#052762] dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                    className="text-[8px] h-4 px-1.5 bg-primary/5 dark:bg-primary/10 text-primary dark:text-primary/80 border-primary/20 dark:border-primary/30"
                   >
                     {feature}
                   </Badge>
@@ -94,19 +75,19 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
             <div className="space-y-1.5 pt-1">
               {configuration.trackingEnabled && (
                 <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  <CheckCircle2 className="w-3 h-3 text-success" />
                   <span>Real-time tracking enabled</span>
                 </div>
               )}
               {configuration.notificationsEnabled && (
                 <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  <CheckCircle2 className="w-3 h-3 text-success" />
                   <span>Notifications enabled</span>
                 </div>
               )}
               {configuration.deliveryWindow && (
                 <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
+                  <CheckCircle2 className="w-3 h-3 text-success" />
                   <span>Delivery window: {configuration.deliveryWindow}</span>
                 </div>
               )}
@@ -117,7 +98,7 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
         <Handle
           type="target"
           position={Position.Left}
-          className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
+          className="w-3 h-3 bg-primary border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -125,7 +106,7 @@ export function HomeDeliveryNode({ data, selected }: { data: any; selected?: boo
           <Handle
             type="source"
             position={Position.Right}
-            className="w-3 h-3 bg-[#052762] border-2 border-background opacity-100 hover:scale-110 transition-transform"
+            className="w-3 h-3 bg-primary border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

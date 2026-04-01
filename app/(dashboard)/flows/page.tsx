@@ -2,14 +2,15 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List, Zap, Link2, GitBranch, MoreHorizontal } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
+import { cn } from "@/lib/utils"
 import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
 import type { FlowMetadata } from "@/utils/flow-storage"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
@@ -20,14 +21,13 @@ type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest
 type PlatformFilter = "all" | Platform
 type ViewMode = "cards" | "table"
 
-function getStatusBadge(flow: FlowMetadata) {
-  if (flow.hasPublished) {
-    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100">Published</Badge>
+function getPlatformIconBg(platform: Platform) {
+  switch (platform) {
+    case "whatsapp": return "bg-[#25D366]/10 text-[#25D366]"
+    case "instagram": return "bg-pink-500/10 text-pink-500"
+    case "web": return "bg-blue-500/10 text-blue-500"
+    default: return "bg-muted text-muted-foreground"
   }
-  if (flow.hasDraft) {
-    return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-100">Draft</Badge>
-  }
-  return <Badge variant="secondary" className="text-muted-foreground">Not published</Badge>
 }
 
 export default function FlowsPage() {
@@ -160,169 +160,273 @@ export default function FlowsPage() {
   const isDuplicating = duplicateFlowMutation.isPending
   const isDeleting = deleteFlowMutation.isPending
 
-  // FlowCard component
+  // FlowCard component — v0 design
   const FlowCard = ({
     flow,
     onDuplicate,
     onDelete,
     onEdit,
-    showActions = true,
   }: {
     flow: FlowMetadata
     onDuplicate: () => void
     onDelete: () => void
     onEdit: () => void
     showActions?: boolean
-  }) => (
-    <Card
-      className="group relative overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer border hover:border-accent/50 hover:-translate-y-1"
-      onClick={onEdit}
-    >
-      {/* Platform-colored accent bar */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${getPlatformColor(flow.platform)}`} />
+  }) => {
+    const isLive = flow.hasPublished
 
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`${getPlatformColor(flow.platform)} p-2.5 rounded-lg text-white shrink-0 shadow-sm`}>
-              {getPlatformIcon(flow.platform)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base font-semibold truncate mb-1">
-                {flow.name}
-              </CardTitle>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                  {getPlatformDisplayName(flow.platform)}
-                </Badge>
-                {getStatusBadge(flow)}
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(flow.updatedAt)}
-                </span>
+    return (
+      <div
+        className={cn(
+          "group relative overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 cursor-pointer",
+          "hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+        )}
+        onClick={onEdit}
+      >
+        {/* Top accent line */}
+        <div className={cn(
+          "absolute top-0 left-0 right-0 h-[2px] transition-all duration-300",
+          isLive ? "bg-primary" : "bg-muted-foreground/30"
+        )} />
+
+        <div className="p-5">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg transition-colors", getPlatformIconBg(flow.platform))}>
+                {getPlatformIcon(flow.platform)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate font-semibold text-foreground">{flow.name}</h3>
+                <p className="truncate text-sm text-muted-foreground">
+                  {flow.description || "No description"}
+                </p>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {formatDate(flow.updatedAt)}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    disabled={isDuplicating}
+                    onClick={(e) => { e.stopPropagation(); onDuplicate() }}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onDelete() }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
+
+          {/* Status badges */}
+          <div className="mt-4 flex items-center gap-2">
+            <span className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+              isLive ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+            )}>
+              <span className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isLive ? "bg-primary animate-pulse" : "bg-muted-foreground"
+              )} />
+              {isLive ? "Live" : "Draft"}
+            </span>
+            {flow.hasDraft && isLive && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-500">
+                Has changes
+              </span>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <GitBranch className="h-3.5 w-3.5" />
+              <span>{flow.nodeCount} nodes</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-px w-3 bg-muted-foreground/50" />
+              <span>{flow.edgeCount} edges</span>
+            </div>
+          </div>
+
+          {/* Divider + Trigger & Slug */}
+          {((flow.triggerKeywords && flow.triggerKeywords.length > 0) || flow.flowSlug) && (
+            <>
+              <div className="my-4 h-px bg-border" />
+              <div className="space-y-2.5">
+                {flow.triggerKeywords && flow.triggerKeywords.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <Zap className="mt-0.5 h-3.5 w-3.5 text-primary" />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Triggers:</span>
+                      {flow.triggerKeywords.map((kw) => (
+                        <span key={kw} className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{kw}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {flow.flowSlug && (
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Slug:</span>
+                    <code className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{flow.flowSlug}</code>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
-      </CardHeader>
+      </div>
+    )
+  }
 
-      <CardContent className="pb-3">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-sm font-medium">{flow.nodeCount}</span>
-            <span className="text-xs text-muted-foreground">nodes</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
-            <div className="w-2 h-2 rounded-full bg-purple-500" />
-            <span className="text-sm font-medium">{flow.edgeCount}</span>
-            <span className="text-xs text-muted-foreground">edges</span>
-          </div>
-        </div>
-      </CardContent>
-
-      {showActions && (
-        <CardFooter className="pt-3 border-t">
-          <div className="flex items-center justify-end gap-1 w-full opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-3 text-xs gap-1.5"
-              disabled={isDuplicating}
-              onClick={(e) => {
-                e.stopPropagation()
-                onDuplicate()
-              }}
-            >
-              {isDuplicating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
-              Duplicate
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-3 text-xs gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete()
-              }}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete
-            </Button>
-          </div>
-        </CardFooter>
-      )}
-    </Card>
-  )
-
-  // Table view component
+  // Table view component — matches v0 design
   const FlowTable = () => (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-muted/50">
+          <tr className="border-b bg-muted/30">
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
-            <th className="text-left font-medium text-muted-foreground px-4 py-3">Platform</th>
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
-            <th className="text-right font-medium text-muted-foreground px-4 py-3">Nodes</th>
-            <th className="text-right font-medium text-muted-foreground px-4 py-3">Edges</th>
-            <th className="text-left font-medium text-muted-foreground px-4 py-3">Last Updated</th>
-            <th className="text-right font-medium text-muted-foreground px-4 py-3">Actions</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Structure</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Triggers</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Slug</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Updated</th>
+            <th className="w-10" />
           </tr>
         </thead>
         <tbody>
           {filteredFlows.map((flow) => (
             <tr
               key={flow.id}
-              className="border-b last:border-b-0 hover:bg-muted/50 cursor-pointer transition-colors"
+              className="group border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
               onClick={() => router.push(`/flow/${flow.id}`)}
             >
+              {/* Name + description */}
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className={`${getPlatformColor(flow.platform)} p-1.5 rounded-md text-white shrink-0`}>
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg shrink-0", getPlatformIconBg(flow.platform))}>
                     {getPlatformIcon(flow.platform)}
                   </div>
-                  <span className="font-medium truncate max-w-[250px]">{flow.name}</span>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate max-w-[200px]">{flow.name}</p>
+                    {flow.description && (
+                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">{flow.description}</p>
+                    )}
+                  </div>
                 </div>
               </td>
+              {/* Status */}
               <td className="px-4 py-3">
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                  {getPlatformDisplayName(flow.platform)}
-                </Badge>
-              </td>
-              <td className="px-4 py-3">
-                {getStatusBadge(flow)}
-              </td>
-              <td className="px-4 py-3 text-right tabular-nums">{flow.nodeCount}</td>
-              <td className="px-4 py-3 text-right tabular-nums">{flow.edgeCount}</td>
-              <td className="px-4 py-3 text-muted-foreground">{formatDate(flow.updatedAt)}</td>
-              <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 cursor-pointer"
-                    disabled={isDuplicating}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDuplicateFlow(flow.id, flow.name)
-                    }}
-                    title="Duplicate"
-                  >
-                    {isDuplicating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setFlowToDelete(flow.id)
-                    }}
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                <div className="flex items-center gap-1.5">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+                    flow.hasPublished ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                  )}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", flow.hasPublished ? "bg-primary" : "bg-muted-foreground")} />
+                    {flow.hasPublished ? "Live" : "Draft"}
+                  </span>
+                  {flow.hasDraft && flow.hasPublished && (
+                    <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-500">
+                      Changes
+                    </span>
+                  )}
                 </div>
+              </td>
+              {/* Structure */}
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <GitBranch className="h-3.5 w-3.5" />
+                  <span>{flow.nodeCount}</span>
+                  <span className="text-border">|</span>
+                  <span>{flow.edgeCount} edges</span>
+                </div>
+              </td>
+              {/* Triggers */}
+              <td className="px-4 py-3">
+                {flow.triggerKeywords && flow.triggerKeywords.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <div className="flex gap-1 flex-wrap">
+                      {flow.triggerKeywords.slice(0, 2).map((kw) => (
+                        <span key={kw} className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">{kw}</span>
+                      ))}
+                      {flow.triggerKeywords.length > 2 && (
+                        <span className="text-xs text-muted-foreground">+{flow.triggerKeywords.length - 2}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              {/* Slug */}
+              <td className="px-4 py-3">
+                {flow.flowSlug ? (
+                  <div className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <code className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">{flow.flowSlug}</code>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              {/* Updated */}
+              <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                {formatDate(flow.updatedAt)}
+              </td>
+              {/* Actions */}
+              <td className="px-2 py-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 cursor-pointer transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      disabled={isDuplicating}
+                      onClick={(e) => { e.stopPropagation(); handleDuplicateFlow(flow.id, flow.name) }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setFlowToDelete(flow.id) }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </td>
             </tr>
           ))}

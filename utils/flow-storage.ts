@@ -15,6 +15,9 @@ export interface FlowMetadata {
   thumbnail?: string
   hasDraft?: boolean
   hasPublished?: boolean
+  description?: string
+  triggerKeywords?: string[]
+  flowSlug?: string
   createdAt: string
   updatedAt: string
   nodeCount: number
@@ -59,12 +62,14 @@ export function mapProjectToMetadata(p: any): FlowMetadata {
   return {
     id: p.id,
     name: p.name,
-    description: p.description,
+    description: p.description || "",
     platform: p.platform,
     type: p.type || "flow",
     aiMetadata: p.ai_metadata || p.aiMetadata,
     hasDraft: p.has_draft ?? false,
     hasPublished: p.has_published ?? !!(p.published_flow_id || p.publishedFlowId),
+    triggerKeywords: p.trigger_keywords || p.triggerKeywords || [],
+    flowSlug: p.flow_slug || p.flowSlug || "",
     createdAt: p.created_at || p.createdAt,
     updatedAt: p.updated_at || p.updatedAt,
     nodeCount: p.node_count ?? p.nodeCount ?? 0,

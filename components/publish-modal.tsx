@@ -100,7 +100,7 @@ export function PublishModal({
         setVersionName(generateDefaultVersionName())
       } else if (publishMode === 'publish') {
         // For publish mode, use a default name based on current version
-        const defaultName = currentVersion ? `v${(currentVersion.version || 1) + 1} - Published Flow` : 'v1 - Published Flow'
+        const defaultName = 'Published'
         setVersionName(defaultName)
       }
     }
@@ -108,8 +108,7 @@ export function PublishModal({
 
   // Generate default version name
   const generateDefaultVersionName = () => {
-    const nextVersion = changes.length > 0 ? Math.floor(changes.length / 10) + 1 : 1
-    return `v${nextVersion} - Published Flow`
+    return 'Published'
   }
 
   const handlePublish = async () => {

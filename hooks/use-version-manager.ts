@@ -276,7 +276,7 @@ export function useVersionManager(flowId: string) {
     if (changeTracker.getChangesCount() > 0) {
       // Has changes — create + publish
       const allVersions = versionsQuery.data || []
-      const defaultName = versionName || `v${(allVersions.length + 1)} - Published Flow`
+      const defaultName = versionName || 'Published'
       return createAndPublishVersion(nodes, edges, platform, defaultName, description)
     } else if (editModeState.currentVersion && !editModeState.currentVersion.isPublished) {
       // No changes but current version not published — publish it

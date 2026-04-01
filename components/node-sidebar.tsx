@@ -89,7 +89,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
                 variant="outline"
                 size="icon"
                 onClick={() => setIsCollapsed(false)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-r-md rounded-l-none bg-accent/10 hover:bg-accent/60 border-accent/30 shadow-lg p-0 translate-x-full cursor-pointer"
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-r-md rounded-l-none bg-muted hover:bg-muted-foreground/20 border-border shadow-lg p-0 translate-x-full cursor-pointer"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -154,7 +154,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
               variant="outline"
               size="icon"
               onClick={() => setIsCollapsed(true)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-r-md rounded-l-none bg-accent/10 hover:bg-accent/60 border-accent/30 shadow-lg p-0 translate-x-full cursor-pointer"
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-50 h-12 w-6 rounded-r-md rounded-l-none bg-muted hover:bg-muted-foreground/20 border-border shadow-lg p-0 translate-x-full cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>

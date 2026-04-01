@@ -122,7 +122,7 @@ const NODE_ICONS = {
 
 const NODE_COLORS = {
   start: "bg-chart-2 text-white",
-  question: "bg-accent text-accent-foreground",
+  question: "bg-primary text-primary-foreground",
   quickReply: "bg-chart-1 text-white",
   interactiveList: "bg-chart-4 text-white",
   comment: "bg-yellow-400 text-yellow-900",

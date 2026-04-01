@@ -235,9 +235,9 @@ magic_flow_drafts            — auto-saved current work (per user per project)
 
 ---
 
-## Phase 2.7 — App Shell + Settings (prerequisite for Phase 3)
+## Phase 2.7 — App Shell + Settings ✅
 
-MagicFlow needs a proper app shell before Phase 3 features. Currently it's header-only with no navigation to settings, profile, or team management.
+MagicFlow app shell shipped with sidebar navigation, profile page, 5 settings pages, embedded signup, and design system cleanup.
 
 ### App Shell
 - Sidebar navigation (collapsible) replacing header-only layout
@@ -256,6 +256,18 @@ MagicFlow needs a proper app shell before Phase 3 features. Currently it's heade
 5. **API Keys** — API key management
 
 All backend endpoints already exist in fs-whatsapp — MagicFlow just needs React pages calling them via apiClient.
+
+---
+
+## Pre-Phase 3 — Flow Template Bugs
+
+Four issues with flow templates that need fixing before Phase 3 work.
+
+1. **Templates appear in Flows tab** — creating a flow template also shows it in the normal flows list. Type filtering (`?type=template`) not applied correctly on create or on the flows page query.
+2. **Normal flows sometimes created as templates** — creating a regular flow occasionally saves it with template type. Likely a stale state or wrong default in the create flow modal.
+3. **Template editor missing Save button** — editing a flow template has no save/publish button. Was there previously — may have been lost in the header redesign or a conditional rendering bug.
+4. **No loading state for templates** — fetching flow templates doesn't show a loading bar/skeleton. The flows page has loading state but the templates page doesn't.
+5. **Flow card enhancements** — trigger keywords and ref link should have clickable wa.me link icons (opens WhatsApp test). Show a connected/disconnected WhatsApp account indicator on each card.
 
 ---
 
@@ -517,6 +529,11 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 **Phase 2 — ✅ Complete** (March 2026)
 - 2.1-2.6 all shipped: Auth, backend tables, storage swap, React Query, proxy removal, localStorage removal
 - MagicFlow is now fully multi-user with server-backed persistent storage
+
+**Phase 2.7 — ✅ Complete** (April 2026)
+- App shell with sidebar, profile page, 5 settings pages, embedded signup
+- Design system cleanup: token architecture, color palette, sidebar, platform theming
+- Flow builder header redesign: version badge, auto-save indicator, overflow fix
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

@@ -183,7 +183,7 @@ export default function FlowsPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="truncate font-semibold text-foreground">{flow.name}</h3>
-                <p className="truncate text-sm text-muted-foreground">
+                <p className="line-clamp-2 text-sm text-muted-foreground">
                   {flow.description || "No description"}
                 </p>
               </div>
@@ -255,8 +255,8 @@ export default function FlowsPage() {
             </div>
           </div>
 
-          {/* Divider + Trigger & Slug */}
-          {((flow.triggerKeywords && flow.triggerKeywords.length > 0) || flow.flowSlug) && (
+          {/* Divider + Trigger & Slug & Ref Link */}
+          {((flow.triggerKeywords && flow.triggerKeywords.length > 0) || flow.flowSlug || flow.triggerRef) && (
             <>
               <div className="my-4 h-px bg-border" />
               <div className="space-y-2.5">
@@ -269,6 +269,13 @@ export default function FlowsPage() {
                         <span key={kw} className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{kw}</span>
                       ))}
                     </div>
+                  </div>
+                )}
+                {flow.triggerRef && (
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs text-muted-foreground">Ref link:</span>
+                    <code className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{flow.triggerRef}</code>
                   </div>
                 )}
                 {flow.flowSlug && (

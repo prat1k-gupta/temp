@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -13,7 +12,6 @@ import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icon
 import { cn } from "@/lib/utils"
 import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
 import type { FlowMetadata } from "@/utils/flow-storage"
-import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
 
@@ -92,19 +90,6 @@ export default function FlowsPage() {
     }
   }
 
-  const getPlatformColor = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "bg-blue-500"
-      case "whatsapp":
-        return "bg-green-500"
-      case "instagram":
-        return "bg-pink-500"
-      default:
-        return "bg-gray-500"
-    }
-  }
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -171,7 +156,6 @@ export default function FlowsPage() {
     onDuplicate: () => void
     onDelete: () => void
     onEdit: () => void
-    showActions?: boolean
   }) => {
     const isLive = flow.hasPublished
 
@@ -595,7 +579,6 @@ export default function FlowsPage() {
                     onDuplicate={() => handleDuplicateFlow(flow.id, flow.name)}
                     onDelete={() => setFlowToDelete(flow.id)}
                     onEdit={() => router.push(`/flow/${flow.id}`)}
-                    showActions={true}
                   />
                 ))}
               </div>

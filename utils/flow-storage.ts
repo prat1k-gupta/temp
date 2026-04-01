@@ -15,7 +15,6 @@ export interface FlowMetadata {
   thumbnail?: string
   hasDraft?: boolean
   hasPublished?: boolean
-  description?: string
   triggerKeywords?: string[]
   flowSlug?: string
   createdAt: string

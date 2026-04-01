@@ -13,6 +13,7 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getTemplate } from "@/utils/flow-storage"
 import { INTERACTION_THRESHOLDS } from "@/constants"
 import { changeTracker } from "@/utils/change-tracker"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { toast } from "sonner"
 
 interface UseFlowInteractionsParams {
@@ -122,7 +123,7 @@ export function useFlowInteractions({
       const newEdge = {
         ...params,
         type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       }
 
       withEditTracking()
@@ -553,7 +554,7 @@ export function useFlowInteractions({
         sourceHandle: connectionMenu.sourceHandleId,
         target: newNodeId,
         type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       }
 
       withEditTracking()

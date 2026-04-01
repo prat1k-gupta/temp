@@ -17,6 +17,7 @@ import {
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
 import { changeTracker } from "@/utils/change-tracker"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { updateFlow } from "@/utils/flow-storage"
 import type { FlowData } from "@/utils/flow-storage"
 import { toast } from "sonner"
@@ -405,7 +406,7 @@ export function useNodeOperations({
         source: sourceNodeId,
         target: newNodeId,
         type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       }
 
       withEditTracking()

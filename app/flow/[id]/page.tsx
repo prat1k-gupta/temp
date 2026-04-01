@@ -58,6 +58,7 @@ import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
 import { changeTracker } from "@/utils/change-tracker"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { usePublishVersion, useAutoSave, useWhatsAppFlows, useUpdateWhatsAppFlow, useCreateWhatsAppFlow, useSaveWhatsAppFlowToMeta, usePublishWhatsAppFlow } from "@/hooks/queries"
 
 function MagicFlowInner() {
@@ -337,8 +338,8 @@ function MagicFlowInner() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
-              <Loader2 className="w-12 h-12 animate-spin text-[#2872F4]" />
-              <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-[#052762] animate-pulse" />
+              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+              <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-primary animate-pulse" />
             </div>
             <div className="flex flex-col items-center gap-2">
               <h2 className="text-xl font-semibold bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent">
@@ -624,7 +625,7 @@ function MagicFlowInner() {
               .filter((edge) => edge && edge.id && edge.source && edge.target)
               .map((edge) => ({
                 ...edge,
-                style: { ...edge.style, strokeWidth: 2, stroke: "#6366f1" },
+                style: { ...edge.style, ...DEFAULT_EDGE_STYLE },
                 zIndex: 1,
               }))}
             onNodesChange={nodeOps.onNodesChange}
@@ -641,10 +642,10 @@ function MagicFlowInner() {
             nodeTypes={nodeTypes}
             fitView
             className="bg-background"
-            connectionLineStyle={{ stroke: "#6366f1", strokeWidth: 2 }}
+            connectionLineStyle={DEFAULT_EDGE_STYLE}
             defaultEdgeOptions={{
               type: "default",
-              style: { stroke: "#6366f1", strokeWidth: 2 },
+              style: DEFAULT_EDGE_STYLE,
             }}
             onError={(error) => {
               console.error("[v0] React Flow error:", error)

@@ -10,6 +10,7 @@ import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { processAiNodes, processAiEdges, transformAiNodeData, normalizeAiNodeType } from "@/utils/ai-data-transform"
 import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import { changeTracker } from "@/utils/change-tracker"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { updateFlow } from "@/utils/flow-storage"
 import type { FlowData } from "@/utils/flow-storage"
 import { useNodeSuggestions } from "@/hooks/use-node-suggestions"
@@ -471,7 +472,7 @@ export function useFlowAI({
                 target: aiEdge.target,
                 type: aiEdge.type || "default",
                 sourceHandle: (aiEdge as any).sourceHandle,
-                style: aiEdge.style || { stroke: "#6366f1", strokeWidth: 2 },
+                style: aiEdge.style || DEFAULT_EDGE_STYLE,
                 animated: false,
               })
             }
@@ -576,7 +577,7 @@ export function useFlowAI({
                 target: aiEdge.target,
                 type: aiEdge.type || "default",
                 sourceHandle: (aiEdge as any).sourceHandle,
-                style: aiEdge.style || { stroke: "#6366f1", strokeWidth: 2 },
+                style: aiEdge.style || DEFAULT_EDGE_STYLE,
                 animated: false,
               }
               if (!isEdgeDuplicate(updated, newEdge)) {

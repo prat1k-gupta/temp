@@ -1,6 +1,7 @@
 import type { Node, Edge } from "@xyflow/react"
 import type { WhatsAppInputType } from "@/types"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 // --- Types matching fs-whatsapp Go models ---
 
@@ -836,7 +837,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         id: `edge-start-${firstStepId}`,
         source: startNodeId,
         target: firstStepId,
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       })
     }
   }
@@ -856,7 +857,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           id: `edge-${sourceId}-${targetId}`,
           source: sourceId,
           target: targetId,
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         })
       }
     }
@@ -879,7 +880,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           source: sourceId,
           sourceHandle: handleId,
           target: targetId,
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         })
       }
     }
@@ -893,7 +894,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           source: sourceId,
           sourceHandle: "next-step",
           target: syncTargetId,
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         })
       }
     }
@@ -908,7 +909,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           source: sourceId,
           sourceHandle: `group-${idx + 1}`,
           target: targetId,
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         })
       })
     }

@@ -7,6 +7,7 @@
  *  3. BranchStep → edge from last multi-output node with sourceHandle, recurse.
  *  4. Enforce BUTTON_LIMITS per platform (trim excess branches).
  */
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, ButtonData, OptionData } from "@/types"
@@ -275,7 +276,7 @@ export function buildEditFlowFromPlan(
           sourceHandle: resolvedHandle,
           target: nodeId,
           type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         } as Edge)
 
         ctx.previousNodeId = nodeId
@@ -332,7 +333,7 @@ export function buildEditFlowFromPlan(
           sourceHandle: freeHandle,
           target: nodeId,
           type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         } as Edge)
 
         ctx.previousNodeId = nodeId
@@ -377,7 +378,7 @@ export function buildEditFlowFromPlan(
                   sourceHandle: handle,
                   target: chain.connectTo,
                   type: "default",
-                  style: { stroke: "#6366f1", strokeWidth: 2 },
+                  style: DEFAULT_EDGE_STYLE,
                 } as Edge)
               }
             }
@@ -395,7 +396,7 @@ export function buildEditFlowFromPlan(
                   sourceHandle: handleId,
                   target: chain.connectTo,
                   type: "default",
-                  style: { stroke: "#6366f1", strokeWidth: 2 },
+                  style: DEFAULT_EDGE_STYLE,
                 } as Edge)
               }
             }
@@ -406,7 +407,7 @@ export function buildEditFlowFromPlan(
             source: lastNodeId,
             target: chain.connectTo,
             type: "default",
-            style: { stroke: "#6366f1", strokeWidth: 2 },
+            style: DEFAULT_EDGE_STYLE,
           } as Edge)
         }
 
@@ -494,7 +495,7 @@ export function buildEditFlowFromPlan(
         target: newEdge.target,
         sourceHandle,
         type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       } as Edge)
     }
   }
@@ -625,7 +626,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
         source: ctx.previousNodeId,
         target: nodeId,
         type: "default",
-        style: { stroke: "#6366f1", strokeWidth: 2 },
+        style: DEFAULT_EDGE_STYLE,
       } as Edge)
 
       ctx.previousNodeId = nodeId
@@ -688,7 +689,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
             sourceHandle: handle,
             target: nodeId,
             type: "default",
-            style: { stroke: "#6366f1", strokeWidth: 2 },
+            style: DEFAULT_EDGE_STYLE,
           } as Edge)
         }
       } else if (endpointNode && isMultiOutputType(endpointType)) {
@@ -704,7 +705,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
             sourceHandle: handleId,
             target: nodeId,
             type: "default",
-            style: { stroke: "#6366f1", strokeWidth: 2 },
+            style: DEFAULT_EDGE_STYLE,
           } as Edge)
         }
       } else {
@@ -713,7 +714,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
           source: endpointId,
           target: nodeId,
           type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         } as Edge)
       }
     }
@@ -736,7 +737,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
           sourceHandle: fixedHandles[i],
           target: nodeId,
           type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         } as Edge)
       }
     } else {
@@ -752,7 +753,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
           sourceHandle: handleId,
           target: nodeId,
           type: "default",
-          style: { stroke: "#6366f1", strokeWidth: 2 },
+          style: DEFAULT_EDGE_STYLE,
         } as Edge)
       }
     }
@@ -767,7 +768,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
       source: ctx.previousNodeId,
       target: nodeId,
       type: "default",
-      style: { stroke: "#6366f1", strokeWidth: 2 },
+      style: DEFAULT_EDGE_STYLE,
     } as Edge)
   }
 
@@ -863,7 +864,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
       sourceHandle: handleId,
       target: nodeId,
       type: "default",
-      style: { stroke: "#6366f1", strokeWidth: 2 },
+      style: DEFAULT_EDGE_STYLE,
     } as Edge)
 
     branchCtx.previousNodeId = nodeId

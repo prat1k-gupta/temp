@@ -23,9 +23,9 @@ interface SuggestedNodesProps {
 
 // All AI suggestions use FS blue to indicate they're powered by Freestand AI
 const aiColors = {
-  card: "border-blue-200 dark:border-blue-800",
-  accent: "text-[#052762] dark:text-[#2872F4]",
-  button: "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] shadow-md hover:shadow-lg",
+  card: "border-primary/20 dark:border-primary/30",
+  accent: "text-primary",
+  button: "bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg",
 }
 
 export function SuggestedNodes({
@@ -41,11 +41,11 @@ export function SuggestedNodes({
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-2">
-          <Sparkles className="w-3 h-3 text-[#2872F4]" />
+          <Sparkles className="w-3 h-3 text-primary" />
           <span>Freestand AI is suggesting nodes...</span>
         </div>
         <div className="flex items-center justify-center py-4">
-          <Loader2 className="w-4 h-4 animate-spin text-[#2872F4]" />
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
         </div>
       </div>
     )
@@ -58,7 +58,7 @@ export function SuggestedNodes({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground mb-2">
-        <Sparkles className="w-3 h-3 text-[#2872F4]" />
+        <Sparkles className="w-3 h-3 text-primary" />
         <span>Suggested Nodes</span>
       </div>
       <div className="space-y-2">

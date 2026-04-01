@@ -138,12 +138,12 @@ const NODE_COLORS = {
   instagramDM: "bg-pink-400 text-white",
   instagramStory: "bg-pink-500 text-white",
   // Logic nodes
-  condition: "bg-[#0A49B7] text-white",
+  condition: "bg-primary text-primary-foreground",
   // Fulfillment nodes
-  homeDelivery: "bg-[#052762] text-white",
-  trackingNotification: "bg-[#052762] text-white",
-  event: "bg-[#052762] text-white",
-  retailStore: "bg-[#052762] text-white",
+  homeDelivery: "bg-primary text-primary-foreground",
+  trackingNotification: "bg-primary text-primary-foreground",
+  event: "bg-primary text-primary-foreground",
+  retailStore: "bg-primary text-primary-foreground",
   // Action nodes
   apiFetch: "bg-[#1a365d] text-white",
   transfer: "bg-[#7c2d12] text-white",
@@ -1741,7 +1741,7 @@ export function PropertiesPanel({
               {/* Configuration Settings */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Settings className="w-4 h-4 text-[#2872F4]" />
+                  <Settings className="w-4 h-4 text-primary" />
                   <h3 className="text-sm font-semibold text-foreground">Configuration</h3>
                 </div>
 
@@ -2134,12 +2134,12 @@ export function PropertiesPanel({
               </div>
 
               {/* Info Box */}
-              <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="p-4 bg-primary/5 dark:bg-primary/10 border border-primary/20 dark:border-primary/30 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <Package className="w-5 h-5 text-[#2872F4] mt-0.5" />
+                  <Package className="w-5 h-5 text-primary mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-medium text-[#052762] dark:text-blue-100 mb-1">Fulfillment Node</h4>
-                    <p className="text-xs text-[#052762] dark:text-blue-300">
+                    <h4 className="text-sm font-medium text-primary dark:text-primary/80 mb-1">Fulfillment Node</h4>
+                    <p className="text-xs text-primary/80 dark:text-primary/60">
                       Configure your fulfillment service settings below. The system will automatically select the most optimized vendor based on your configuration. Changes are applied in real-time and reflected in the node on the canvas.
                     </p>
                   </div>

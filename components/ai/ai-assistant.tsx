@@ -344,7 +344,7 @@ export function AIAssistant({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#2872F4]" />
+              <Sparkles className="w-4 h-4 text-primary" />
               <h3 className="font-semibold text-sm text-card-foreground">Freestand AI</h3>
             </div>
             <Button
@@ -386,7 +386,7 @@ export function AIAssistant({
                   <div
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 overflow-hidden ${
                       message.role === "user"
-                        ? "bg-gradient-to-br from-[#052762] via-[#0A49B7] to-[#2872F4] text-white shadow-md"
+                        ? "bg-primary text-white shadow-md"
                         : message.isError
                           ? "bg-destructive/10 text-foreground border border-destructive/20"
                           : "bg-muted/70 text-foreground"
@@ -413,7 +413,7 @@ export function AIAssistant({
                             className={`h-7 text-xs px-3 rounded-lg transition-all ${
                               isApplied
                                 ? "bg-green-600/90 hover:bg-green-600/90 text-white cursor-default"
-                                : "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] text-white shadow-sm hover:shadow-md"
+                                : "bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md"
                             }`}
                             size="sm"
                           >
@@ -493,7 +493,7 @@ export function AIAssistant({
         className="flex items-center gap-2 rounded-full border border-border/50 bg-card/95 backdrop-blur-xl px-4 py-2 shadow-xl min-w-0 cursor-text"
         style={containerWidth ? { width: `${containerWidth}px` } : { width: "100%" }}
       >
-        <Sparkles className="w-4 h-4 text-[#2872F4] flex-shrink-0" />
+        <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
         <Textarea
           ref={inputRef}
           value={input}
@@ -514,7 +514,7 @@ export function AIAssistant({
           onClick={() => handleSend()}
           size="sm"
           disabled={!input.trim() || isLoading}
-          className="h-8 w-8 p-0 bg-gradient-to-br from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] flex-shrink-0 rounded-md shadow-md hover:shadow-lg transition-all"
+          className="h-8 w-8 p-0 bg-primary hover:bg-primary/90 flex-shrink-0 rounded-md shadow-md hover:shadow-lg transition-all"
           aria-label="Send message"
         >
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

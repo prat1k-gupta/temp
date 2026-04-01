@@ -32,6 +32,7 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform, TemplateAIMetadata } from "@/types"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 export default function FlowTemplatesPage() {
   const router = useRouter()
@@ -173,7 +174,7 @@ export default function FlowTemplatesPage() {
       onClick={onEdit}
     >
       {/* Indigo accent bar for templates */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${isDefault ? "bg-[#052762]" : "bg-indigo-500"}`} />
+      <div className={`absolute top-0 left-0 right-0 h-1 ${isDefault ? "bg-primary" : "bg-indigo-500"}`} />
 
       {isDefault && (
         <div className="absolute top-2 right-2 z-10">
@@ -195,7 +196,7 @@ export default function FlowTemplatesPage() {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`${isDefault ? "bg-[#052762]" : "bg-indigo-500"} p-2.5 rounded-lg text-white shrink-0 shadow-sm`}>
+            <div className={`${isDefault ? "bg-primary" : "bg-indigo-500"} p-2.5 rounded-lg text-white shrink-0 shadow-sm`}>
               <Layers className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">
@@ -273,10 +274,8 @@ export default function FlowTemplatesPage() {
   )
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Flow Templates</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="Flow Templates">
         <Button
           onClick={() => setShowCreateModal(true)}
           className="gap-2 cursor-pointer"
@@ -284,7 +283,7 @@ export default function FlowTemplatesPage() {
           <Plus className="w-4 h-4" />
           New Template
         </Button>
-      </div>
+      </PageHeader>
 
       <div>
         <div className="space-y-12">

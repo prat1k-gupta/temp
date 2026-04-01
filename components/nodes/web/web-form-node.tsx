@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Plus, X, Edit2, Check, XIcon, Globe } from "lucide-react"
-import { getPlatformConfig } from "@/lib/platform-config"
 
 interface FormField {
   id: string
@@ -31,8 +30,6 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
   const [editingTitleValue, setEditingTitleValue] = useState(data.title)
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null)
   const [editingFieldValue, setEditingFieldValue] = useState("")
-
-  const platformConfig = getPlatformConfig(data.platform)
 
   useEffect(() => {
     setEditingTitleValue(data.title)
@@ -76,7 +73,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
     <BaseNode data={data}>
       <div className="min-w-[320px] max-w-[400px] p-4">
         {/* Web platform header with globe icon and blue branding */}
-        <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ backgroundColor: "#3b82f6" }}>
+        <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-primary">
           <Globe className="w-4 h-4 text-white" />
           <span className="text-xs font-medium text-white">Web Form</span>
         </div>
@@ -104,10 +101,10 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
             </div>
           ) : (
             <div
-              className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+              className="flex items-center gap-2 cursor-pointer hover:bg-muted p-1 rounded"
               onClick={() => setIsEditingTitle(true)}
             >
-              <h3 className="text-sm font-medium text-gray-900">{data.title}</h3>
+              <h3 className="text-sm font-medium text-card-foreground">{data.title}</h3>
               <Edit2 className="w-3 h-3 text-muted-foreground" />
             </div>
           )}
@@ -119,7 +116,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
             <div key={field.id} className="group relative">
               <div className="flex items-center justify-between mb-1">
                 <Label className="text-xs text-muted-foreground">
-                  {field.label} {field.required && <span className="text-red-500">*</span>}
+                  {field.label} {field.required && <span className="text-destructive">*</span>}
                 </Label>
                 <Button
                   size="sm"
@@ -133,7 +130,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
               {field.type === "textarea" ? (
                 <textarea
                   placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded resize-none"
+                  className="w-full px-2 py-1 text-xs border border-input rounded resize-none bg-background text-foreground"
                   rows={2}
                   disabled
                 />
@@ -156,7 +153,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
         </Button>
 
         {/* Submit Button Preview */}
-        <Button className="w-full h-8 text-xs" style={{ backgroundColor: data.platform ? getPlatformConfig(data.platform).colors.primary : "#3b82f6" }}>
+        <Button className="w-full h-8 text-xs bg-platform-accent text-platform-accent-foreground">
           {data.submitText || "Submit"}
         </Button>
       </div>

@@ -14,6 +14,7 @@ import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
 import type { FlowMetadata } from "@/utils/flow-storage"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest"
 type PlatformFilter = "all" | Platform
@@ -23,7 +24,7 @@ function getPlatformIconBg(platform: Platform) {
   switch (platform) {
     case "whatsapp": return "bg-[#25D366]/10 text-[#25D366]"
     case "instagram": return "bg-pink-500/10 text-pink-500"
-    case "web": return "bg-blue-500/10 text-blue-500"
+    case "web": return "bg-primary/10 text-primary"
     default: return "bg-muted text-muted-foreground"
   }
 }
@@ -427,15 +428,13 @@ export default function FlowsPage() {
   ]
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Flows</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="Flows">
         <Button onClick={handleCreateFlow} className="gap-2 cursor-pointer">
           <Plus className="w-4 h-4" />
           New Flow
         </Button>
-      </div>
+      </PageHeader>
 
       <div>
         {loading ? (
@@ -452,7 +451,7 @@ export default function FlowsPage() {
             <Button
               onClick={handleCreateFlow}
               size="lg"
-              className="gap-2 h-12 px-8 text-base shadow-lg hover:shadow-xl transition-all bg-[#052762] hover:bg-[#0A49B7] text-white"
+              className="gap-2 h-12 px-8 text-base shadow-lg hover:shadow-xl transition-all"
             >
               <Plus className="w-5 h-5" />
               Create Your First Flow
@@ -507,11 +506,7 @@ export default function FlowsPage() {
                       key={pf.value}
                       variant={platformFilter === pf.value ? "default" : "outline"}
                       size="sm"
-                      className={`cursor-pointer text-xs h-8 ${
-                        platformFilter === pf.value
-                          ? "bg-[#052762] text-white hover:bg-[#0A49B7]"
-                          : ""
-                      }`}
+                      className="cursor-pointer text-xs h-8"
                       onClick={() => setPlatformFilter(pf.value)}
                     >
                       {pf.value !== "all" && (

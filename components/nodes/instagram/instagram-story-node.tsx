@@ -68,7 +68,7 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
 
             {/* Character count */}
             <div className="flex items-center justify-between">
-              <span className={`text-xs ${isOverLimit ? "text-red-500" : "text-gray-500"}`}>
+              <span className={`text-xs ${isOverLimit ? "text-destructive" : "text-muted-foreground"}`}>
                 {editingValue.length}/{maxLength}
                 {isOverLimit && <span className="ml-1 bg-red-100 text-red-600 px-1 rounded text-xs">Over limit</span>}
               </span>
@@ -84,17 +84,17 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
           </div>
         ) : (
           <div
-            className="cursor-pointer hover:bg-gray-50 p-2 rounded border border-gray-200 min-h-[60px] flex items-center"
+            className="cursor-pointer hover:bg-muted p-2 rounded border border-border min-h-[60px] flex items-center"
             onClick={() => setIsEditing(true)}
           >
             <div className="flex-1">
               <VariableHighlightText
                 text={data.text || "Tap to reply..."}
                 flowVariables={(data as any).flowVariables || []}
-                className="text-sm text-gray-900 whitespace-pre-wrap"
+                className="text-sm text-card-foreground whitespace-pre-wrap"
               />
               <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-muted-foreground">
                   {data.text.length}/{maxLength} characters
                 </span>
                 <Edit2 className="w-3 h-3 text-muted-foreground" />

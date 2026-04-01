@@ -19,9 +19,9 @@ interface AISuggestionsPanelProps {
 
 // All AI suggestions use FS blue to indicate they're powered by Freestand AI
 const aiColors = {
-  card: "border-blue-200 dark:border-blue-800",
-  accent: "text-[#052762] dark:text-[#2872F4]",
-  button: "bg-gradient-to-r from-[#052762] to-[#0A49B7] hover:from-[#0A49B7] hover:to-[#2872F4] shadow-md hover:shadow-lg",
+  card: "border-primary/20 dark:border-primary/30",
+  accent: "text-primary",
+  button: "bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg",
 }
 
 export function AISuggestionsPanel({
@@ -46,7 +46,7 @@ export function AISuggestionsPanel({
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-[#2872F4]" />
+          <Sparkles className="w-4 h-4 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">Freestand AI Suggestions</h2>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0">
@@ -58,12 +58,12 @@ export function AISuggestionsPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-[#2872F4] mb-3" />
+            <Loader2 className="w-6 h-6 animate-spin text-primary mb-3" />
             <p className="text-sm text-muted-foreground">Freestand AI is suggesting nodes...</p>
           </div>
         ) : suggestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <Sparkles className="w-8 h-8 text-[#2872F4] mb-3 opacity-50" />
+            <Sparkles className="w-8 h-8 text-primary mb-3 opacity-50" />
             <p className="text-sm text-muted-foreground text-center">
               No suggestions available for this node
             </p>

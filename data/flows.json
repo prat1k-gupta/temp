@@ -59,7 +59,7 @@
         "target": "name-1764447436065",
         "type": "default",
         "style": {
-          "stroke": "#6366f1",
+          "stroke": "var(--edge-color)",
           "strokeWidth": 2
         }
       }

@@ -2,7 +2,6 @@ import type React from "react"
 import { memo } from "react"
 import { Handle, Position } from "@xyflow/react"
 import type { Platform } from "@/types"
-import { getPlatformConfig } from "@/lib/platform-config"
 
 export interface BaseNodeData {
   id: string
@@ -17,23 +16,12 @@ export interface BaseNodeProps {
 }
 
 export const BaseNode = memo(({ data, children }: BaseNodeProps) => {
-  const platformConfig = getPlatformConfig(data.platform)
-  const platformColors = platformConfig.colors
-
   return (
-    <div
-      className="relative bg-card border-2 rounded-lg shadow-sm hover:shadow-md transition-shadow"
-      style={{
-        borderColor: platformColors?.primary || "#3b82f6",
-      }}
-    >
+    <div className="relative bg-card border-2 border-platform-accent rounded-lg shadow-sm hover:shadow-md transition-shadow">
       <Handle type="target" position={Position.Top} className="w-3 h-3 !bg-muted-foreground border-2 border-background" />
 
       {/* Platform indicator */}
-      <div
-        className="absolute -top-2 -right-2 w-4 h-4 rounded-full text-xs flex items-center justify-center text-white font-bold"
-        style={{ backgroundColor: platformColors?.primary || "#3b82f6" }}
-      >
+      <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-platform-accent text-xs flex items-center justify-center text-platform-accent-foreground font-bold">
         {data.platform.charAt(0).toUpperCase()}
       </div>
 

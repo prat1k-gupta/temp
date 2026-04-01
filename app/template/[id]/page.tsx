@@ -38,6 +38,7 @@ import { FlowGraphPanel } from "@/components/flow/flow-graph-panel"
 import { PaneContextMenu } from "@/components/flow/pane-context-menu"
 import { NodeContextMenu } from "@/components/flow/node-context-menu"
 import { PropertiesPanelWrapper } from "@/components/flow/properties-panel-wrapper"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 // No-ops for version-related params (templates don't have versioning)
 const noop = () => {}
@@ -249,7 +250,7 @@ function TemplateEditorInner() {
                 .filter((edge) => edge && edge.id && edge.source && edge.target)
                 .map((edge) => ({
                   ...edge,
-                  style: { ...edge.style, strokeWidth: 2, stroke: "#6366f1" },
+                  style: { ...edge.style, ...DEFAULT_EDGE_STYLE },
                   zIndex: 1,
                 }))}
               onNodesChange={nodeOps.onNodesChange}
@@ -266,10 +267,10 @@ function TemplateEditorInner() {
               nodeTypes={nodeTypes}
               fitView
               className="bg-background"
-              connectionLineStyle={{ stroke: "#6366f1", strokeWidth: 2 }}
+              connectionLineStyle={DEFAULT_EDGE_STYLE}
               defaultEdgeOptions={{
                 type: "default",
-                style: { stroke: "#6366f1", strokeWidth: 2 },
+                style: DEFAULT_EDGE_STYLE,
               }}
               onError={(error) => {
                 console.error("[Template] React Flow error:", error)
@@ -286,14 +287,14 @@ function TemplateEditorInner() {
                 nodeColor={(node) => {
                   switch (node.type) {
                     case "start":
-                      return "hsl(var(--chart-2))"
+                      return "var(--chart-2)"
                     case "question":
-                      return "hsl(var(--accent))"
+                      return "var(--primary)"
                     case "quickReply":
-                      return "hsl(var(--chart-1))"
+                      return "var(--chart-1)"
                     case "interactiveList":
                     case "whatsappInteractiveList":
-                      return "hsl(var(--chart-4))"
+                      return "var(--chart-4)"
                     case "comment":
                       return "#fbbf24"
                     default:

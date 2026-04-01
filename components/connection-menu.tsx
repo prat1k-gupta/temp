@@ -206,8 +206,8 @@ export function ConnectionMenu({ isOpen, position, onClose, onSelectNodeType, pl
                           }}
           >
                           <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${
-                            node.category === 'information' ? 'bg-[#052762]' :
-                            node.category === 'fulfillment' ? 'bg-[#052762]' :
+                            node.category === 'information' ? 'bg-primary' :
+                            node.category === 'fulfillment' ? 'bg-primary' :
                             node.category === 'integration' ? 'bg-blue-600' :
                             getPlatformColorClass(platform) === 'text-blue-600' ? 'bg-blue-500' :
                             getPlatformColorClass(platform) === 'text-green-600' ? 'bg-green-500' :

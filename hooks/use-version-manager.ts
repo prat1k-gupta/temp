@@ -5,6 +5,7 @@ import type { FlowVersion, FlowChange, Platform, EditModeState } from '@/types'
 import { useVersions, useDraft, useCreateVersion, usePublishVersion, useDeleteDraft, versionKeys } from '@/hooks/queries'
 import { apiClient } from '@/lib/api-client'
 import { changeTracker } from '@/utils/change-tracker'
+import { DEFAULT_EDGE_STYLE } from '@/constants/edge-styles'
 
 /**
  * Format nodes/edges for ReactFlow (ensure data/style objects exist).
@@ -16,7 +17,7 @@ function formatForReactFlow(nodes: any[], edges: any[]) {
   }))
   const formattedEdges = edges.map(edge => ({
     ...edge,
-    style: edge.style || { stroke: "#6366f1", strokeWidth: 2 }
+    style: edge.style || DEFAULT_EDGE_STYLE
   }))
   return { formattedNodes, formattedEdges }
 }

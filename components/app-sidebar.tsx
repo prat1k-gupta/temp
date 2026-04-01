@@ -40,13 +40,14 @@ import {
   Key,
   LogOut,
   User,
+  ChevronLeft,
   ChevronRight,
   Sun,
   Moon,
   Monitor,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { LogoClosed } from "@/components/freestand-logo"
+import { LogoClosed, LogoFull } from "@/components/freestand-logo"
 import { getUser, logout, type AuthUser } from "@/lib/auth"
 import {
   Collapsible,
@@ -79,7 +80,7 @@ function getInitials(name: string): string {
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { state } = useSidebar()
+  const { state, toggleSidebar } = useSidebar()
   const { theme, setTheme } = useTheme()
   const [user, setUser] = useState<AuthUser | null>(null)
   useEffect(() => { setUser(getUser()) }, [])
@@ -88,38 +89,31 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/flows">
-                {isCollapsed ? (
-                  <LogoClosed className="h-6 w-6" />
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <LogoClosed className="h-8 w-8" />
-                    <span className="text-sm font-semibold">Freestand</span>
-                  </div>
-                )}
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="!p-0 !gap-0 h-[65px] flex items-center justify-center border-b border-sidebar-border">
+        <Link href="/flows" className="flex items-center justify-center">
+          {isCollapsed ? (
+            <LogoClosed className="h-8 w-8 text-white" />
+          ) : (
+            <LogoFull className="h-7 text-white" />
+          )}
+        </Link>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               {NAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
                     isActive={pathname === item.path}
                     tooltip={item.label}
+                    size="default"
+                    className="h-9 text-[13px]"
                   >
                     <Link href={item.path}>
-                      <item.icon />
+                      <item.icon className="!w-[18px] !h-[18px]" />
                       <span>{item.label}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -133,8 +127,9 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       isActive={isSettingsActive}
                       tooltip="Settings"
+                      className="h-9 text-[13px]"
                     >
-                      <Settings />
+                      <Settings className="!w-[18px] !h-[18px]" />
                       <span>Settings</span>
                       <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
@@ -163,20 +158,20 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t">
+      <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent cursor-pointer"
+                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-sidebar-accent cursor-pointer overflow-hidden group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0"
                 >
-                  <Avatar className="h-7 w-7">
+                  <Avatar className="h-7 w-7 shrink-0">
                     <AvatarFallback className="text-xs">
                       {getInitials(user?.full_name || "U")}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-col text-left text-xs leading-tight">
+                  <div className="flex flex-col text-left text-xs leading-tight min-w-0 group-data-[collapsible=icon]:hidden">
                     <span className="font-medium truncate">
                       {user?.full_name}
                     </span>

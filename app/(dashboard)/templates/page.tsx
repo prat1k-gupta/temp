@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, RefreshCw, Trash2, Copy, FileText, Send, Loader2 } from "lucide-react"
 import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
 
 interface Template {
@@ -197,10 +198,8 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">WhatsApp Templates</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="WhatsApp Templates">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -222,7 +221,7 @@ export default function TemplatesPage() {
             Create Template
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       <div>
         {/* Filter bar */}
@@ -271,7 +270,7 @@ export default function TemplatesPage() {
                 setEditingTemplate(null)
                 setShowBuilder(true)
               }}
-              className="gap-2 bg-[#052762] hover:bg-[#0A49B7] text-white"
+              className="gap-2"
             >
               <Plus className="w-4 h-4" />
               Create Your First Template
@@ -288,7 +287,7 @@ export default function TemplatesPage() {
                   setShowBuilder(true)
                 }}
               >
-                <div className="absolute top-0 left-0 right-0 h-1 bg-[#052762]" />
+                <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
 
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">

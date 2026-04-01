@@ -15,40 +15,23 @@ interface AIButtonSuggestionsProps {
   onCancel: () => void
 }
 
-const platformColors = {
-  web: {
-    badge: "bg-[#052762] hover:bg-[#0A49B7]",
-    text: "text-[#052762] dark:text-[#2872F4]",
-    border: "border-blue-200 dark:border-blue-800",
-    hover: "hover:bg-blue-50 dark:hover:bg-blue-900/20",
-    button: "bg-[#052762] hover:bg-[#0A49B7]"
-  },
-  whatsapp: {
-    badge: "bg-green-500 hover:bg-green-600",
-    text: "text-green-600 dark:text-green-400",
-    border: "border-green-200 dark:border-green-800",
-    hover: "hover:bg-green-50 dark:hover:bg-green-900/20",
-    button: "bg-green-500 hover:bg-green-600"
-  },
-  instagram: {
-    badge: "bg-pink-500 hover:bg-pink-600",
-    text: "text-pink-600 dark:text-pink-400",
-    border: "border-pink-200 dark:border-pink-800",
-    hover: "hover:bg-pink-50 dark:hover:bg-pink-900/20",
-    button: "bg-pink-500 hover:bg-pink-600"
-  }
+const aiColors = {
+  badge: "bg-primary hover:bg-primary/90",
+  text: "text-primary",
+  border: "border-primary/20 dark:border-primary/30",
+  hover: "hover:bg-primary/5 dark:hover:bg-primary/10",
+  button: "bg-primary hover:bg-primary/90"
 }
 
 export function AIButtonSuggestions({
   suggestedButtons,
   maxButtons = 10,
-  platform,
   loading = false,
   onGenerateMore,
   onAccept,
   onCancel
 }: AIButtonSuggestionsProps) {
-  const colors = platformColors[platform] || platformColors.web
+  const colors = aiColors
   const canGenerateMore = suggestedButtons.length < maxButtons
 
   return (
@@ -90,11 +73,11 @@ export function AIButtonSuggestions({
             className={`w-full h-7 px-2 text-xs gap-1.5 ${colors.border} ${colors.hover}`}
           >
             {loading ? (
-              <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
+              <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             ) : (
-              <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
+              <Sparkles className="w-3.5 h-3.5 text-primary" />
             )}
-            <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
+            <span className="text-primary font-medium">
               Add More ({suggestedButtons.length}/{maxButtons})
             </span>
           </Button>

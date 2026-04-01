@@ -127,14 +127,14 @@ export function AIToolbar({
                 e.preventDefault()
               }}
               disabled={isImproving || isShortening || !value.trim()}
-              className="h-6 px-1.5 text-xs gap-0 group hover:gap-1 hover:px-2 transition-all hover:bg-blue-50 dark:hover:bg-blue-900/20"
+              className="h-6 px-1.5 text-xs gap-0 group hover:gap-1 hover:px-2 transition-all hover:bg-primary/5 dark:hover:bg-primary/10"
             >
               {isImproving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2872F4]" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
               )}
-              <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent max-w-0 overflow-hidden group-hover:max-w-[60px] transition-all duration-200 whitespace-nowrap font-medium">
+              <span className="text-primary max-w-0 overflow-hidden group-hover:max-w-[60px] transition-all duration-200 whitespace-nowrap font-medium">
                 Improve
               </span>
             </Button>
@@ -163,24 +163,24 @@ export function AIToolbar({
                 }}
                 disabled={isImproving || isShortening || !value.trim()}
                 className={`h-6 px-1.5 text-xs gap-0 group hover:gap-1 hover:px-2 transition-all ${
-                  isOverLimit 
-                    ? 'hover:bg-orange-50 dark:hover:bg-orange-900/20' 
-                    : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                  isOverLimit
+                    ? 'hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                    : 'hover:bg-primary/5 dark:hover:bg-primary/10'
                 }`}
               >
                 {isShortening ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Minimize2 className={`w-3.5 h-3.5 ${
-                    isOverLimit 
-                      ? 'text-orange-500' 
-                      : 'text-blue-500'
+                    isOverLimit
+                      ? 'text-orange-500'
+                      : 'text-primary'
                   }`} />
                 )}
                 <span className={`max-w-0 overflow-hidden group-hover:max-w-[60px] transition-all duration-200 whitespace-nowrap ${
-                  isOverLimit 
-                    ? 'text-orange-600 dark:text-orange-400' 
-                    : 'text-blue-600 dark:text-blue-400'
+                  isOverLimit
+                    ? 'text-orange-600 dark:text-orange-400'
+                    : 'text-primary'
                 }`}>
                   Shorten
                 </span>

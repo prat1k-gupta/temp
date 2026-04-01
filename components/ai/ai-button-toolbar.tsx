@@ -202,14 +202,14 @@ export function AIButtonToolbar({
                 }}
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={ai.loading || !questionContext.trim()}
-                className="w-full h-7 px-2 text-xs gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                className="w-full h-7 px-2 text-xs gap-1.5 border-primary/20 dark:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/10"
               >
                 {ai.loading ? (
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
+                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 ) : (
-                  <Wand2 className="w-3.5 h-3.5 text-[#2872F4]" />
+                  <Wand2 className="w-3.5 h-3.5 text-primary" />
                 )}
-                <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
+                <span className="text-primary font-medium">
                   Generate Buttons
                 </span>
               </Button>
@@ -234,14 +234,14 @@ export function AIButtonToolbar({
                 }}
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={ai.loading}
-                className="w-full h-7 px-2 text-xs gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                className="w-full h-7 px-2 text-xs gap-1.5 border-primary/20 dark:border-primary/30 hover:bg-primary/5 dark:hover:bg-primary/10"
               >
                 {ai.loading ? (
-                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-[#2872F4] border-t-transparent" />
+                  <div className="w-3.5 h-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 ) : (
-                  <Sparkles className="w-3.5 h-3.5 text-[#2872F4]" />
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
                 )}
-                <span className="bg-gradient-to-r from-[#052762] to-[#2872F4] bg-clip-text text-transparent font-medium">
+                <span className="text-primary font-medium">
                   Add More ({buttons.length + nextBatchSize}/10)
                 </span>
               </Button>
@@ -287,9 +287,9 @@ export function AIButtonActions({
             }}
             onMouseDown={(e) => e.preventDefault()}
             disabled={disabled || !label.trim()}
-            className="h-5 w-5 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            className="h-5 w-5 p-0 hover:bg-primary/5 dark:hover:bg-primary/10"
           >
-            <Sparkles className="w-3 h-3 text-[#2872F4]" />
+            <Sparkles className="w-3 h-3 text-primary" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>

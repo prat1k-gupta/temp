@@ -12,6 +12,7 @@ import { flowPlanSchema, editFlowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { isMultiOutputType, getFixedHandles } from "@/utils/platform-helpers"
 import { collectFlowVariables } from "@/utils/flow-variables"
 
@@ -421,7 +422,7 @@ function processFlowResponse(
               source: "1",
               target: firstOrphan,
               type: "default",
-              style: { stroke: "#6366f1", strokeWidth: 2 },
+              style: DEFAULT_EDGE_STYLE,
             }
             parsed.flowData.edges.push(startEdge)
             connectedTargets.add(firstOrphan)

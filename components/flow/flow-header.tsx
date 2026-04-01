@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, FlowVersion, EditModeState, FlowChange } from "@/types"
 import type { FlowData } from "@/utils/flow-storage"
-import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -12,14 +13,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
-// PlatformSelector removed — platform is locked after flow creation
-import { ThemeToggle } from "@/components/theme-toggle"
+import { useTheme } from "next-themes"
 import { PublishModal } from "@/components/publish-modal"
 import {
   Upload,
@@ -28,7 +34,6 @@ import {
   RotateCcw,
   Edit3,
   ExternalLink,
-  Pencil,
   Eye,
   ArrowLeft,
   History,
@@ -38,9 +43,51 @@ import {
   Link,
   Network,
   LogOut,
+  Check,
+  ChevronDown,
+  Smartphone,
+  CloudUpload,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react"
 import { toast } from "sonner"
 import { logout } from "@/lib/auth"
+
+function SaveStatus({ isSaving, isEditMode }: { isSaving?: boolean; isEditMode: boolean }) {
+  const [showSaved, setShowSaved] = useState(false)
+  const [wasSaving, setWasSaving] = useState(false)
+
+  useEffect(() => {
+    if (isSaving) {
+      setWasSaving(true)
+      setShowSaved(false)
+    } else if (wasSaving) {
+      setWasSaving(false)
+      setShowSaved(true)
+      const timer = setTimeout(() => setShowSaved(false), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [isSaving, wasSaving])
+
+  if (!isEditMode || (!isSaving && !showSaved)) return null
+
+  return (
+    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {isSaving ? (
+        <>
+          <CloudUpload className="size-3.5 animate-pulse" />
+          <span className="text-xs">Saving changes</span>
+        </>
+      ) : (
+        <>
+          <CloudUpload className="size-3.5 text-emerald-600" />
+          <span className="text-xs text-emerald-600">Changes saved</span>
+        </>
+      )}
+    </div>
+  )
+}
 
 interface FlowHeaderProps {
   currentFlow: FlowData | null
@@ -92,6 +139,7 @@ interface FlowHeaderProps {
   onValidationError?: (nodeIds: string[]) => void
   isFlowGraphPanelOpen?: boolean
   onToggleFlowGraph?: () => void
+  isSaving?: boolean
 }
 
 export function FlowHeader({
@@ -144,184 +192,136 @@ export function FlowHeader({
   onValidationError,
   isFlowGraphPanelOpen,
   onToggleFlowGraph,
+  isSaving,
 }: FlowHeaderProps) {
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const { theme, setTheme } = useTheme()
+
+  const versionStatus: "draft" | "published" = isEditMode ? "draft" : (currentVersion?.isPublished ? "published" : "draft")
 
   return (
-    <>
-    <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border overflow-visible">
-      <div className="flex items-center justify-between px-6 py-3 gap-2">
+    <TooltipProvider delayDuration={300}>
+      <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between h-14 px-3 border-b bg-background/95 backdrop-blur-sm overflow-visible">
         {/* Left Section */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleBackClick}
-            className="shrink-0 h-8 w-8 p-0"
-            title="Back to flows"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+        <div className="flex items-center gap-2 min-w-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleBackClick}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8 text-muted-foreground shrink-0")}
+              >
+                <ArrowLeft className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Back to flows</TooltipContent>
+          </Tooltip>
+
           {currentFlow && (
             <>
-              {isEditingFlowName ? (
-                <Input
-                  value={editingFlowNameValue}
-                  onChange={(e) => setEditingFlowNameValue(e.target.value)}
-                  onBlur={handleFlowNameBlur}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.currentTarget.blur()
-                    }
-                    if (e.key === "Escape") {
-                      setEditingFlowNameValue(currentFlow.name)
-                      setIsEditingFlowName(false)
-                    }
-                  }}
-                  className="text-lg font-semibold h-8 px-2 min-w-[200px] max-w-[400px]"
-                  autoFocus
-                />
-              ) : (
-                <div
-                  className="flex items-center gap-2 group cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
-                  onClick={() => {
-                    setEditingFlowNameValue(currentFlow.name)
-                    setIsEditingFlowName(true)
-                  }}
-                >
-                  <h1 className="text-lg font-semibold text-foreground truncate">
-                    {currentFlow.name}
-                  </h1>
-                  <Edit3 className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </div>
-              )}
-              {currentVersion && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
-                  <span className="font-medium">{currentVersion.name}</span>
-                  {currentVersion.isPublished && !isEditMode ? (
-                    <>
-                      <Badge variant="secondary" className="text-xs px-2 py-0.5">Published</Badge>
-                      {platform !== "whatsapp" && currentVersion.previewUrl && (
-                        <a
-                          href={currentVersion.previewUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          Preview
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <Badge variant="outline" className="text-xs px-2 py-0.5">Draft</Badge>
-                  )}
-                  {!isEditMode && !currentVersion.isPublished && (
-                    <Badge variant="destructive" className="text-xs px-2 py-0.5">Previous</Badge>
-                  )}
-                </div>
-              )}
-              {publishedFlowId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(publishedFlowId)
-                    toast.success("Flow ID copied!")
-                  }}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted text-xs text-muted-foreground transition-colors cursor-pointer"
-                  title={`Flow ID: ${publishedFlowId}`}
-                >
-                  <Link className="w-3 h-3" />
-                  <span className="font-mono">{publishedFlowId.slice(0, 8)}...</span>
-                  <Copy className="w-3 h-3" />
-                </button>
-              )}
-              {flowSlug && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(flowSlug)
-                    toast.success("Flow slug copied! Use as {{flow." + flowSlug + ".<var>}}")
-                  }}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50 text-xs text-purple-700 dark:text-purple-300 transition-colors cursor-pointer"
-                  title={`Flow slug: ${flowSlug} — use in cross-flow references as {{flow.${flowSlug}.<var>}}`}
-                >
-                  <span className="font-medium">slug:</span>
-                  <span className="font-mono">{flowSlug}</span>
-                  <Copy className="w-3 h-3" />
-                </button>
-              )}
-              {platform === "whatsapp" && waPhoneNumber && triggerKeywords && triggerKeywords.length > 0 && (
-                triggerKeywords.length === 1 ? (
-                  <a
-                    href={`https://wa.me/${waPhoneNumber}?text=${encodeURIComponent(triggerKeywords[0])}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500 hover:bg-green-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Test on WhatsApp
-                  </a>
+              <div className="flex items-center gap-3">
+                {isEditingFlowName ? (
+                  <Input
+                    value={editingFlowNameValue}
+                    onChange={(e) => setEditingFlowNameValue(e.target.value)}
+                    onBlur={handleFlowNameBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur()
+                      if (e.key === "Escape") {
+                        setEditingFlowNameValue(currentFlow.name)
+                        setIsEditingFlowName(false)
+                      }
+                    }}
+                    className="text-base font-semibold h-8 px-2 min-w-[200px] max-w-[400px]"
+                    autoFocus
+                  />
                 ) : (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500 hover:bg-green-600 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 group cursor-pointer hover:bg-accent px-2 py-1 rounded transition-colors"
+                    onClick={() => {
+                      setEditingFlowNameValue(currentFlow.name)
+                      setIsEditingFlowName(true)
+                    }}
+                  >
+                    <h1 className="font-semibold text-base truncate">{currentFlow.name}</h1>
+                    <Edit3 className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </button>
+                )}
+                <SaveStatus isSaving={isSaving} isEditMode={isEditMode} />
+              </div>
+
+              <div className="h-5 w-px bg-border mx-1" />
+
+              {/* Version Badge Dropdown */}
+              {currentVersion && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-accent transition-colors text-sm cursor-pointer">
+                      <Clock className="size-3.5 text-muted-foreground" />
+                      <span className="font-medium">v{currentVersion.version}</span>
+                      <Badge
+                        variant={versionStatus === "draft" ? "secondary" : "default"}
+                        className={
+                          versionStatus === "draft"
+                            ? "text-[10px] px-1.5 py-0 h-4 uppercase tracking-wide bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800"
+                            : "text-[10px] px-1.5 py-0 h-4 uppercase tracking-wide"
+                        }
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Test on WhatsApp
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="min-w-[160px]">
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">Send keyword</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {triggerKeywords.map((kw) => (
-                        <DropdownMenuItem key={kw} asChild>
-                          <a
-                            href={`https://wa.me/${waPhoneNumber}?text=${encodeURIComponent(kw)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cursor-pointer"
-                          >
-                            <span className="font-mono text-xs">{kw}</span>
-                          </a>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )
+                        {versionStatus}
+                      </Badge>
+                      <ChevronDown className="size-3 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuItem onSelect={() => setIsVersionHistoryModalOpen(true)}>
+                      <History className="size-4" />
+                      Version History
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!getAllVersions().find((v) => v.isPublished)}
+                      onSelect={() => {
+                        if (!getAllVersions().find((v) => v.isPublished)) return
+                        setShowResetDialog(true)
+                      }}
+                    >
+                      <RotateCcw className="size-4" />
+                      Reset to Published
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </>
           )}
         </div>
 
-        {/* Center Section */}
+        {/* Right Section */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-2 bg-muted rounded-md p-1">
-            <button
-              onClick={handleModeToggle}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${
-                isEditMode
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Pencil className="w-4 h-4" />
-              <span>Edit Mode</span>
-            </button>
-            <button
-              onClick={handleModeToggle}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${
-                !isEditMode
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Eye className="w-4 h-4" />
-              <span>View Mode</span>
-            </button>
-          </div>
+          {/* Mode Toggle */}
+          <ToggleGroup
+            type="single"
+            value={isEditMode ? "edit" : "view"}
+            onValueChange={(v) => {
+              if (v && ((v === "edit" && !isEditMode) || (v === "view" && isEditMode))) {
+                handleModeToggle()
+              }
+            }}
+            variant="outline"
+            size="sm"
+          >
+            <ToggleGroupItem value="edit" className="gap-1.5 px-3 cursor-pointer">
+              <Edit3 className="size-3.5" />
+              Edit
+            </ToggleGroupItem>
+            <ToggleGroupItem value="view" className="gap-1.5 px-3 cursor-pointer">
+              <Eye className="size-3.5" />
+              View
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <div className="h-5 w-px bg-border mx-1" />
+
+          {/* Publish Button */}
           <PublishModal
             changes={draftChanges}
             hasUnsavedChanges={editModeState.hasUnsavedChanges}
@@ -345,159 +345,203 @@ export function FlowHeader({
             onValidationError={onValidationError}
           >
             <Button
-              variant="default"
               size="sm"
               disabled={(() => {
                 const hasChanges = hasActualChanges(nodes, edges, platform)
                 const changesCount = getChangesCount()
                 return !isEditMode || (!hasChanges && changesCount === 0)
               })()}
-              className="h-9 px-4 gap-2"
+              className="gap-1.5"
             >
-              <Upload className="w-4 h-4" />
+              <Upload className="size-3.5" />
               Publish
             </Button>
           </PublishModal>
-        </div>
 
-        {/* Right Section */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border-2 ${
-              platform === "web"
-                ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
-                : platform === "whatsapp"
-                  ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                  : "bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800"
-            }`}
-            title={getPlatformDisplayName(platform)}
-          >
-            {platform === "web" && <WebIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-            {platform === "whatsapp" && <WhatsAppIcon className="w-4 h-4 text-green-600 dark:text-green-400" />}
-            {platform === "instagram" && <InstagramIcon className="w-4 h-4 text-pink-600 dark:text-pink-400" />}
-            <span
-              className={`text-sm font-semibold ${
-                platform === "web"
-                  ? "text-blue-700 dark:text-blue-300"
-                  : platform === "whatsapp"
-                    ? "text-green-700 dark:text-green-300"
-                    : "text-pink-700 dark:text-pink-300"
-              }`}
-            >
-              {getPlatformDisplayName(platform)}
-            </span>
-          </div>
-
-          <Button
-            variant={isFlowGraphPanelOpen ? "secondary" : "ghost"}
-            size="sm"
-            onClick={onToggleFlowGraph}
-            className="h-9 w-9 p-0"
-            title="Flow Graph"
-          >
-            <Network className="w-4 h-4" />
-          </Button>
-
+          {/* Platform Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-primary hover:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 transition-colors cursor-pointer"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "gap-1.5",
+                  platform === "whatsapp"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                    : platform === "instagram"
+                      ? "bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100 hover:text-pink-800 dark:bg-pink-950/30 dark:border-pink-800 dark:text-pink-400 dark:hover:bg-pink-950/50"
+                      : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/50",
+                )}
               >
-                <MoreHorizontal className="w-4 h-4" />
-                <span className="sr-only">More options</span>
+                {platform === "whatsapp" && <WhatsAppIcon className="size-3.5" />}
+                {platform === "instagram" && <InstagramIcon className="size-3.5" />}
+                {platform === "web" && <WebIcon className="size-3.5" />}
+                {getPlatformDisplayName(platform)}
+                <ChevronDown className="size-3" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Flow Options</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-
-              {isEditMode && hasActualChanges(nodes, edges, platform) && (
-                <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
-                  <Clock className="w-4 h-4 mr-2" />
-                  {getChangesSummary()}
+            <DropdownMenuContent align="end" className="w-48">
+              {platform === "whatsapp" && waPhoneNumber && triggerKeywords && triggerKeywords.length > 0 && (
+                <>
+                  {triggerKeywords.map((kw) => (
+                    <DropdownMenuItem key={kw} asChild>
+                      <a
+                        href={`https://wa.me/${waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cursor-pointer"
+                      >
+                        <Smartphone className="size-4" />
+                        {triggerKeywords.length === 1 ? "Test on WhatsApp" : <>Test: <span className="font-mono">{kw}</span></>}
+                      </a>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {platform !== "whatsapp" && currentVersion?.isPublished && !isEditMode && currentVersion.previewUrl && (
+                <>
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={currentVersion.previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="cursor-pointer"
+                    >
+                      <ExternalLink className="size-4" />
+                      Preview
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {publishedFlowId && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    navigator.clipboard.writeText(publishedFlowId)
+                    toast.success("Flow ID copied!")
+                  }}
+                >
+                  <Link className="size-4" />
+                  Copy Flow ID
                 </DropdownMenuItem>
               )}
+              {flowSlug && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    navigator.clipboard.writeText(flowSlug)
+                    toast.success("Flow slug copied! Use as {{flow." + flowSlug + ".<var>}}")
+                  }}
+                >
+                  <Copy className="size-4" />
+                  Copy Slug
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem
-                disabled={!getAllVersions().find((v) => v.isPublished)}
-                onSelect={() => {
-                  if (!getAllVersions().find((v) => v.isPublished)) return
-                  setShowResetDialog(true)
-                }}
+          {/* Flow Graph */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  buttonVariants({ variant: isFlowGraphPanelOpen ? "secondary" : "ghost", size: "icon" }),
+                  "size-8",
+                )}
+                onClick={onToggleFlowGraph}
               >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reset to Published
-              </DropdownMenuItem>
+                <Network className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Flow Graph</TooltipContent>
+          </Tooltip>
 
-              <DropdownMenuSeparator />
-
+          {/* More Options */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8")}
+              >
+                <MoreHorizontal className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {isEditMode && hasActualChanges(nodes, edges, platform) && (
+                <>
+                  <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
+                    <Clock className="size-4" />
+                    {getChangesSummary()}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem onSelect={() => setIsExportModalOpen(true)}>
-                <Eye className="w-4 h-4 mr-2" />
+                <Upload className="size-4" />
                 Export/Import Flow
               </DropdownMenuItem>
-
-              <DropdownMenuItem onSelect={() => setIsVersionHistoryModalOpen(true)}>
-                <History className="w-4 h-4 mr-2" />
-                Version History
-              </DropdownMenuItem>
-
               <DropdownMenuItem onSelect={() => setIsScreenshotModalOpen(true)}>
-                <Camera className="w-4 h-4 mr-2" />
+                <Camera className="size-4" />
                 Take Screenshot
               </DropdownMenuItem>
-
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setTheme("light")}>
+                <Sun className="size-4" />
+                Light
+                {theme === "light" && <Check className="size-3 ml-auto" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTheme("dark")}>
+                <Moon className="size-4" />
+                Dark
+                {theme === "dark" && <Check className="size-3 ml-auto" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTheme("system")}>
+                <Monitor className="size-4" />
+                System
+                {theme === "system" && <Check className="size-3 ml-auto" />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={logout} className="cursor-pointer">
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                variant="destructive"
                 onSelect={() => setShowDeleteDialog(true)}
-                className="text-destructive focus:text-destructive cursor-pointer"
+                className="cursor-pointer"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="size-4" />
                 Delete Flow
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              <div className="px-2 py-1.5">
-                <ThemeToggle />
-              </div>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem onSelect={logout} className="cursor-pointer">
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
-    </div>
+      </header>
 
-    <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Reset to published version?</AlertDialogTitle>
-          <AlertDialogDescription>
-            All unsaved changes will be lost. This cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
-          <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer" onClick={() => {
-            resetToPublished(setNodes, setEdges, setPlatform)
-            setSelectedNode(null)
-            setSelectedNodes([])
-            setIsPropertiesPanelOpen(false)
-            toast.success("Reset to published version")
-          }}>
-            Reset
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-    </>
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to published version?</AlertDialogTitle>
+            <AlertDialogDescription>
+              All unsaved changes will be lost. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer" onClick={() => {
+              resetToPublished(setNodes, setEdges, setPlatform)
+              setSelectedNode(null)
+              setSelectedNodes([])
+              setIsPropertiesPanelOpen(false)
+              toast.success("Reset to published version")
+            }}>
+              Reset
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </TooltipProvider>
   )
 }

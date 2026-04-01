@@ -60,13 +60,46 @@ AI prompts auto-generate from NODE_TEMPLATES — ensure the `ai` field is comple
 - Use AlertDialog for confirmations. Never window.confirm or window.alert.
 - Always add cursor-pointer on clickable/interactive elements.
 - Use react-hook-form + zod + shadcn Form kit for form state management.
-- Platform theme: --primary and --ring change per platform via data-platform attribute on body.
 - Use searchable combobox (Popover+Command) for any dropdown with 5+ items.
+- Use `<PageHeader title="..." />` from `components/page-header.tsx` for all dashboard page headers.
+
+## Design System
+
+All colors come from CSS custom properties in `globals.css`. Never use hardcoded hex colors in components.
+
+**Color tokens:**
+- `--primary` (`#0a3578`): Buttons, links, CTAs, focus rings → `bg-primary`, `text-primary`
+- `--destructive`: Errors, delete actions → `bg-destructive`, `text-destructive`
+- `--warning` (`#f59e0b`): Validation warnings → `text-warning`, `bg-warning`
+- `--success` (`#10b981`): Success states → `text-success`, `bg-success`
+- `--info` (`#3b82f6`): Info states → `text-info`, `bg-info`
+- `--muted` (`#e2e8f0`): Subtle backgrounds, table headers → `bg-muted`
+- `--edge-color` (`#6366f1`): ReactFlow edge/connection strokes (indigo)
+
+**Sidebar:** Dark navy `#0D2A69` with `--sidebar-*` tokens. Logo uses `LogoFull` SVG from `freestand-logo.tsx`.
+
+**Platform theming:**
+- `--platform-accent` changes per platform via `[data-platform]` on `<body>` (WhatsApp `#25d366`, Instagram `#E1306C`)
+- Only canvas elements (node handles) use `bg-platform-accent`
+- `--primary` and `--ring` do NOT change per platform
+- App shell (buttons, focus rings, sidebar) always uses `--primary`
+
+**Edge styles:** Use `DEFAULT_EDGE_STYLE` from `constants/edge-styles.ts` for all ReactFlow edges. Never hardcode edge colors.
+
+**Intentional exceptions (OK to hardcode):**
+- External brand badges (WhatsApp green pill, Instagram pink pill on dashboard)
+- WhatsApp UI simulation in `template-preview.tsx`
+- Node identity colors: transfer (`#7c2d12`), API fetch (`#1a365d`), template message (`#075e54`)
+
+**Never:**
+- Use `bg-[#hex]` or `text-[#hex]` for any color that exists as a token
+- Define color maps in TypeScript — CSS is the source of truth
+- Use `border-accent` for selected/active states (accent is gray for hover only) — use `border-primary` instead
 
 ## Learnings
 
 - Check shadcn base component source for hardcoded Tailwind classes before overriding — breakpoint prefixes and token names can silently win specificity.
-- Verify CSS variable meanings in globals.css before using token classes — names can be misleading (e.g. `--input` is background, not border).
+- Verify CSS variable meanings in globals.css before using token classes — `--input` is used as input border color (via `border-input`), not background.
 - Light mode needs intentional depth layering between nested surfaces. Dark mode hides flat design — always verify both themes.
 - Every modal dismiss path must behave identically. Test Cancel, X, outside click, and Escape separately.
 - If two modals share UI, extract the shared component immediately — don't ship duplicated code planning to refactor later.

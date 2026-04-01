@@ -444,6 +444,7 @@ Per-step execution trace for debugging flow runs. Currently API errors are saved
 | AI-generated flows have overlapping nodes | [#7](https://github.com/freestandtech/magic-flow/issues/7) | High |
 | Standardize AI flow JSON naming/redirection | [#2](https://github.com/freestandtech/magic-flow/issues/2) | High |
 | API Fetch node: compact UI + improved panel | [#8](https://github.com/freestandtech/magic-flow/issues/8) | Medium |
+| Draft auto-save optimization ([details](#draft-auto-save-optimization)) | — | Medium |
 | Account references: string → UUID FK | — | Medium |
 | Docs inaccuracies (field names in API reference) | — | Low |
 | `interface{}` → `any` in Go handlers | — | Low |
@@ -469,6 +470,31 @@ Replace raw HTML primitives (`<select>`, `<input>`, custom dropdowns) with shadc
 - `<input type="file">` in export-modal (hidden, triggered by button)
 - `<input>` in store-as-pill (intentionally unstyled inline edit)
 - `variable-picker.tsx` popover (complex keyboard nav, multi-tab — migration needs care)
+
+### Draft Auto-Save Optimization
+
+Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s debounce). `JSON.stringify` comparison detects changes. Backend does efficient partial-column upsert.
+
+**Two problems:**
+1. **False saves** — clicking canvas toggles `node.selected`, which changes the JSON snapshot, triggering a save with no real content change. Fix: strip UI-only fields (`selected`, `dragging`) from the snapshot comparison.
+2. **Payload size at scale** — full JSON transfer gets slow on poor networks for large flows.
+
+**Payload size estimates:**
+
+| Flow Size | JSON | Gzipped | Slow 3G (100Kbps) | WiFi (5Mbps) |
+|-----------|------|---------|-------------------|--------------|
+| 10 nodes | ~5 KB | ~2 KB | 20ms | <1ms |
+| 50 nodes | ~25 KB | ~10 KB | 100ms | 2ms |
+| 100 nodes | ~51 KB | ~20 KB | 200ms | 4ms |
+| 200 nodes | ~102 KB | ~41 KB | 400ms | 8ms |
+
+**Current method is fine up to ~100 nodes.** Beyond that, network transfer becomes noticeable on slow connections. `JSON.stringify` comparison itself is negligible (1-5ms even at 200 nodes).
+
+**Future optimizations (when needed):**
+- Strip `selected`/`dragging` from snapshot comparison (fix false saves — do first)
+- Send differential updates (only changed nodes) instead of full arrays
+- Increase debounce to 2-3s for large flows
+- Gzip middleware on fastglue backend
 
 ---
 

@@ -94,49 +94,19 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
     setIsEditingMessage(false)
   }
 
-  const getPlatformColor = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "border-blue-100 dark:border-blue-900"
-      case "whatsapp":
-        return "border-green-100 dark:border-green-900"
-      case "instagram":
-        return "border-pink-100 dark:border-pink-900"
-    }
-  }
-
-  const getPlatformRing = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "ring-blue-300/50 dark:ring-blue-600/50"
-      case "whatsapp":
-        return "ring-green-300/50 dark:ring-green-600/50"
-      case "instagram":
-        return "ring-pink-300/50 dark:ring-pink-600/50"
-    }
-  }
-
-  const getPlatformHandleColor = (platform: Platform) => {
-    switch (platform) {
-      case "web":
-        return "bg-blue-500"
-      case "whatsapp":
-        return "bg-green-500"
-      case "instagram":
-        return "bg-pink-500"
-    }
-  }
+  const platformBorder = "border-platform-accent/20 dark:border-platform-accent/30"
+  const platformRing = "ring-platform-accent/30"
 
   return (
     <div className="relative">
       <Card
-        className={`min-w-[260px] max-w-[300px] bg-card ${getPlatformColor(platform)} transition-all ${
-          selected ? `ring-1 ${getPlatformRing(platform)}` : ""
+        className={`min-w-[260px] max-w-[300px] bg-card ${platformBorder} transition-all ${
+          selected ? `ring-1 ${platformRing}` : ""
         }`}
       >
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-[#052762] rounded-md flex items-center justify-center flex-shrink-0">
+            <div className="w-5 h-5 bg-primary rounded-md flex items-center justify-center flex-shrink-0">
               <PackageSearch className="w-3 h-3 text-white" />
             </div>
             {isEditingLabel ? (
@@ -148,7 +118,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
                 }}
-                className="h-6 text-sm font-medium border-[#052762]/20"
+                className="h-6 text-sm font-medium border-primary/20"
                 autoFocus
               />
             ) : (
@@ -177,7 +147,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
                   }
                   if (e.key === "Escape") cancelEditingMessage()
                 }}
-                className={`text-sm min-h-[60px] resize-none border-[#052762]/20 focus:border-[#052762]/40 ${
+                className={`text-sm min-h-[60px] resize-none border-primary/20 focus:border-primary/40 ${
                   isOverLimit(editingMessageValue) ? "border-red-300" : ""
                 }`}
                 placeholder="Enter tracking notification message..."
@@ -228,7 +198,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
         <Handle
           type="target"
           position={Position.Left}
-          className={`w-3 h-3 ${getPlatformHandleColor(platform)} border-2 border-background opacity-100 hover:scale-110 transition-transform`}
+          className="w-3 h-3 bg-primary border-2 border-background opacity-100 hover:scale-110 transition-transform"
         />
 
         <div className="absolute bottom-2 right-3 flex items-center gap-1.5">
@@ -236,7 +206,7 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
           <Handle
             type="source"
             position={Position.Right}
-            className={`w-3 h-3 ${getPlatformHandleColor(platform)} border-2 border-background opacity-100 hover:scale-110 transition-transform`}
+            className="w-3 h-3 bg-primary border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>
       </Card>

@@ -233,8 +233,8 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
                         disabled={isCreating}
                         className={`flex-1 p-2.5 rounded-lg transition-all cursor-pointer disabled:opacity-50 ${
                           selectedPlatform === platform
-                            ? "border-2 border-accent bg-accent/10 shadow-sm"
-                            : "border border-border hover:border-accent/50 hover:bg-muted/50"
+                            ? "border-2 border-primary bg-primary/10 shadow-sm"
+                            : "border border-border hover:border-primary/50 hover:bg-muted/50"
                         }`}
                       >
                         <div className="flex flex-col items-center gap-1">

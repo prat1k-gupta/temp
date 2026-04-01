@@ -1,4 +1,5 @@
 import type { Node, Edge } from "@xyflow/react"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 // Component imports
 import { StartNode } from "@/components/nodes/start-node"
@@ -95,6 +96,6 @@ export const initialEdges: Edge[] = [
     source: "1",
     target: "2",
     type: "default",
-    style: { stroke: "#2872F4", strokeWidth: 2 },
+    style: DEFAULT_EDGE_STYLE,
   },
 ]

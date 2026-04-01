@@ -261,7 +261,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
             <X className="w-4 h-4 mr-1" />
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving} className="bg-[#052762] hover:bg-[#0A49B7] text-white">
+          <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
             {template?.id ? "Update" : "Save Draft"}
           </Button>
@@ -392,11 +392,11 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
             </section>
 
             {/* Body — the hero section */}
-            <section className="rounded-lg border-2 border-[#052762]/20 bg-[#052762]/[0.02] p-4 space-y-3">
+            <section className="rounded-lg border-2 border-primary/20 bg-primary/[0.02] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-medium text-foreground tracking-wide">Message Body</h3>
-                  <span className="text-[9px] text-[#052762] bg-[#052762]/10 px-1.5 py-0.5 rounded font-medium">Required</span>
+                  <span className="text-[9px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-medium">Required</span>
                 </div>
                 <Button
                   variant="outline"

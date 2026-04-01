@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { nodeTypes } from "@/constants/node-types-registry"
 import { NODE_TEMPLATES, getNodesByCategory } from "@/constants/node-categories"
+import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { createNode, createCommentNode } from "@/utils"
 import { injectNodeCallbacks } from "@/utils/node-data-injection"
 import type { Platform, NodeData, TemplateAIMetadata } from "@/types"
@@ -89,7 +90,7 @@ function TemplateEditorInner({
 
       setEdges((eds) =>
         addEdge(
-          { ...params, type: "default", style: { stroke: "#6366f1", strokeWidth: 2 } },
+          { ...params, type: "default", style: DEFAULT_EDGE_STYLE },
           eds
         )
       )
@@ -288,7 +289,7 @@ function TemplateEditorInner({
           nodes={processedNodes}
           edges={edges.map((edge) => ({
             ...edge,
-            style: { ...edge.style, strokeWidth: 2, stroke: "#6366f1" },
+            style: { ...edge.style, ...DEFAULT_EDGE_STYLE },
           }))}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -296,10 +297,10 @@ function TemplateEditorInner({
           nodeTypes={nodeTypes}
           fitView
           className="bg-background"
-          connectionLineStyle={{ stroke: "#6366f1", strokeWidth: 2 }}
+          connectionLineStyle={DEFAULT_EDGE_STYLE}
           defaultEdgeOptions={{
             type: "default",
-            style: { stroke: "#6366f1", strokeWidth: 2 },
+            style: DEFAULT_EDGE_STYLE,
           }}
           deleteKeyCode={["Backspace", "Delete"]}
           onBeforeDelete={async ({ nodes: toDelete }) => ({
@@ -350,7 +351,7 @@ export function TemplateEditorModal({
       <DialogContent className="max-w-[90vw] w-[90vw] h-[85vh] max-h-[85vh] p-0 flex flex-col overflow-hidden">
         <DialogHeader className="px-4 pt-4 pb-2 border-b border-border">
           <DialogTitle className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-[#052762] rounded-md flex items-center justify-center">
+            <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
               <Layers className="w-4 h-4 text-white" />
             </div>
             Edit Template: {templateName}

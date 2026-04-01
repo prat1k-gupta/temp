@@ -102,29 +102,35 @@ function EmbeddedSignupDialog({
   const { isLoading: sdkLoading, isSDKReady, error: sdkError, loadSDK, launchEmbeddedSignup } = useFacebookSDK()
   const [state, setState] = useState<SignupState>(INITIAL_SIGNUP_STATE)
 
-  // Reset state when dialog closes
+  // Load SDK eagerly when dialog opens (silently — errors shown on click)
   useEffect(() => {
+    if (open && !isSDKReady) {
+      loadSDK().catch(() => {})
+    }
     if (!open) {
       setState(INITIAL_SIGNUP_STATE)
     }
-  }, [open])
+  }, [open, isSDKReady, loadSDK])
 
   async function handleConnect() {
     setState((s) => ({ ...s, error: null }))
-    try {
-      if (!isSDKReady) {
-        await loadSDK()
+
+    // If SDK failed to load eagerly, show the error now
+    if (!isSDKReady) {
+      if (sdkError) {
+        setState((s) => ({ ...s, error: sdkError }))
       }
+      return
+    }
+
+    try {
+      // SDK is already loaded — FB.login fires immediately from user gesture
       const signupResult = await launchEmbeddedSignup()
       setState((s) => ({ ...s, step: "processing" }))
       await completeSignup(signupResult)
     } catch (err) {
-      // SDK load errors are handled by the hook (sdkError state).
-      // For popup/signup failures, preserve the specific error message.
-      if (isSDKReady) {
-        const msg = err instanceof Error ? err.message : "Setup was cancelled or failed. You can try again."
-        setState((s) => ({ ...s, error: msg }))
-      }
+      const msg = err instanceof Error ? err.message : "Setup was cancelled or failed. You can try again."
+      setState((s) => ({ ...s, error: msg }))
     }
   }
 

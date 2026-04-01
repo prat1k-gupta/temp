@@ -105,15 +105,12 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
     }
 
     if (data.onFlowUpdate) {
-      const flowUpdates: Record<string, any> = {
+      data.onFlowUpdate({
+        description: flowDescription,
         triggerKeywords: saveData.triggerKeywords,
         triggerMatchType: saveData.triggerMatchType,
         triggerRef: saveData.triggerRef,
-      }
-      if (flowDescription !== (data.flowDescription || "")) {
-        flowUpdates.description = flowDescription
-      }
-      data.onFlowUpdate(flowUpdates)
+      })
     }
     if (data.onNodeUpdate) {
       data.onNodeUpdate(data.id, {

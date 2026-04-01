@@ -16,6 +16,7 @@ export interface FlowMetadata {
   hasDraft?: boolean
   hasPublished?: boolean
   triggerKeywords?: string[]
+  triggerRef?: string
   flowSlug?: string
   createdAt: string
   updatedAt: string
@@ -68,6 +69,7 @@ export function mapProjectToMetadata(p: any): FlowMetadata {
     hasDraft: p.has_draft ?? false,
     hasPublished: p.has_published ?? !!(p.published_flow_id || p.publishedFlowId),
     triggerKeywords: p.trigger_keywords || p.triggerKeywords || [],
+    triggerRef: p.trigger_ref || p.triggerRef || "",
     flowSlug: p.flow_slug || p.flowSlug || "",
     createdAt: p.created_at || p.createdAt,
     updatedAt: p.updated_at || p.updatedAt,

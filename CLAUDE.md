@@ -106,6 +106,7 @@ All colors come from CSS custom properties in `globals.css`. Never use hardcoded
 - Prefer single validation on save over real-time checks. Simpler, always fresh, no debounce/cache complexity.
 - When UI sections are conditionally visible, save must actively clear hidden state — don't persist what the user can't see.
 - Next.js server-side `fetch()` caches GET responses by default. API proxy routes must use `cache: "no-store"` or they return stale data silently. Wasted an hour debugging why a new field wasn't showing up.
+- React 18: shadcn `Button` doesn't use `forwardRef`. Radix `asChild` (DropdownMenuTrigger, TooltipTrigger) needs refs — use plain `<button>` + `buttonVariants()` for triggers, not `<Button>`.
 
 ## Data Fetching — React Query (mandatory)
 

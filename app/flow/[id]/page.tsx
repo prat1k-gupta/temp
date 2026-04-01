@@ -394,6 +394,7 @@ function MagicFlowInner() {
           setShowDeleteDialog={persistence.setShowDeleteDialog}
           isFlowGraphPanelOpen={isFlowGraphPanelOpen}
           onToggleFlowGraph={() => setIsFlowGraphPanelOpen((prev) => !prev)}
+          isSaving={isSaving}
           flowName={persistence.currentFlow?.name}
           flowDescription={persistence.currentFlow?.description}
           triggerIds={persistence.currentFlow?.triggerIds}

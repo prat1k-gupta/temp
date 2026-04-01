@@ -101,10 +101,10 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
             </div>
           ) : (
             <div
-              className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+              className="flex items-center gap-2 cursor-pointer hover:bg-muted p-1 rounded"
               onClick={() => setIsEditingTitle(true)}
             >
-              <h3 className="text-sm font-medium text-gray-900">{data.title}</h3>
+              <h3 className="text-sm font-medium text-card-foreground">{data.title}</h3>
               <Edit2 className="w-3 h-3 text-muted-foreground" />
             </div>
           )}
@@ -116,7 +116,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
             <div key={field.id} className="group relative">
               <div className="flex items-center justify-between mb-1">
                 <Label className="text-xs text-muted-foreground">
-                  {field.label} {field.required && <span className="text-red-500">*</span>}
+                  {field.label} {field.required && <span className="text-destructive">*</span>}
                 </Label>
                 <Button
                   size="sm"
@@ -130,7 +130,7 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
               {field.type === "textarea" ? (
                 <textarea
                   placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded resize-none"
+                  className="w-full px-2 py-1 text-xs border border-input rounded resize-none bg-background text-foreground"
                   rows={2}
                   disabled
                 />

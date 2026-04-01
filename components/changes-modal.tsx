@@ -103,7 +103,7 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
       case 'flow_import':
         return 'bg-orange-50 text-orange-700 border-orange-200'
       default:
-        return 'bg-gray-50 text-gray-700 border-gray-200'
+        return 'bg-muted text-muted-foreground border-border'
     }
   }
 

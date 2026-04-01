@@ -287,14 +287,14 @@ function TemplateEditorInner() {
                 nodeColor={(node) => {
                   switch (node.type) {
                     case "start":
-                      return "hsl(var(--chart-2))"
+                      return "var(--chart-2)"
                     case "question":
-                      return "hsl(var(--accent))"
+                      return "var(--primary)"
                     case "quickReply":
-                      return "hsl(var(--chart-1))"
+                      return "var(--chart-1)"
                     case "interactiveList":
                     case "whatsappInteractiveList":
-                      return "hsl(var(--chart-4))"
+                      return "var(--chart-4)"
                     case "comment":
                       return "#fbbf24"
                     default:

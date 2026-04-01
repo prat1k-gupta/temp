@@ -5,6 +5,6 @@ import type { CSSProperties } from "react"
  * Uses CSS variable so it inherits from the design system.
  */
 export const DEFAULT_EDGE_STYLE: CSSProperties = {
-  stroke: "var(--primary)",
+  stroke: "var(--edge-color)",
   strokeWidth: 2,
 }

@@ -13,7 +13,7 @@
   --popover-foreground: #0f172a;
   --muted: #e2e8f0;
   --muted-foreground: #64748b;
-  --primary: #0A49B7;
+  --primary: #0a3578;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
   --secondary-foreground: #0f172a;
@@ -29,8 +29,8 @@
   --info-foreground: #ffffff;
   --border: #cbd5e1;
   --input: #cbd5e1;
-  --ring: #0A49B7;
-  --chart-1: #0A49B7;
+  --ring: #0a3578;
+  --chart-1: #0a3578;
   --chart-2: #2872F4;
   --chart-3: #052762;
   --chart-4: #16a34a;
@@ -44,8 +44,9 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1a3d70;
   --sidebar-ring: #2872F4;
-  --platform-accent: #0A49B7;
+  --platform-accent: #0a3578;
   --platform-accent-foreground: #ffffff;
+  --edge-color: #6366f1;
 }
 
 .dark {
@@ -75,7 +76,7 @@
   --input: #374151;
   --ring: #2872F4;
   --chart-1: #2872F4;
-  --chart-2: #0A49B7;
+  --chart-2: #0a3578;
   --chart-3: #60a5fa;
   --chart-4: #16a34a;
   --chart-5: #ef4444;
@@ -89,6 +90,7 @@
   --sidebar-ring: #2872F4;
   --platform-accent: #2872F4;
   --platform-accent-foreground: #ffffff;
+  --edge-color: #6366f1;
 }
 
 @theme inline {
@@ -148,7 +150,7 @@
   --platform-accent: #E1306C;
 }
 [data-platform="web"] {
-  --platform-accent: #0A49B7;
+  --platform-accent: #0a3578;
 }
 
 @layer base {
@@ -169,11 +171,11 @@
 .react-flow__edge.react-flow__edge-default .react-flow__edge-path {
   stroke-dasharray: none;
   stroke-width: 2px;
-  stroke: var(--primary);
+  stroke: var(--edge-color);
 }
 
 .react-flow__connectionline {
-  stroke: var(--primary);
+  stroke: var(--edge-color);
   stroke-width: 2px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -202,13 +204,13 @@
 }
 
 .react-flow__handle:hover {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 40%, transparent) !important;
-  border-color: var(--primary) !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--edge-color) 40%, transparent) !important;
+  border-color: var(--edge-color) !important;
 }
 
 .react-flow__handle-connecting {
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--primary) 60%, transparent) !important;
-  border-color: var(--primary) !important;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--edge-color) 60%, transparent) !important;
+  border-color: var(--edge-color) !important;
 }
 
 /* Handle positioning adjustments for better visibility */

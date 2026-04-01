@@ -259,7 +259,7 @@ export function NodeSidebar({ onNodeDragStart, platform = "web" }: NodeSidebarPr
             <p>💡 Drag nodes or templates to canvas</p>
             <p className="flex items-center gap-1">
               <Sparkles className="w-3 h-3 inline" />
-              <span className="font-medium text-accent">Templates</span> are double-clickable to edit
+              <span className="font-medium text-primary">Templates</span> are double-clickable to edit
             </p>
           </div>
         </div>

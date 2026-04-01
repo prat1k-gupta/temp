@@ -32,6 +32,7 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform, TemplateAIMetadata } from "@/types"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 export default function FlowTemplatesPage() {
   const router = useRouter()
@@ -273,10 +274,8 @@ export default function FlowTemplatesPage() {
   )
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border -mx-6 px-6">
-        <h1 className="text-2xl font-bold">Flow Templates</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="Flow Templates">
         <Button
           onClick={() => setShowCreateModal(true)}
           className="gap-2 cursor-pointer"
@@ -284,7 +283,7 @@ export default function FlowTemplatesPage() {
           <Plus className="w-4 h-4" />
           New Template
         </Button>
-      </div>
+      </PageHeader>
 
       <div>
         <div className="space-y-12">

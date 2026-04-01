@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, RefreshCw, Trash2, Copy, FileText, Send, Loader2 } from "lucide-react"
 import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
 
 interface Template {
@@ -197,10 +198,8 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border -mx-6 px-6">
-        <h1 className="text-2xl font-bold">WhatsApp Templates</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="WhatsApp Templates">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -222,7 +221,7 @@ export default function TemplatesPage() {
             Create Template
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       <div>
         {/* Filter bar */}

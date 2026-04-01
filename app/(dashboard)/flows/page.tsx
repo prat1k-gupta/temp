@@ -14,6 +14,7 @@ import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
 import type { FlowMetadata } from "@/utils/flow-storage"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
+import { PageHeader } from "@/components/page-header"
 
 type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest"
 type PlatformFilter = "all" | Platform
@@ -427,15 +428,13 @@ export default function FlowsPage() {
   ]
 
   return (
-    <div className="p-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border -mx-6 px-6">
-        <h1 className="text-2xl font-bold">Flows</h1>
+    <div className="p-6 pt-4">
+      <PageHeader title="Flows">
         <Button onClick={handleCreateFlow} className="gap-2 cursor-pointer">
           <Plus className="w-4 h-4" />
           New Flow
         </Button>
-      </div>
+      </PageHeader>
 
       <div>
         {loading ? (

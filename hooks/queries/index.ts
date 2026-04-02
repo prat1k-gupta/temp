@@ -1,5 +1,5 @@
 export { flowKeys, versionKeys, userKeys, teamKeys, apiKeyKeys, chatbotSettingsKeys, profileKeys, accountKeys, flowApiKeyKeys } from "./query-keys"
-export { useFlows, useFlow } from "./use-flows"
+export { useFlows, useFlow, useTemplateFlows } from "./use-flows"
 export { useCreateFlow, useUpdateFlow, useDeleteFlow, useDuplicateFlow } from "./use-flow-mutations"
 export { useVersions, useDraft, useCreateVersion, usePublishVersion, useSaveDraft, useDeleteDraft } from "./use-versions"
 export { useAutoSave } from "./use-auto-save"

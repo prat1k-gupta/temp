@@ -8,6 +8,7 @@ export const flowKeys = {
   all: ["flows"] as const,
   lists: () => [...flowKeys.all, "list"] as const,
   detail: (id: string) => [...flowKeys.all, "detail", id] as const,
+  templates: () => [...flowKeys.all, "templates"] as const,
 } as const
 
 export const versionKeys = {

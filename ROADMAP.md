@@ -259,16 +259,22 @@ All backend endpoints already exist in fs-whatsapp — MagicFlow just needs Reac
 
 ---
 
-## Pre-Phase 3 — Flow Template Bugs + Polish
+## Pre-Phase 3 — Flow Template Bugs + Polish ✅
 
-Five template bugs and two card/UX enhancements before Phase 3.
+All items shipped (April 2026).
 
-1. **Templates appear in Flows tab** — creating a flow template also shows it in the normal flows list. Type filtering (`?type=template`) not applied correctly on create or on the flows page query.
-2. **Normal flows sometimes created as templates** — creating a regular flow occasionally saves it with template type. Likely a stale state or wrong default in the create flow modal.
-3. **Template editor missing Save button** — editing a flow template has no save/publish button. Was there previously — may have been lost in the header redesign or a conditional rendering bug.
-4. **No loading state for templates** — fetching flow templates doesn't show a loading bar/skeleton. The flows page has loading state but the templates page doesn't.
-5. ~~**Flow card enhancements**~~ ✅ — wa.me links on triggers/ref link, WhatsApp account indicator on cards + table
-6. **Test Flow panel in start node properties** — when start node is selected, properties panel shows a "Test Flow" section: phone number input (with country code), auto-populated variables from the flow, send button. Calls `POST /api/chatbot/flows/{publishedFlowId}/send` with `phone_number`, `whatsapp_account`, and `variables`. Needs flow-level API key for auth (`x-api-key` header). Only visible when flow is published and has a WhatsApp account connected.
+1. ~~Templates appear in Flows tab~~ ✅ — `?type=flow` filter on `getAllFlows()` (PR #37)
+2. ~~Normal flows sometimes created as templates~~ ✅ — modal state reset on open (PR #37)
+3. ~~Template persistence broken~~ ✅ — migrated to React Query + draft system, same as flows (PR #37)
+4. ~~No loading state for templates~~ ✅ — `useTemplateFlows` React Query hook (PR #37)
+5. ~~Flow card enhancements~~ ✅ — wa.me links, ref link column, account indicator (PR #38)
+6. ~~Test Flow panel~~ ✅ — "Test" button on start node, phone input + template params, End Session & Retry (PR #42)
+7. ~~Flattener sync-next leak~~ ✅ — excluded from template open exits, renamed to `sync-next` (PR #37)
+8. ~~Start node draggable~~ ✅ — new + existing flows (PR #42)
+9. ~~apiClient error messages~~ ✅ — shows backend messages instead of status codes (PR #42)
+10. ~~Header consolidation~~ ✅ — static platform badge, theme icon row (PR #40)
+
+**fs-whatsapp:** `PUT /api/chatbot/sessions/{id}` for session status updates (fs-chat#23)
 
 ---
 
@@ -552,6 +558,13 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 - App shell with sidebar, profile page, 5 settings pages, embedded signup
 - Design system cleanup: token architecture, color palette, sidebar, platform theming
 - Flow builder header redesign: version badge, auto-save indicator, overflow fix
+
+**Pre-Phase 3 — ✅ Complete** (April 2026)
+- Template persistence migrated to React Query + draft system
+- Template filtering, loading state, flattener sync-next fix
+- Flow card enhancements (wa.me links, account indicator, ref link column)
+- Test Flow panel on start node with End Session & Retry
+- Start node draggable, apiClient error messages, header consolidation
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

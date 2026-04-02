@@ -319,7 +319,7 @@ export async function getAllFlows(): Promise<FlowMetadata[]> {
   if (!isApiStorage()) return _localGetAllFlows()
 
   try {
-    const data = await apiClient.get<any>("/api/magic-flow/projects")
+    const data = await apiClient.get<any>("/api/magic-flow/projects?type=flow")
     const projects = data?.projects || data || []
     if (!Array.isArray(projects)) return []
     return projects.map(mapProjectToMetadata)

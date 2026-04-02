@@ -185,7 +185,7 @@ export function TemplateMessageNode({ data, selected }: { data: any; selected?: 
           <Handle
             type="source"
             position={Position.Right}
-            id="next-step"
+            id="sync-next"
             className="w-3 h-3 bg-[#075e54] border-2 border-background opacity-100 hover:scale-110 transition-transform"
             style={{ position: "relative", right: "auto", top: "auto", transform: "none" }}
           />

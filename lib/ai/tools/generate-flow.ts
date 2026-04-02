@@ -152,8 +152,8 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     // API fetch success/error handles
     if (sourceHandle === "success") return "Success"
     if (sourceHandle === "error") return "Error"
-    // Handle "next-step" or other named handles
-    if (sourceHandle === "next-step") return null
+    // Handle "sync-next" or other named handles
+    if (sourceHandle === "sync-next") return null
     return null
   }
 

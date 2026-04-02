@@ -458,7 +458,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
           <Handle
             type="source"
             position={Position.Right}
-            id="next-step"
+            id="sync-next"
             className="w-3 h-3 bg-blue-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>

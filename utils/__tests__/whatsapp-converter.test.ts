@@ -338,7 +338,7 @@ describe("convertToFsWhatsApp", () => {
     ]
     const edges = [
       edge("start-1", "qr1"),
-      edge("qr1", "m1", "next-step"),
+      edge("qr1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "Fallthrough Test")
@@ -375,7 +375,7 @@ describe("convertToFsWhatsApp", () => {
     ]
     const edges = [
       edge("start-1", "list1"),
-      edge("list1", "m1", "next-step"),
+      edge("list1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "List Sync Test")
@@ -600,7 +600,7 @@ describe("round-trip conversion", () => {
     ]
     const edges = [
       edge("start-1", "tpl1"),
-      edge("tpl1", "m1", "next-step"),
+      edge("tpl1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "Template Flow")
@@ -716,7 +716,7 @@ describe("round-trip conversion", () => {
     }
 
     const { edges } = convertFromFsWhatsApp(flow)
-    const syncEdge = edges.find((e) => e.sourceHandle === "next-step")
+    const syncEdge = edges.find((e) => e.sourceHandle === "sync-next")
     expect(syncEdge).toBeDefined()
     expect(syncEdge!.source).toBeDefined()
     expect(syncEdge!.target).toBeDefined()

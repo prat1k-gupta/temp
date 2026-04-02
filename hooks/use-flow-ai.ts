@@ -594,12 +594,12 @@ export function useFlowAI({
         // ReactFlow renders handleless edges from the first available handle, causing
         // the "two edges from one button" visual bug. We resolve each handleless edge
         // to the first unoccupied button/option handle. If all are occupied, leave
-        // the edge handleless (no "next-step" for multi-output nodes).
+        // the edge handleless (no "sync-next" for multi-output nodes).
         setEdges((eds) => {
           // Collect which source nodes have button-specific edges
           const nodesWithButtonEdges = new Set<string>()
           for (const e of eds) {
-            if (e.sourceHandle && e.sourceHandle !== "next-step") {
+            if (e.sourceHandle && e.sourceHandle !== "sync-next") {
               nodesWithButtonEdges.add(e.source)
             }
           }
@@ -627,7 +627,7 @@ export function useFlowAI({
               const resolvedHandle = freeButton?.id || freeOption?.id
 
               if (!resolvedHandle) {
-                // All button/option handles occupied — leave edge as-is rather than using "next-step"
+                // All button/option handles occupied — leave edge as-is rather than using "sync-next"
                 console.warn(`[handleUpdateFlow] No free button/option handle for ${e.source} → ${e.target}, leaving handleless`)
                 return e
               }
@@ -743,11 +743,11 @@ export function useFlowAI({
             (e) => e.source === selectedNode.id && e.sourceHandle === attachHandle
           )
         } else {
-          // Default: connect from "next-step" (sequential output)
+          // Default: connect from "sync-next" (sequential output)
           outgoingEdge = edges.find((e) => {
             if (e.source !== selectedNode.id) return false
-            if (isMultiOutput) return e.sourceHandle === "next-step"
-            return !e.sourceHandle || e.sourceHandle === "next-step"
+            if (isMultiOutput) return e.sourceHandle === "sync-next"
+            return !e.sourceHandle || e.sourceHandle === "sync-next"
           })
         }
         const nextNodeId = outgoingEdge?.target // undefined = end of flow (append)

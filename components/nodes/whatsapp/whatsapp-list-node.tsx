@@ -340,7 +340,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
           <Handle
             type="source"
             position={Position.Right}
-            id="next-step"
+            id="sync-next"
             className="w-3 h-3 bg-green-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>

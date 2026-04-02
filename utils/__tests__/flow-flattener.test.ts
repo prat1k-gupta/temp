@@ -164,7 +164,7 @@ describe("flattenFlow", () => {
 
     // Two exits to node 3:
     // 1. q2 is an open node (no outgoing edges)
-    // 2. qr "next-step" handle is unconnected (btn-1→q2, btn-2→fc, but next-step has no edge)
+    // 2. qr "sync-next" handle is unconnected (btn-1→q2, btn-2→fc, but next-step has no edge)
     const edgesTo3 = result.edges.filter((e) => e.target === "3")
     expect(edgesTo3).toHaveLength(2)
     const exitSources = edgesTo3.map((e) => `${e.source}:${e.sourceHandle || "default"}`).sort()

@@ -226,9 +226,21 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
                     <Badge
                       key={keyword}
                       variant="secondary"
-                      className={`text-[10px] px-1.5 py-0 h-4 ${getPlatformTextColor(platform)} bg-background/50 border ${getPlatformBorder(platform)}`}
+                      className={`text-[10px] px-1.5 py-0 h-4 gap-1 ${getPlatformTextColor(platform)} bg-background/50 border ${getPlatformBorder(platform)}`}
                     >
                       {keyword}
+                      {data.waPhoneNumber && (
+                        <a
+                          href={`https://wa.me/${data.waPhoneNumber.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(keyword)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="opacity-50 hover:opacity-100 transition-opacity"
+                          title={`Test "${keyword}" on WhatsApp`}
+                        >
+                          <ExternalLink className="w-2 h-2" />
+                        </a>
+                      )}
                     </Badge>
                   ))}
                 </div>

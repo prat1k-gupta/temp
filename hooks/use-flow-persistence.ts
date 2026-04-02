@@ -171,7 +171,8 @@ export function useFlowPersistence({
     }
 
     setCurrentFlow(flowData)
-    setNodes(flowData.nodes)
+    // Migration: ensure start nodes are draggable (older flows saved draggable: false)
+    setNodes(flowData.nodes.map((n) => n.type === "start" ? { ...n, draggable: true } : n))
     setEdges(flowData.edges)
     setPlatform(flowData.platform)
     setFlowLoaded(true)

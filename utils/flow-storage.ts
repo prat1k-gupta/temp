@@ -220,7 +220,7 @@ function _localCreateFlow(
           triggerMatchType: triggerMatchType || "contains_whole_word",
           triggerRef: triggerRef || "",
         },
-        draggable: false,
+        draggable: true,
         selectable: true,
       },
     ],
@@ -380,7 +380,7 @@ export async function createFlow(
       triggerMatchType: triggerMatchType || "contains_whole_word",
       triggerRef: triggerRef || "",
     },
-    draggable: false,
+    draggable: true,
     selectable: true,
   }
 

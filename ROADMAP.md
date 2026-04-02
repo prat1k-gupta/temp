@@ -267,7 +267,8 @@ Five template bugs and two card/UX enhancements before Phase 3.
 2. **Normal flows sometimes created as templates** — creating a regular flow occasionally saves it with template type. Likely a stale state or wrong default in the create flow modal.
 3. **Template editor missing Save button** — editing a flow template has no save/publish button. Was there previously — may have been lost in the header redesign or a conditional rendering bug.
 4. **No loading state for templates** — fetching flow templates doesn't show a loading bar/skeleton. The flows page has loading state but the templates page doesn't.
-5. **Flow card enhancements** — trigger keywords and ref link should have clickable wa.me link icons (opens WhatsApp test). Show a connected/disconnected WhatsApp account indicator on each card.
+5. ~~**Flow card enhancements**~~ ✅ — wa.me links on triggers/ref link, WhatsApp account indicator on cards + table
+6. **Test Flow panel in start node properties** — when start node is selected, properties panel shows a "Test Flow" section: phone number input (with country code), auto-populated variables from the flow, send button. Calls `POST /api/chatbot/flows/{publishedFlowId}/send` with `phone_number`, `whatsapp_account`, and `variables`. Needs flow-level API key for auth (`x-api-key` header). Only visible when flow is published and has a WhatsApp account connected.
 
 ---
 

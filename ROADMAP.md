@@ -452,18 +452,48 @@ Share a read-only view of a flow with anyone (no login required), and a comment 
 
 **Depends on:** 3.7 (Node-Level Comments) for comment mode. View-only sharing can ship independently.
 
+### 3.10 RBAC Research + Migration
+
+MagicFlow currently has basic JWT auth (login/register) but no role-based access control. FS Chat's Vue frontend has a full RBAC system that needs to be understood and replicated.
+
+**Research needed:**
+- How does fs-chat handle roles? (Admin, Manager, Agent — see middleware in `cmd/fs-chat/main.go`)
+- What endpoints are role-gated? How does the Vue frontend check permissions?
+- How are roles stored? (`users` table, `role` column?)
+- What UI elements are hidden/shown per role in the Vue frontend?
+
+**What MagicFlow needs:**
+- Store user role from JWT in auth context
+- Role-aware UI: hide/show settings pages, flow delete, publish, user management based on role
+- Middleware on sensitive API calls (already exists in fs-whatsapp — just need frontend to respect it)
+
+### 3.11 Chat Interface in MagicFlow
+
+Import the full chat section from fs-chat Vue frontend into MagicFlow React. This is the biggest transfer — ChatView.vue alone is 2,025 lines with ~137 functions.
+
+**What it includes:**
+- Real-time chat with contacts (WebSocket)
+- Message sending (text, media, templates, quick replies)
+- Chat list with search, filters, unread counts
+- Contact info sidebar (variables, tags, notes)
+- Agent assignment / transfer
+- Canned responses
+- Message status (sent, delivered, read)
+- Typing indicators
+
+**Backend:** All endpoints already exist in fs-whatsapp. WebSocket hub exists at `/ws`. MagicFlow just needs React pages calling the same APIs.
+
+**Reference:** `fs-whatsapp/frontend/src/views/chat/ChatView.vue` (2,025 lines), plus stores in `frontend/src/stores/` (chat, contacts, websocket).
+
+**Approach:** Research the Vue implementation first, then plan the React rebuild. Don't 1:1 port — redesign for React patterns (React Query for data, Zustand or context for chat state, proper component decomposition).
+
 ---
 
-## Phase 4 — FS Chat Frontend Transfer
+## Phase 4 — Full Platform Convergence
 
-Transfer FS Chat's Vue frontend features to MagicFlow in React. Same APIs, same data — substantial UI rebuild.
-
-**Scope reality check:** FS Chat's ChatView.vue alone is 2,025 lines with ~137 functions. Full transfer (chat + contacts + campaigns + settings) is ~15,000+ lines of Vue. This is a multi-week effort per subsection.
-
-### 4.1 Chat Interface
-### 4.2 Contact Management
-### 4.3 Campaigns / Broadcasting
-### 4.4 Settings (accounts, chatbot, teams, keywords, AI contexts)
+### 4.1 Contact Management
+### 4.2 Campaigns / Broadcasting
+### 4.3 Remaining Settings (keywords, AI contexts, canned responses, webhooks, SSO)
 
 ---
 

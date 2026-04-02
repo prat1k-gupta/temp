@@ -250,26 +250,24 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
             {triggerState.triggerRef && (
               <div className="space-y-1">
                 <p className={`text-[9px] font-medium uppercase tracking-wider ${getPlatformTextColor(platform)} opacity-70`}>Ref Link</p>
-                <div className="flex items-center gap-1.5">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] px-1.5 py-0.5 ${getPlatformTextColor(platform)} bg-background/50`}
-                  >
-                    {triggerState.triggerRef}
-                  </Badge>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] px-1.5 py-0.5 gap-1 ${getPlatformTextColor(platform)} bg-background/50`}
+                >
+                  {triggerState.triggerRef}
                   {data.waPhoneNumber && (
                     <a
                       href={`https://wa.me/${data.waPhoneNumber.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(triggerState.triggerRef)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className={`inline-flex items-center gap-0.5 text-[9px] ${getPlatformTextColor(platform)} opacity-70 hover:opacity-100 cursor-pointer`}
+                      className="opacity-50 hover:opacity-100 transition-opacity"
+                      title="Test ref link on WhatsApp"
                     >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      Preview
+                      <ExternalLink className="w-2 h-2" />
                     </a>
                   )}
-                </div>
+                </Badge>
               </div>
             )}
 

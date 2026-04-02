@@ -425,6 +425,33 @@ Currently no protection when two users edit the same flow simultaneously. Drafts
 
 **Recommendation:** Start with pessimistic locking (option 1). Add a `locked_by` + `locked_at` column to `magic_flow_projects`. Lock on edit mode enter, unlock on exit/timeout. Show lock holder's name in header.
 
+### 3.9 Shareable Flow View + Comment Mode
+
+Share a read-only view of a flow with anyone (no login required), and a comment mode for reviewers.
+
+**Three access levels:**
+1. **Edit mode** — full editing, requires login (current behavior)
+2. **Comment mode** — view flow + add comments on nodes, requires login (light auth)
+3. **View mode** — read-only, no login required, shareable link
+
+**What's needed:**
+- **Share link generation** — `GET /flow/{id}/view?token={shareToken}` or slug-based URL. Token stored on project, regeneratable.
+- **Public view route** — new Next.js page that loads flow data without auth, renders ReactFlow in view-only mode (no sidebar, no editing, no properties panel)
+- **ReactFlow view-only** — no single `readOnly` prop, but composing ~10 props (`nodesDraggable={false}`, `nodesConnectable={false}`, `elementsSelectable={false}`, `connectOnClick={false}`, `deleteKeyCode={null}`, `edgesReconnectable={false}`, etc.) makes it fully read-only. Pan/zoom still work. Trivial to implement.
+- **Comment mode** — authenticated users can click nodes to add comments (depends on 3.7 Node-Level Comments). Shows comment indicators on nodes, comment panel on the side.
+- **Share button in header** — generates/copies the share link. Options: "View only" or "Can comment" (if logged in).
+
+**Backend:**
+- `share_token` column on `magic_flow_projects` (UUID, nullable)
+- New public endpoint: `GET /api/magic-flow/projects/{id}/public?token={shareToken}` — returns project data without auth
+- Comment mode reuses the node comments system (3.7)
+
+**Research:** Full analysis of ReactFlow, Excalidraw, tldraw-sync, Langflow, n8n, and collaboration libraries in [`docs/research/2026-04-02-collaboration-sharing-research.md`](docs/research/2026-04-02-collaboration-sharing-research.md).
+
+**Key findings:** ReactFlow view-only is free (just props). No OSS project has node-level threaded comments. Excalidraw's element locking (context menu, Cmd+click override) is the pattern to follow. Yjs is the proven path for ReactFlow collaboration. tldraw-sync pattern (server-authoritative, room-based) is an alternative using our Go stack.
+
+**Depends on:** 3.7 (Node-Level Comments) for comment mode. View-only sharing can ship independently.
+
 ---
 
 ## Phase 4 — FS Chat Frontend Transfer

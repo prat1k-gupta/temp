@@ -259,9 +259,9 @@ All backend endpoints already exist in fs-whatsapp — MagicFlow just needs Reac
 
 ---
 
-## Pre-Phase 3 — Flow Template Bugs
+## Pre-Phase 3 — Flow Template Bugs + Polish
 
-Four issues with flow templates that need fixing before Phase 3 work.
+Five template bugs and two card/UX enhancements before Phase 3.
 
 1. **Templates appear in Flows tab** — creating a flow template also shows it in the normal flows list. Type filtering (`?type=template`) not applied correctly on create or on the flows page query.
 2. **Normal flows sometimes created as templates** — creating a regular flow occasionally saves it with template type. Likely a stale state or wrong default in the create flow modal.
@@ -400,6 +400,23 @@ Currently MagicFlow has generic comment nodes that float anywhere on the canvas.
 - **Comment panel** — flow-level view of all open comments across nodes for triage
 
 **Depends on:** Phase 2 (auth + database) for user identity and persistence
+
+### 3.8 Concurrent Editing / Flow Locking
+
+Currently no protection when two users edit the same flow simultaneously. Drafts are per-user (`ON CONFLICT (project_id, user_id)`), but publishing is last-writer-wins — second publisher silently overwrites the first.
+
+**Current behavior:**
+- Both users load the same published version
+- Each gets their own draft (auto-save works independently)
+- No awareness that someone else is editing
+- Publish overwrites with no conflict detection
+
+**Options (increasing complexity):**
+1. **Pessimistic locking** — when user enters edit mode, lock the flow. Show "Editing by {name}" to others. Others can view but not edit. Simple, prevents conflicts entirely. ~1 day.
+2. **Optimistic locking** — allow concurrent edits, detect conflicts on publish. Compare base version hash. If stale, show diff and ask user to resolve. ~3-5 days.
+3. **Real-time collaboration** — CRDT/OT-based sync (like Figma). Both users see each other's cursors and changes live. Requires WebSocket + conflict resolution. ~2-4 weeks.
+
+**Recommendation:** Start with pessimistic locking (option 1). Add a `locked_by` + `locked_at` column to `magic_flow_projects`. Lock on edit mode enter, unlock on exit/timeout. Show lock holder's name in header.
 
 ---
 

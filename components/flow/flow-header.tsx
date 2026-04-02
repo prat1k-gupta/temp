@@ -13,6 +13,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -358,29 +359,52 @@ export function FlowHeader({
             </Button>
           </PublishModal>
 
-          {/* Platform Dropdown */}
+          {/* Platform Badge (static, not a dropdown) */}
+          <div
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium",
+              platform === "whatsapp"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400"
+                : platform === "instagram"
+                  ? "bg-pink-50 border-pink-200 text-pink-700 dark:bg-pink-950/30 dark:border-pink-800 dark:text-pink-400"
+                  : "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400",
+            )}
+          >
+            {platform === "whatsapp" && <WhatsAppIcon className="size-3.5" />}
+            {platform === "instagram" && <InstagramIcon className="size-3.5" />}
+            {platform === "web" && <WebIcon className="size-3.5" />}
+            {getPlatformDisplayName(platform)}
+          </div>
+
+          {/* Flow Graph */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  buttonVariants({ variant: isFlowGraphPanelOpen ? "secondary" : "ghost", size: "icon" }),
+                  "size-8",
+                )}
+                onClick={onToggleFlowGraph}
+              >
+                <Network className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Flow Graph</TooltipContent>
+          </Tooltip>
+
+          {/* More Options */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "gap-1.5",
-                  platform === "whatsapp"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
-                    : platform === "instagram"
-                      ? "bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100 hover:text-pink-800 dark:bg-pink-950/30 dark:border-pink-800 dark:text-pink-400 dark:hover:bg-pink-950/50"
-                      : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 hover:text-blue-800 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/50",
-                )}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8")}
               >
-                {platform === "whatsapp" && <WhatsAppIcon className="size-3.5" />}
-                {platform === "instagram" && <InstagramIcon className="size-3.5" />}
-                {platform === "web" && <WebIcon className="size-3.5" />}
-                {getPlatformDisplayName(platform)}
-                <ChevronDown className="size-3" />
+                <MoreHorizontal className="size-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-52">
+              {/* Test on WhatsApp / Preview (moved from platform dropdown) */}
               {platform === "whatsapp" && waPhoneNumber && triggerKeywords && triggerKeywords.length > 0 && (
                 <>
                   {triggerKeywords.map((kw) => (
@@ -437,37 +461,8 @@ export function FlowHeader({
                   Copy Slug
                 </DropdownMenuItem>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              {(publishedFlowId || flowSlug) && <DropdownMenuSeparator />}
 
-          {/* Flow Graph */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  buttonVariants({ variant: isFlowGraphPanelOpen ? "secondary" : "ghost", size: "icon" }),
-                  "size-8",
-                )}
-                onClick={onToggleFlowGraph}
-              >
-                <Network className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Flow Graph</TooltipContent>
-          </Tooltip>
-
-          {/* More Options */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8")}
-              >
-                <MoreHorizontal className="size-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
               {isEditMode && hasActualChanges(nodes, edges, platform) && (
                 <>
                   <DropdownMenuItem onSelect={() => setIsChangesModalOpen(true)}>
@@ -486,21 +481,32 @@ export function FlowHeader({
                 Take Screenshot
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setTheme("light")}>
-                <Sun className="size-4" />
-                Light
-                {theme === "light" && <Check className="size-3 ml-auto" />}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTheme("dark")}>
-                <Moon className="size-4" />
-                Dark
-                {theme === "dark" && <Check className="size-3 ml-auto" />}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTheme("system")}>
-                <Monitor className="size-4" />
-                System
-                {theme === "system" && <Check className="size-3 ml-auto" />}
-              </DropdownMenuItem>
+              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                Theme
+              </DropdownMenuLabel>
+              <div className="flex gap-0.5 px-2 py-1">
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-7 w-7 cursor-pointer", theme === "light" && "bg-muted")}
+                  onClick={() => setTheme("light")}
+                >
+                  <Sun className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-7 w-7 cursor-pointer", theme === "dark" && "bg-muted")}
+                  onClick={() => setTheme("dark")}
+                >
+                  <Moon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-7 w-7 cursor-pointer", theme === "system" && "bg-muted")}
+                  onClick={() => setTheme("system")}
+                >
+                  <Monitor className="size-3.5" />
+                </button>
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={logout} className="cursor-pointer">
                 <LogOut className="size-4" />

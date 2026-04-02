@@ -80,7 +80,8 @@ function TemplateEditorInner() {
     if (flowQuery.data && !flowLoaded) {
       const templateData = flowQuery.data
       setCurrentFlow(templateData)
-      setNodes(templateData.nodes)
+      // Migration: older templates saved start node with draggable: false
+      setNodes(templateData.nodes.map((n) => n.type === "start" ? { ...n, draggable: true } : n))
       setEdges(templateData.edges)
       setPlatform(templateData.platform)
       setFlowLoaded(true)

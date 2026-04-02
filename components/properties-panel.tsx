@@ -70,7 +70,6 @@ import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
 import { useGlobalVariables, useTemplates, useAccounts } from "@/hooks/queries"
 import { apiClient } from "@/lib/api-client"
-import { toast } from "sonner"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -680,9 +679,26 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
   const [phoneNumber, setPhoneNumber] = useState("")
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [isSending, setIsSending] = useState(false)
-  const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [isEndingSession, setIsEndingSession] = useState(false)
+  const [lastResult, setLastResult] = useState<{ success: boolean; message: string; hasActiveSession?: boolean } | null>(null)
 
-  const flowVars = useMemo(() => collectFlowVariablesRich(allNodes), [allNodes])
+  // Find template message nodes and extract their named parameters
+  const templateParams = useMemo(() => {
+    const params: string[] = []
+    for (const node of allNodes) {
+      if (node.type === "templateMessage") {
+        const mappings = (node.data as any)?.parameterMappings || []
+        for (const m of mappings) {
+          if (m.templateVar && !params.includes(m.templateVar)) {
+            params.push(m.templateVar)
+          }
+        }
+      }
+    }
+    return params
+  }, [allNodes])
+
+  const hasTemplateNode = templateParams.length > 0
 
   // Resolve account name from ID
   const accountName = useMemo(() => {
@@ -690,6 +706,31 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
     const account = accounts.find((a) => a.id === waAccountId || a.name === waAccountId)
     return account?.name || waAccountId
   }, [waAccountId, accounts])
+
+  const handleEndSessionAndRetry = async () => {
+    if (!phoneNumber.trim() || !publishedFlowId) return
+    setIsEndingSession(true)
+    try {
+      // Find active sessions for this phone number
+      const sessionsData = await apiClient.get<any>(`/api/chatbot/sessions?phone=${encodeURIComponent(phoneNumber.trim())}&status=active`)
+      const sessions = sessionsData?.sessions || []
+      if (sessions.length === 0) {
+        setLastResult({ success: false, message: "No active session found" })
+        setIsEndingSession(false)
+        return
+      }
+      // Complete all active sessions
+      for (const session of sessions) {
+        await apiClient.put(`/api/chatbot/sessions/${session.id}`, { status: "completed" })
+      }
+      setIsEndingSession(false)
+      // Retry send
+      await handleSend()
+    } catch (error: any) {
+      setLastResult({ success: false, message: error?.message || "Failed to end session" })
+      setIsEndingSession(false)
+    }
+  }
 
   const handleSend = async () => {
     if (!phoneNumber.trim() || !publishedFlowId) return
@@ -706,12 +747,11 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
       if (Object.keys(nonEmptyVars).length > 0) body.variables = nonEmptyVars
 
       await apiClient.post(`/api/chatbot/flows/${publishedFlowId}/send`, body)
-      setLastResult({ success: true, message: "Flow sent!" })
-      toast.success("Flow sent to " + phoneNumber.trim())
+      setLastResult({ success: true, message: "Flow sent to " + phoneNumber.trim() })
     } catch (error: any) {
       const msg = error?.message || "Failed to send flow"
-      setLastResult({ success: false, message: msg })
-      toast.error(msg)
+      const hasActiveSession = msg.toLowerCase().includes("active session")
+      setLastResult({ success: false, message: msg, hasActiveSession })
     } finally {
       setIsSending(false)
     }
@@ -719,23 +759,20 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
 
   return (
     <div className="space-y-6">
-      {/* Entry point info */}
-      <div className="text-center py-4">
-        <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-chart-2 flex items-center justify-center">
-          <Play className="w-6 h-6 text-white" />
-        </div>
-        <h3 className="font-medium text-foreground mb-1">Flow Entry Point</h3>
-        <p className="text-xs text-muted-foreground">Click the start node to configure triggers</p>
-      </div>
-
-      <Separator />
-
       {/* Test Flow Section */}
       {platform === "whatsapp" && publishedFlowId ? (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-primary" />
             <h4 className="font-medium text-sm">Test Flow</h4>
+          </div>
+          <div className="flex gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+            <AlertCircle className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+            <p className="text-[11px] text-primary/80 leading-relaxed">
+              {hasTemplateNode
+                ? "Sends the template message to the phone number. Works outside the 24hr conversation window."
+                : "Contact must have messaged you in the last 24hrs, or add a template message node to your flow."}
+            </p>
           </div>
 
           <div className="space-y-3">
@@ -751,17 +788,17 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
               <p className="text-[10px] text-muted-foreground">E.164 format with country code</p>
             </div>
 
-            {flowVars.length > 0 && (
+            {hasTemplateNode && (
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Variables (optional)</Label>
-                {flowVars.map((v) => (
-                  <div key={v.name} className="space-y-1">
-                    <Label htmlFor={`var-${v.name}`} className="text-[11px] font-mono">{v.name}</Label>
+                <Label className="text-xs text-muted-foreground">Template Parameters</Label>
+                {templateParams.map((param) => (
+                  <div key={param} className="space-y-1">
+                    <Label htmlFor={`var-${param}`} className="text-[11px] font-mono">{param}</Label>
                     <Input
-                      id={`var-${v.name}`}
-                      placeholder={v.sourceNodeLabel || v.name}
-                      value={variables[v.name] || ""}
-                      onChange={(e) => setVariables((prev) => ({ ...prev, [v.name]: e.target.value }))}
+                      id={`var-${param}`}
+                      placeholder={param}
+                      value={variables[param] || ""}
+                      onChange={(e) => setVariables((prev) => ({ ...prev, [param]: e.target.value }))}
                       className="text-sm h-8"
                     />
                   </div>
@@ -784,13 +821,27 @@ function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNod
             </Button>
 
             {lastResult && (
-              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${
-                lastResult.success
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
-                  : "bg-destructive/10 text-destructive"
-              }`}>
-                {lastResult.success ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                {lastResult.message}
+              <div className="space-y-2">
+                <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${
+                  lastResult.success
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                    : "bg-destructive/10 text-destructive"
+                }`}>
+                  {lastResult.success ? <CheckCircle className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {lastResult.message}
+                </div>
+                {lastResult.hasActiveSession && (
+                  <Button
+                    onClick={handleEndSessionAndRetry}
+                    disabled={isEndingSession}
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 text-xs"
+                  >
+                    {isEndingSession ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    {isEndingSession ? "Ending session..." : "End Session & Retry"}
+                  </Button>
+                )}
               </div>
             )}
           </div>

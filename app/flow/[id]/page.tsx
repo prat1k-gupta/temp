@@ -610,6 +610,13 @@ function MagicFlowInner() {
                   deleteNode: nodeOps.deleteNode,
                   convertNode: nodeOps.convertNode,
                   openFlowBuilder,
+                  openTestPanel: (nodeId: string) => {
+                    const startNode = nodes.find((n) => n.id === nodeId)
+                    if (startNode) {
+                      nodeOps.setSelectedNode(startNode)
+                      nodeOps.setIsPropertiesPanelOpen(true)
+                    }
+                  },
                 }, {
                   flowId,
                   currentFlow: persistence.currentFlow,

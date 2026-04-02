@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Handle, Position } from "@xyflow/react"
-import { Play, Plus, Edit3, Layout, Globe, Loader2, ExternalLink } from "lucide-react"
+import { Play, Plus, Edit3, Layout, Globe, Loader2, ExternalLink, Smartphone } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -271,18 +271,34 @@ export function StartNode({ data, selected }: { data: any; selected?: boolean })
               </div>
             )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              className={`w-full h-7 text-xs gap-1.5 ${getPlatformBorder(platform)} ${getPlatformTextColor(platform)} hover:bg-accent/10`}
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsEditingTriggers(true)
-              }}
-            >
-              <Plus className="w-3 h-3" />
-              Add Trigger
-            </Button>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`flex-1 h-7 text-xs gap-1.5 ${getPlatformBorder(platform)} ${getPlatformTextColor(platform)} hover:bg-accent/10`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsEditingTriggers(true)
+                }}
+              >
+                <Plus className="w-3 h-3" />
+                Add Trigger
+              </Button>
+              {data.publishedFlowId && platform === "whatsapp" && data.onOpenTestPanel && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`h-7 text-xs gap-1.5 ${getPlatformBorder(platform)} ${getPlatformTextColor(platform)} hover:bg-accent/10`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    data.onOpenTestPanel()
+                  }}
+                >
+                  <Smartphone className="w-3 h-3" />
+                  Test
+                </Button>
+              )}
+            </div>
           </CardContent>
 
         <div className="absolute -right-2 top-1/2 -translate-y-1/2">

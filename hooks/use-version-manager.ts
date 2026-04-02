@@ -450,7 +450,7 @@ export function useVersionManager(flowId: string) {
           type: "start",
           position: { x: 250, y: 25 },
           data: { label: "Start", platform: "web" },
-          draggable: false,
+          draggable: true,
           selectable: false,
         },
       ]

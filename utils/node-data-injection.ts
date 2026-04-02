@@ -11,6 +11,7 @@ interface NodeCallbacks {
   deleteNode: (nodeId: string) => void
   convertNode: (nodeId: string, newNodeType: string, updatedData: any) => void
   openFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
+  openTestPanel?: (nodeId: string) => void
 }
 
 interface WhatsAppFlowContext {
@@ -86,6 +87,8 @@ export function injectNodeCallbacks(
         availableWhatsAppFlows: whatsAppFlowContext?.availableFlows || [],
       }),
       ...(node.type === "start" && flowContext && {
+        onOpenTestPanel: callbacks.openTestPanel ? () => callbacks.openTestPanel!(node.id) : undefined,
+        waAccountId: flowContext.currentFlow?.waAccountId || "",
         flowDescription: flowContext.currentFlow?.description || "",
         triggerKeywords: ((data.triggerKeywords as string[])?.length ? data.triggerKeywords as string[] : undefined) ?? flowContext.currentFlow?.triggerKeywords ?? EMPTY_KEYWORDS,
         triggerMatchType: (data.triggerMatchType as string) || flowContext.currentFlow?.triggerMatchType || "contains_whole_word",

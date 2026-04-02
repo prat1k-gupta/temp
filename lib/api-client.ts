@@ -53,8 +53,7 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
-      const unwrapped = this.unwrapEnvelope(error)
-      throw new Error(unwrapped?.message || unwrapped?.error || error?.error || `Request failed: ${response.status}`)
+      throw new Error(error?.message || error?.data?.message || error?.error || `Request failed: ${response.status}`)
     }
 
     if (response.status === 204 || response.headers.get("content-length") === "0") {

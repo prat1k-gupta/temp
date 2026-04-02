@@ -43,6 +43,9 @@ import {
   Pencil,
   Search,
   ChevronDown,
+  Smartphone,
+  Send,
+  CheckCircle,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -65,7 +68,9 @@ import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-var
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
-import { useGlobalVariables, useTemplates } from "@/hooks/queries"
+import { useGlobalVariables, useTemplates, useAccounts } from "@/hooks/queries"
+import { apiClient } from "@/lib/api-client"
+import { toast } from "sonner"
 
 interface PropertiesPanelProps {
   selectedNode: Node & {
@@ -663,6 +668,138 @@ function ApiTestSection({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNode: any; platform: string; allNodes?: Node[] }) {
+  const publishedFlowId = selectedNode.data?.publishedFlowId
+  const waAccountId = selectedNode.data?.waAccountId
+  const { data: accounts = [] } = useAccounts()
+
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [variables, setVariables] = useState<Record<string, string>>({})
+  const [isSending, setIsSending] = useState(false)
+  const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const flowVars = useMemo(() => collectFlowVariablesRich(allNodes), [allNodes])
+
+  // Resolve account name from ID
+  const accountName = useMemo(() => {
+    if (!waAccountId) return ""
+    const account = accounts.find((a) => a.id === waAccountId || a.name === waAccountId)
+    return account?.name || waAccountId
+  }, [waAccountId, accounts])
+
+  const handleSend = async () => {
+    if (!phoneNumber.trim() || !publishedFlowId) return
+    setIsSending(true)
+    setLastResult(null)
+    try {
+      const body: Record<string, any> = {
+        phone_number: phoneNumber.trim(),
+      }
+      if (accountName) body.whatsapp_account = accountName
+      const nonEmptyVars = Object.fromEntries(
+        Object.entries(variables).filter(([, v]) => v.trim() !== "")
+      )
+      if (Object.keys(nonEmptyVars).length > 0) body.variables = nonEmptyVars
+
+      await apiClient.post(`/api/chatbot/flows/${publishedFlowId}/send`, body)
+      setLastResult({ success: true, message: "Flow sent!" })
+      toast.success("Flow sent to " + phoneNumber.trim())
+    } catch (error: any) {
+      const msg = error?.message || "Failed to send flow"
+      setLastResult({ success: false, message: msg })
+      toast.error(msg)
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Entry point info */}
+      <div className="text-center py-4">
+        <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-chart-2 flex items-center justify-center">
+          <Play className="w-6 h-6 text-white" />
+        </div>
+        <h3 className="font-medium text-foreground mb-1">Flow Entry Point</h3>
+        <p className="text-xs text-muted-foreground">Click the start node to configure triggers</p>
+      </div>
+
+      <Separator />
+
+      {/* Test Flow Section */}
+      {platform === "whatsapp" && publishedFlowId ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-primary" />
+            <h4 className="font-medium text-sm">Test Flow</h4>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="test-phone" className="text-xs">Phone Number</Label>
+              <Input
+                id="test-phone"
+                placeholder="+91 70421 10034"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="font-mono text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground">E.164 format with country code</p>
+            </div>
+
+            {flowVars.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Variables (optional)</Label>
+                {flowVars.map((v) => (
+                  <div key={v.name} className="space-y-1">
+                    <Label htmlFor={`var-${v.name}`} className="text-[11px] font-mono">{v.name}</Label>
+                    <Input
+                      id={`var-${v.name}`}
+                      placeholder={v.sourceNodeLabel || v.name}
+                      value={variables[v.name] || ""}
+                      onChange={(e) => setVariables((prev) => ({ ...prev, [v.name]: e.target.value }))}
+                      className="text-sm h-8"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              onClick={handleSend}
+              disabled={!phoneNumber.trim() || isSending}
+              className="w-full gap-2"
+              size="sm"
+            >
+              {isSending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              {isSending ? "Sending..." : "Send Test"}
+            </Button>
+
+            {lastResult && (
+              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-md ${
+                lastResult.success
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                  : "bg-destructive/10 text-destructive"
+              }`}>
+                {lastResult.success ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                {lastResult.message}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : !publishedFlowId ? (
+        <div className="text-center py-4">
+          <p className="text-xs text-muted-foreground">Publish your flow first to test it</p>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -3000,16 +3137,11 @@ export function PropertiesPanel({
 
           {/* Start Node */}
           {selectedNode.type === "start" && (
-            <div className="text-center py-8">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-chart-2 flex items-center justify-center">
-                <Play className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="font-medium text-foreground mb-2">Flow Entry Point</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                This is the starting point of your chatbot flow. It automatically begins the conversation and cannot be
-                modified or deleted.
-              </p>
-            </div>
+            <StartNodePanel
+              selectedNode={selectedNode}
+              platform={platform}
+              allNodes={allNodes}
+            />
           )}
         </div>
       </div>

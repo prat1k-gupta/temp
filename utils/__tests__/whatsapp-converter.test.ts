@@ -326,7 +326,7 @@ describe("convertToFsWhatsApp", () => {
     expect(result.steps[0].step_name).toContain("what_is_your_name")
   })
 
-  it("handles quick reply next-step fallthrough", () => {
+  it("handles quick reply sync-next fallthrough", () => {
     const nodes = [
       node("start-1", "start"),
       node("qr1", "whatsappQuickReply", {
@@ -338,7 +338,7 @@ describe("convertToFsWhatsApp", () => {
     ]
     const edges = [
       edge("start-1", "qr1"),
-      edge("qr1", "m1", "next-step"),
+      edge("qr1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "Fallthrough Test")
@@ -347,7 +347,7 @@ describe("convertToFsWhatsApp", () => {
     expect(qrStep.next_step).toBe("__complete__")
   })
 
-  it("quick reply without next-step has no synchronous_next", () => {
+  it("quick reply without sync-next has no synchronous_next", () => {
     const nodes = [
       node("start-1", "start"),
       node("qr1", "whatsappQuickReply", {
@@ -363,7 +363,7 @@ describe("convertToFsWhatsApp", () => {
     expect(qrStep.synchronous_next).toBeUndefined()
   })
 
-  it("interactiveList next-step maps to synchronous_next", () => {
+  it("interactiveList sync-next maps to synchronous_next", () => {
     const nodes = [
       node("start-1", "start"),
       node("list1", "whatsappInteractiveList", {
@@ -375,7 +375,7 @@ describe("convertToFsWhatsApp", () => {
     ]
     const edges = [
       edge("start-1", "list1"),
-      edge("list1", "m1", "next-step"),
+      edge("list1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "List Sync Test")
@@ -600,7 +600,7 @@ describe("round-trip conversion", () => {
     ]
     const edges = [
       edge("start-1", "tpl1"),
-      edge("tpl1", "m1", "next-step"),
+      edge("tpl1", "m1", "sync-next"),
     ]
 
     const result = convertToFsWhatsApp(nodes, edges, "Template Flow")
@@ -682,7 +682,7 @@ describe("round-trip conversion", () => {
     expect(tplStep.conditional_next!["No"]).toBeDefined()
   })
 
-  it("reverse converter restores synchronous_next as next-step edge", () => {
+  it("reverse converter restores synchronous_next as sync-next edge", () => {
     const flow: FsWhatsAppFlow = {
       name: "Sync Next Flow",
       steps: [
@@ -716,7 +716,7 @@ describe("round-trip conversion", () => {
     }
 
     const { edges } = convertFromFsWhatsApp(flow)
-    const syncEdge = edges.find((e) => e.sourceHandle === "next-step")
+    const syncEdge = edges.find((e) => e.sourceHandle === "sync-next")
     expect(syncEdge).toBeDefined()
     expect(syncEdge!.source).toBeDefined()
     expect(syncEdge!.target).toBeDefined()

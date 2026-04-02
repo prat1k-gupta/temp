@@ -300,8 +300,8 @@ export function convertToFsWhatsApp(
           step.conditional_next = conditionalNext
         }
 
-        // next-step handle → synchronous follow-up (sent before waiting for button input)
-        const qrSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // sync-next handle → synchronous follow-up (sent before waiting for button input)
+        const qrSyncTarget = resolveNextStep(node.id, "sync-next", edgeMap, nodeStepNames)
         if (qrSyncTarget !== "__complete__") {
           step.synchronous_next = qrSyncTarget
         }
@@ -330,8 +330,8 @@ export function convertToFsWhatsApp(
           step.conditional_next = conditionalNext
         }
 
-        // next-step handle → synchronous follow-up (sent before waiting for button input)
-        const listSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // sync-next handle → synchronous follow-up (sent before waiting for button input)
+        const listSyncTarget = resolveNextStep(node.id, "sync-next", edgeMap, nodeStepNames)
         if (listSyncTarget !== "__complete__") {
           step.synchronous_next = listSyncTarget
         }
@@ -454,8 +454,8 @@ export function convertToFsWhatsApp(
           step.conditional_next = igConditionalNext
         }
 
-        // next-step handle → synchronous follow-up (sent before waiting for button input)
-        const igSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // sync-next handle → synchronous follow-up (sent before waiting for button input)
+        const igSyncTarget = resolveNextStep(node.id, "sync-next", edgeMap, nodeStepNames)
         if (igSyncTarget !== "__complete__") {
           step.synchronous_next = igSyncTarget
         }
@@ -617,8 +617,8 @@ export function convertToFsWhatsApp(
           }
         }
 
-        // next-step handle → synchronous follow-up (sent before waiting for button input)
-        const tplSyncTarget = resolveNextStep(node.id, "next-step", edgeMap, nodeStepNames)
+        // sync-next handle → synchronous follow-up (sent before waiting for button input)
+        const tplSyncTarget = resolveNextStep(node.id, "sync-next", edgeMap, nodeStepNames)
         if (tplSyncTarget !== "__complete__") {
           step.synchronous_next = tplSyncTarget
         }
@@ -885,14 +885,14 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
       }
     }
 
-    // synchronous_next → "next-step" handle edge
+    // synchronous_next → "sync-next" handle edge
     if (step.synchronous_next && step.synchronous_next !== "__complete__") {
       const syncTargetId = stepNodeMap.get(step.synchronous_next)
       if (syncTargetId) {
         edges.push({
-          id: `edge-${sourceId}-next-step-${syncTargetId}`,
+          id: `edge-${sourceId}-sync-next-${syncTargetId}`,
           source: sourceId,
-          sourceHandle: "next-step",
+          sourceHandle: "sync-next",
           target: syncTargetId,
           style: DEFAULT_EDGE_STYLE,
         })

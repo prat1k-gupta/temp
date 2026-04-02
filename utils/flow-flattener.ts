@@ -87,6 +87,8 @@ export function flattenFlow(
 
     // Find all open exits: unconnected source handles across all non-complete nodes.
     // Each open exit becomes a route to the parent flow's next step.
+    // "sync-next" (Sync Next) handles are excluded — they're synchronous follow-ups
+    // that should not leak to the parent flow if unconnected inside the template.
     const openExits: Array<{ nodeId: string; sourceHandle: string | undefined }> = []
 
     for (const pNode of prefixedNodes) {
@@ -96,6 +98,7 @@ export function flattenFlow(
       const handles = getNodeSourceHandles(pNode.type || "", pNode.data)
 
       for (const handle of handles) {
+        if (handle === "sync-next") continue
         if (!usedSourceHandles.has(`${origId}_${handle || ""}`)) {
           openExits.push({ nodeId: pNode.id, sourceHandle: handle })
         }

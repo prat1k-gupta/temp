@@ -18,9 +18,44 @@ import {
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { ArrowLeft, Edit3, Network, Settings2 } from "lucide-react"
-import { useState } from "react"
+import { ArrowLeft, CloudUpload, Edit3, Network, Settings2 } from "lucide-react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner"
+
+function SaveStatus({ isSaving }: { isSaving?: boolean }) {
+  const [showSaved, setShowSaved] = useState(false)
+  const [wasSaving, setWasSaving] = useState(false)
+
+  useEffect(() => {
+    if (isSaving) {
+      setWasSaving(true)
+      setShowSaved(false)
+    } else if (wasSaving) {
+      setWasSaving(false)
+      setShowSaved(true)
+      const timer = setTimeout(() => setShowSaved(false), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [isSaving, wasSaving])
+
+  if (!isSaving && !showSaved) return null
+
+  return (
+    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      {isSaving ? (
+        <>
+          <CloudUpload className="size-3.5 animate-pulse" />
+          <span className="text-xs">Saving changes</span>
+        </>
+      ) : (
+        <>
+          <CloudUpload className="size-3.5 text-emerald-600" />
+          <span className="text-xs text-emerald-600">Changes saved</span>
+        </>
+      )}
+    </div>
+  )
+}
 
 interface TemplateHeaderProps {
   currentFlow: FlowData | null
@@ -39,6 +74,7 @@ interface TemplateHeaderProps {
   onSaveAIMetadata?: (metadata: TemplateAIMetadata) => void
   description?: string
   onSaveDescription?: (description: string) => void
+  isSaving?: boolean
 }
 
 export function TemplateHeader({
@@ -58,6 +94,7 @@ export function TemplateHeader({
   onSaveAIMetadata,
   description,
   onSaveDescription,
+  isSaving,
 }: TemplateHeaderProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editDescription, setEditDescription] = useState("")
@@ -141,6 +178,7 @@ export function TemplateHeader({
                   {description}
                 </span>
               )}
+              <SaveStatus isSaving={isSaving} />
             </>
           )}
         </div>

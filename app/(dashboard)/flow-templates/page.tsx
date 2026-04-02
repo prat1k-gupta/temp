@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,9 +25,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, Copy, Layers, Brain } from "lucide-react"
+import { Plus, Trash2, Copy, Layers, Brain, Loader2 } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
-import { getAllTemplates, deleteTemplate, duplicateTemplate, createTemplate, type FlowMetadata } from "@/utils/flow-storage"
+import { deleteTemplate, duplicateTemplate, createTemplate, type FlowMetadata } from "@/utils/flow-storage"
+import { useTemplateFlows } from "@/hooks/queries"
+import { useQueryClient } from "@tanstack/react-query"
+import { flowKeys } from "@/hooks/queries/query-keys"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { getPlatformDisplayName } from "@/utils/platform-labels"
 import type { Platform, TemplateAIMetadata } from "@/types"
@@ -36,7 +39,13 @@ import { PageHeader } from "@/components/page-header"
 
 export default function FlowTemplatesPage() {
   const router = useRouter()
-  const [templates, setTemplates] = useState<FlowMetadata[]>([])
+  const { data: allTemplates = [], isLoading } = useTemplateFlows()
+  const templates = useMemo(
+    () => [...allTemplates].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    [allTemplates]
+  )
+  const queryClient = useQueryClient()
+  const reloadTemplates = () => queryClient.invalidateQueries({ queryKey: flowKeys.templates() })
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null)
 
   // Create template modal state
@@ -47,18 +56,6 @@ export default function FlowTemplatesPage() {
   const [newAiDescription, setNewAiDescription] = useState("")
   const [newAiWhenToUse, setNewAiWhenToUse] = useState("")
   const [newAiSelectionRule, setNewAiSelectionRule] = useState("")
-
-  useEffect(() => {
-    loadTemplates()
-  }, [])
-
-  const loadTemplates = async () => {
-    const allTemplates = await getAllTemplates()
-    const sorted = allTemplates.sort((a, b) => {
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    })
-    setTemplates(sorted)
-  }
 
   const resetCreateModal = () => {
     setNewName("")
@@ -98,7 +95,7 @@ export default function FlowTemplatesPage() {
     const success = await deleteTemplate(templateId)
     if (success) {
       toast.success("Template deleted")
-      loadTemplates()
+      reloadTemplates()
     } else {
       toast.error("Failed to delete template")
     }
@@ -109,7 +106,7 @@ export default function FlowTemplatesPage() {
     const duplicated = await duplicateTemplate(templateId, `${templateName} (Copy)`)
     if (duplicated) {
       toast.success(`Template "${templateName}" duplicated!`)
-      loadTemplates()
+      reloadTemplates()
     } else {
       toast.error("Failed to duplicate template")
     }
@@ -285,7 +282,11 @@ export default function FlowTemplatesPage() {
         </Button>
       </PageHeader>
 
-      <div>
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-[40vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
         <div className="space-y-12">
           {/* Default Templates Section */}
           <div>
@@ -359,7 +360,7 @@ export default function FlowTemplatesPage() {
             )}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Create Template Modal */}
       <Dialog open={showCreateModal} onOpenChange={(open) => { if (!open) resetCreateModal() }}>

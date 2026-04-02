@@ -79,8 +79,8 @@ export interface NodeTemplateLimits {
    * Used by the flattener to enumerate all possible exits from a node.
    * - "none": terminal node, no source handles (e.g. transfer, flowComplete)
    * - "default": single unnamed handle (e.g. question, message nodes)
-   * - "buttons": per-button handle from data.buttons[].id + "next-step" fallthrough
-   * - "options": per-option handle from data.options[].id + "next-step" fallthrough
+   * - "buttons": per-button handle from data.buttons[].id + "sync-next" fallthrough
+   * - "options": per-option handle from data.options[].id + "sync-next" fallthrough
    * - "conditions": per-group handle from data.conditionGroups[].id + "else" fallback
    *
    * If omitted, inferred: maxConnections=0 → "none", otherwise "default".
@@ -843,8 +843,8 @@ export function getNodeSourceHandles(nodeType: string, data: any): (string | und
       const buttons: any[] = data?.buttons || []
       const handles: (string | undefined)[] = buttons
         .map((b: any, i: number) => b.id || `button-${i}`)
-      // "next-step" is the fallthrough handle on quickReply/list/templateMessage
-      handles.push("next-step")
+      // "sync-next" is the fallthrough handle on quickReply/list/templateMessage
+      handles.push("sync-next")
       return handles
     }
 
@@ -852,7 +852,7 @@ export function getNodeSourceHandles(nodeType: string, data: any): (string | und
       const options: any[] = data?.options || []
       const handles: (string | undefined)[] = options
         .map((o: any, i: number) => o.id || `option-${i}`)
-      handles.push("next-step")
+      handles.push("sync-next")
       return handles
     }
 

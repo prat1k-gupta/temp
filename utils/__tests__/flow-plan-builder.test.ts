@@ -1116,18 +1116,18 @@ describe("buildEditFlowFromPlan — connectTo", () => {
     expect(edgeFromA).toBeDefined()
     expect(edgeFromA!.target).toBe(result.newNodes[0].id)
 
-    // connectTo edge: quickReply → B (uses a free button handle, never "next-step")
+    // connectTo edge: quickReply → B (uses a free button handle, never "sync-next")
     const edgeToB = result.newEdges.find(e => e.target === "B")
     expect(edgeToB).toBeDefined()
     expect(edgeToB!.source).toBe(result.newNodes[0].id)
-    expect(edgeToB!.sourceHandle).not.toBe("next-step")
+    expect(edgeToB!.sourceHandle).not.toBe("sync-next")
     expect(edgeToB!.sourceHandle).toBeTruthy()
 
     // Should remove X
     expect(result.removeNodeIds).toContain("X")
   })
 
-  it("connectTo from multi-output last node uses a button handle (never next-step)", () => {
+  it("connectTo from multi-output last node uses a button handle (never sync-next)", () => {
     const existingNodes = [
       { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
       { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },
@@ -1145,10 +1145,10 @@ describe("buildEditFlowFromPlan — connectTo", () => {
 
     const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
 
-    // The connectTo edge should use a free button handle, never "next-step"
+    // The connectTo edge should use a free button handle, never "sync-next"
     const connectToEdge = result.newEdges.find(e => e.target === "B")
     expect(connectToEdge).toBeDefined()
-    expect(connectToEdge!.sourceHandle).not.toBe("next-step")
+    expect(connectToEdge!.sourceHandle).not.toBe("sync-next")
     expect(connectToEdge!.sourceHandle).toBeTruthy()
   })
 

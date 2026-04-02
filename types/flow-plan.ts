@@ -164,7 +164,7 @@ export interface NewEdge {
   source: string           // existing or new node ID
   target: string           // existing or new node ID
   sourceButtonIndex?: number  // index into source node's buttons → resolved to button ID
-  sourceHandle?: string       // direct handle ID (for non-button connections like "next-step")
+  sourceHandle?: string       // direct handle ID (for non-button connections like "sync-next")
 }
 
 export interface EditFlowPlan {

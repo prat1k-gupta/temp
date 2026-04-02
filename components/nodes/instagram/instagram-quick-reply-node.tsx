@@ -489,7 +489,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
           <Handle
             type="source"
             position={Position.Right}
-            id="next-step"
+            id="sync-next"
             className="w-3 h-3 bg-pink-500 border-2 border-background opacity-100 hover:scale-110 transition-transform"
           />
         </div>

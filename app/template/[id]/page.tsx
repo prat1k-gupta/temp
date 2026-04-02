@@ -17,17 +17,19 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
+import type { FlowData } from "@/utils/flow-storage"
 import { NodeSidebar } from "@/components/node-sidebar"
 import { AISuggestionsPanel, AIAssistant } from "@/components/ai"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { Toaster } from "@/components/ui/sonner"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { Loader2, Sparkles } from "lucide-react"
 
 import { nodeTypes } from "@/constants/node-types-registry"
 import { injectNodeCallbacks } from "@/utils/node-data-injection"
-import { useTemplatePersistence } from "@/hooks/use-template-persistence"
+import { useFlow, useUpdateFlow, useAutoSave } from "@/hooks/queries"
 import { useNodeOperations } from "@/hooks/use-node-operations"
 import { useClipboard } from "@/hooks/use-clipboard"
 import { useFlowAI } from "@/hooks/use-flow-ai"
@@ -61,15 +63,80 @@ function TemplateEditorInner() {
 
   // --- Hook Instantiation ---
 
-  const persistence = useTemplatePersistence({
-    templateId,
-    nodes,
-    edges,
-    platform,
-    setNodes,
-    setEdges,
-    setPlatform,
-  })
+  const router = useRouter()
+
+  // Load template via React Query
+  const flowQuery = useFlow(templateId)
+  const updateFlowMutation = useUpdateFlow(templateId)
+
+  // Template state
+  const [currentFlow, setCurrentFlow] = useState<FlowData | null>(null)
+  const [flowLoaded, setFlowLoaded] = useState(false)
+  const [isEditingFlowName, setIsEditingFlowName] = useState(false)
+  const [editingFlowNameValue, setEditingFlowNameValue] = useState("")
+
+  // Load template data when query resolves
+  useEffect(() => {
+    if (flowQuery.data && !flowLoaded) {
+      const templateData = flowQuery.data
+      setCurrentFlow(templateData)
+      setNodes(templateData.nodes)
+      setEdges(templateData.edges)
+      setPlatform(templateData.platform)
+      setFlowLoaded(true)
+      setEditingFlowNameValue(templateData.name)
+    }
+  }, [flowQuery.data, flowLoaded])
+
+  // Auto-save via draft system (same as flows)
+  const autoSaveEnabled = !!templateId && !!currentFlow && flowLoaded && nodes.length > 0
+  const { isSaving } = useAutoSave(templateId, nodes, edges, platform, autoSaveEnabled, true)
+
+  // Metadata save helpers
+  const handleBackClick = useCallback(() => {
+    router.push("/flow-templates")
+  }, [router])
+
+  const handleFlowNameBlur = useCallback(async () => {
+    if (editingFlowNameValue.trim() && currentFlow && editingFlowNameValue !== currentFlow.name) {
+      try {
+        const updated = await updateFlowMutation.mutateAsync({ name: editingFlowNameValue.trim() })
+        if (updated) {
+          setCurrentFlow(updated)
+          toast.success("Template name updated")
+        }
+      } catch {
+        toast.error("Failed to update template name")
+        if (currentFlow) setEditingFlowNameValue(currentFlow.name)
+      }
+    }
+    setIsEditingFlowName(false)
+  }, [editingFlowNameValue, currentFlow, updateFlowMutation])
+
+  const saveFlowFields = useCallback(async (updates: Record<string, any>) => {
+    if (!templateId) return
+    try {
+      await updateFlowMutation.mutateAsync(updates)
+    } catch (error) {
+      console.error("[Template] Error saving fields:", error)
+    }
+  }, [templateId, updateFlowMutation])
+
+  const saveDescription = useCallback(async (description: string) => {
+    if (!templateId) return
+    try {
+      const updated = await updateFlowMutation.mutateAsync({ description })
+      if (updated) setCurrentFlow(updated)
+    } catch {}
+  }, [templateId, updateFlowMutation])
+
+  const saveAIMetadata = useCallback(async (aiMetadata: TemplateAIMetadata) => {
+    if (!templateId) return
+    try {
+      const updated = await updateFlowMutation.mutateAsync({ aiMetadata })
+      if (updated) setCurrentFlow(updated)
+    } catch {}
+  }, [templateId, updateFlowMutation])
 
   // Templates are always in edit mode
   const isEditMode = true
@@ -89,10 +156,10 @@ function TemplateEditorInner() {
     isEditMode,
     autoEnterEditMode,
     updateDraftChanges,
-    currentFlow: persistence.currentFlow,
-    setCurrentFlow: persistence.setCurrentFlow,
-    flowLoaded: persistence.flowLoaded,
-    setFlowLoaded: persistence.setFlowLoaded,
+    currentFlow,
+    setCurrentFlow,
+    flowLoaded,
+    setFlowLoaded,
   })
 
   const clipboard = useClipboard({
@@ -125,8 +192,8 @@ function TemplateEditorInner() {
     isEditMode,
     autoEnterEditMode,
     updateDraftChanges,
-    currentFlow: persistence.currentFlow,
-    setCurrentFlow: persistence.setCurrentFlow,
+    currentFlow,
+    setCurrentFlow,
   })
 
   const interactions = useFlowInteractions({
@@ -191,26 +258,39 @@ function TemplateEditorInner() {
 
   return (
     <div className="h-screen flex bg-background">
+      {flowQuery.isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+              <Sparkles className="absolute -top-1 -right-1 w-5 h-5 text-primary animate-pulse" />
+            </div>
+            <h2 className="text-xl font-semibold text-primary">Loading template...</h2>
+          </div>
+        </div>
+      )}
+
       <NodeSidebar onNodeDragStart={interactions.onNodeDragStart} platform={platform} />
 
       <div className="flex-1 relative">
         <TemplateHeader
-          currentFlow={persistence.currentFlow}
-          isEditingFlowName={persistence.isEditingFlowName}
-          editingFlowNameValue={persistence.editingFlowNameValue}
-          setEditingFlowNameValue={persistence.setEditingFlowNameValue}
-          setIsEditingFlowName={persistence.setIsEditingFlowName}
-          handleFlowNameBlur={persistence.handleFlowNameBlur}
+          currentFlow={currentFlow}
+          isEditingFlowName={isEditingFlowName}
+          editingFlowNameValue={editingFlowNameValue}
+          setEditingFlowNameValue={setEditingFlowNameValue}
+          setIsEditingFlowName={setIsEditingFlowName}
+          handleFlowNameBlur={handleFlowNameBlur}
           platform={platform}
           nodes={nodes}
           edges={edges}
-          handleBackClick={persistence.handleBackClick}
+          handleBackClick={handleBackClick}
           isFlowGraphPanelOpen={isFlowGraphPanelOpen}
           onToggleFlowGraph={() => setIsFlowGraphPanelOpen((prev) => !prev)}
-          aiMetadata={persistence.currentFlow?.aiMetadata}
-          onSaveAIMetadata={persistence.saveAIMetadata}
-          description={persistence.currentFlow?.description}
-          onSaveDescription={persistence.saveDescription}
+          aiMetadata={currentFlow?.aiMetadata}
+          onSaveAIMetadata={saveAIMetadata}
+          description={currentFlow?.description}
+          onSaveDescription={saveDescription}
+          isSaving={isSaving}
         />
 
         {/* Template Editor Modal (for nested templates) */}
@@ -241,9 +321,9 @@ function TemplateEditorInner() {
                     convertNode: nodeOps.convertNode,
                   }, {
                     flowId: templateId,
-                    currentFlow: persistence.currentFlow,
-                    setCurrentFlow: persistence.setCurrentFlow,
-                    saveFlowFields: persistence.saveFlowFields,
+                    currentFlow,
+                    setCurrentFlow,
+                    saveFlowFields,
                   }, nodes)
                 )}
               edges={edges
@@ -307,7 +387,7 @@ function TemplateEditorInner() {
               <Panel position="bottom-center" className="mb-4">
                 <AIAssistant
                   platform={platform}
-                  flowContext={persistence.currentFlow?.description}
+                  flowContext={currentFlow?.description}
                   existingFlow={{ nodes, edges }}
                   selectedNode={nodeOps.selectedNode}
                   onApplyFlow={flowAI.handleApplyFlow}

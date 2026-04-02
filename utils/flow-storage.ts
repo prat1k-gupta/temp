@@ -319,7 +319,7 @@ export async function getAllFlows(): Promise<FlowMetadata[]> {
   if (!isApiStorage()) return _localGetAllFlows()
 
   try {
-    const data = await apiClient.get<any>("/api/magic-flow/projects")
+    const data = await apiClient.get<any>("/api/magic-flow/projects?type=flow")
     const projects = data?.projects || data || []
     if (!Array.isArray(projects)) return []
     return projects.map(mapProjectToMetadata)
@@ -550,32 +550,6 @@ export async function getTemplate(templateId: string): Promise<FlowData | null> 
     return null
   }
 }
-
-/**
- * Update a template.
- */
-export async function updateTemplate(
-  templateId: string,
-  updates: Partial<Omit<FlowData, 'id' | 'createdAt'>>
-): Promise<FlowData | null> {
-  try {
-    const body: Record<string, any> = {}
-    if (updates.name !== undefined) body.name = updates.name
-    if (updates.description !== undefined) body.description = updates.description
-    if (updates.platform !== undefined) body.platform = updates.platform
-    if (updates.nodes !== undefined) body.nodes = updates.nodes
-    if (updates.edges !== undefined) body.edges = updates.edges
-    if (updates.aiMetadata !== undefined) body.ai_metadata = updates.aiMetadata
-
-    const data = await apiClient.put<any>(`/api/magic-flow/projects/${templateId}`, body)
-    const project = data?.project || data
-    return mapProjectToFlowData(project)
-  } catch (error) {
-    console.error("Error updating template via API:", error)
-    return null
-  }
-}
-
 /**
  * Delete a template.
  */

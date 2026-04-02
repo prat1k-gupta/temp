@@ -291,7 +291,7 @@ export function buildEditFlowFromPlan(
       }
     } else {
       // No attachHandle — check if anchor is a multi-output node (quickReply/list)
-      // If so, auto-resolve to a free button/option handle (never use "next-step")
+      // If so, auto-resolve to a free button/option handle (never use "sync-next")
       const anchorType = anchorNode.type || ""
       const anchorIsMultiOutput = isMultiOutputType(anchorType)
 
@@ -319,7 +319,7 @@ export function buildEditFlowFromPlan(
         newNodes.push(node)
         nodeOrder.push(nodeId)
 
-        // Resolve to a free button/option handle — never use "next-step" for multi-output nodes
+        // Resolve to a free button/option handle — never use "sync-next" for multi-output nodes
         const freeHandle = findFreeHandle(anchorNode, existingEdges, newEdges)
         if (freeHandle) {
           console.log(`[buildEditFlow] Auto-resolved free handle "${freeHandle}" for chain from multi-output node ${chain.attachTo}`)
@@ -1031,7 +1031,7 @@ function maybeAutoConvertToList(
  * For multi-output nodes (quickReply / interactiveList), find the first
  * button or option handle that doesn't already have an outgoing edge.
  * Returns undefined if all handles are occupied (caller should skip the edge
- * or fall back to a warning — never use "next-step").
+ * or fall back to a warning — never use "sync-next").
  */
 function findFreeHandle(
   anchorNode: Node,

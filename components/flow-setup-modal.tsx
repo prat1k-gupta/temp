@@ -50,6 +50,25 @@ export function FlowSetupModal({ open, onClose, onComplete }: FlowSetupModalProp
   const [selectedWaAccountId, setSelectedWaAccountId] = useState("")
   const { data: chatbotFlows } = useChatbotFlows()
 
+  // Reset all state when modal opens
+  useEffect(() => {
+    if (open) {
+      setFlowName("")
+      setFlowDescription("")
+      setSelectedPlatform("whatsapp")
+      setSearchQuery("")
+      setConflictWarnings({})
+      setRefConflict(null)
+      setTriggerConfig({
+        selectedTriggers: [],
+        triggerKeywords: [],
+        triggerMatchType: "contains_whole_word",
+        triggerRef: "",
+      })
+      setSelectedWaAccountId("")
+    }
+  }, [open])
+
   // Auto-select default outgoing or first account when accounts load
   useEffect(() => {
     if (waAccounts.length > 0 && !selectedWaAccountId) {

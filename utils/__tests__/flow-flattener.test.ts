@@ -162,13 +162,13 @@ describe("flattenFlow", () => {
 
     const result = flattenFlow(nodes, edges)
 
-    // Two exits to node 3:
-    // 1. q2 is an open node (no outgoing edges)
-    // 2. qr "next-step" handle is unconnected (btn-1→q2, btn-2→fc, but next-step has no edge)
+    // Only one exit to node 3: q2 is open (no outgoing edges).
+    // q1's "sync-next" handle is unconnected but sync-next handles are excluded
+    // from open exits — they should not leak to the parent flow.
     const edgesTo3 = result.edges.filter((e) => e.target === "3")
-    expect(edgesTo3).toHaveLength(2)
-    const exitSources = edgesTo3.map((e) => `${e.source}:${e.sourceHandle || "default"}`).sort()
-    expect(exitSources).toEqual(["tpl_q1:next-step", "tpl_q2:default"].sort())
+    expect(edgesTo3).toHaveLength(1)
+    const exitSources = edgesTo3.map((e) => `${e.source}:${e.sourceHandle || "default"}`)
+    expect(exitSources).toEqual(["tpl_q2:default"])
 
     // flowComplete excluded
     expect(result.nodes.map((n) => n.id)).not.toContain("tpl_fc")

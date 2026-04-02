@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -40,7 +40,10 @@ import { PageHeader } from "@/components/page-header"
 export default function FlowTemplatesPage() {
   const router = useRouter()
   const { data: allTemplates = [], isLoading } = useTemplateFlows()
-  const templates = [...allTemplates].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  const templates = useMemo(
+    () => [...allTemplates].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    [allTemplates]
+  )
   const queryClient = useQueryClient()
   const reloadTemplates = () => queryClient.invalidateQueries({ queryKey: flowKeys.templates() })
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null)

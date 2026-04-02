@@ -326,7 +326,7 @@ describe("convertToFsWhatsApp", () => {
     expect(result.steps[0].step_name).toContain("what_is_your_name")
   })
 
-  it("handles quick reply next-step fallthrough", () => {
+  it("handles quick reply sync-next fallthrough", () => {
     const nodes = [
       node("start-1", "start"),
       node("qr1", "whatsappQuickReply", {
@@ -347,7 +347,7 @@ describe("convertToFsWhatsApp", () => {
     expect(qrStep.next_step).toBe("__complete__")
   })
 
-  it("quick reply without next-step has no synchronous_next", () => {
+  it("quick reply without sync-next has no synchronous_next", () => {
     const nodes = [
       node("start-1", "start"),
       node("qr1", "whatsappQuickReply", {
@@ -363,7 +363,7 @@ describe("convertToFsWhatsApp", () => {
     expect(qrStep.synchronous_next).toBeUndefined()
   })
 
-  it("interactiveList next-step maps to synchronous_next", () => {
+  it("interactiveList sync-next maps to synchronous_next", () => {
     const nodes = [
       node("start-1", "start"),
       node("list1", "whatsappInteractiveList", {
@@ -682,7 +682,7 @@ describe("round-trip conversion", () => {
     expect(tplStep.conditional_next!["No"]).toBeDefined()
   })
 
-  it("reverse converter restores synchronous_next as next-step edge", () => {
+  it("reverse converter restores synchronous_next as sync-next edge", () => {
     const flow: FsWhatsAppFlow = {
       name: "Sync Next Flow",
       steps: [

@@ -1127,7 +1127,7 @@ describe("buildEditFlowFromPlan — connectTo", () => {
     expect(result.removeNodeIds).toContain("X")
   })
 
-  it("connectTo from multi-output last node uses a button handle (never next-step)", () => {
+  it("connectTo from multi-output last node uses a button handle (never sync-next)", () => {
     const existingNodes = [
       { id: "A", type: "name", position: { x: 100, y: 100 }, data: { platform: "web" } },
       { id: "B", type: "email", position: { x: 800, y: 100 }, data: { platform: "web" } },

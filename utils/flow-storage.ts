@@ -18,6 +18,8 @@ export interface FlowMetadata {
   triggerKeywords?: string[]
   triggerRef?: string
   flowSlug?: string
+  waAccountId?: string
+  waPhoneNumber?: string
   createdAt: string
   updatedAt: string
   nodeCount: number
@@ -71,6 +73,8 @@ export function mapProjectToMetadata(p: any): FlowMetadata {
     triggerKeywords: p.trigger_keywords || p.triggerKeywords || [],
     triggerRef: p.trigger_ref || p.triggerRef || "",
     flowSlug: p.flow_slug || p.flowSlug || "",
+    waAccountId: p.wa_account_id || p.waAccountId || "",
+    waPhoneNumber: p.wa_phone_number || p.waPhoneNumber || "",
     createdAt: p.created_at || p.createdAt,
     updatedAt: p.updated_at || p.updatedAt,
     nodeCount: p.node_count ?? p.nodeCount ?? 0,

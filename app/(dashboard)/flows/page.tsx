@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List, Zap, Link2, GitBranch, MoreHorizontal } from "lucide-react"
+import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List, Zap, Link2, GitBranch, MoreHorizontal, ExternalLink, Plug, PlugZap } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { cn } from "@/lib/utils"
 import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
@@ -255,8 +255,8 @@ export default function FlowsPage() {
             </div>
           </div>
 
-          {/* Divider + Trigger & Slug & Ref Link */}
-          {((flow.triggerKeywords && flow.triggerKeywords.length > 0) || flow.flowSlug || flow.triggerRef) && (
+          {/* Divider + Trigger & Slug & Ref Link + Account */}
+          {((flow.triggerKeywords && flow.triggerKeywords.length > 0) || flow.flowSlug || flow.triggerRef || (flow.platform === "whatsapp")) && (
             <>
               <div className="my-4 h-px bg-border" />
               <div className="space-y-2.5">
@@ -266,7 +266,21 @@ export default function FlowsPage() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-xs text-muted-foreground">Triggers:</span>
                       {flow.triggerKeywords.map((kw) => (
-                        <span key={kw} className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{kw}</span>
+                        <span key={kw} className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">
+                          {kw}
+                          {flow.waPhoneNumber && (
+                            <a
+                              href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              title={`Test "${kw}" on WhatsApp`}
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -275,7 +289,21 @@ export default function FlowsPage() {
                   <div className="flex items-center gap-2">
                     <Link2 className="h-3.5 w-3.5 text-primary" />
                     <span className="text-xs text-muted-foreground">Ref link:</span>
-                    <code className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{flow.triggerRef}</code>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">
+                      {flow.triggerRef}
+                      {flow.waPhoneNumber && (
+                        <a
+                          href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(flow.triggerRef)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          title="Test ref link on WhatsApp"
+                        >
+                          <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      )}
+                    </span>
                   </div>
                 )}
                 {flow.flowSlug && (
@@ -283,6 +311,21 @@ export default function FlowsPage() {
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Slug:</span>
                     <code className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">{flow.flowSlug}</code>
+                  </div>
+                )}
+                {flow.platform === "whatsapp" && (
+                  <div className="flex items-center gap-2">
+                    {flow.waAccountId ? (
+                      <>
+                        <PlugZap className="h-3.5 w-3.5 text-emerald-500" />
+                        <span className="text-xs text-emerald-600">Account connected</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plug className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">No account</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -303,7 +346,9 @@ export default function FlowsPage() {
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Structure</th>
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Triggers</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Ref Link</th>
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Slug</th>
+            <th className="text-left font-medium text-muted-foreground px-4 py-3">Account</th>
             <th className="text-left font-medium text-muted-foreground px-4 py-3">Updated</th>
             <th className="w-10" />
           </tr>
@@ -362,13 +407,49 @@ export default function FlowsPage() {
                     <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
                     <div className="flex gap-1 flex-wrap">
                       {flow.triggerKeywords.slice(0, 2).map((kw) => (
-                        <span key={kw} className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">{kw}</span>
+                        <span key={kw} className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">
+                          {kw}
+                          {flow.waPhoneNumber && (
+                            <a
+                              href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              title={`Test "${kw}" on WhatsApp`}
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                        </span>
                       ))}
                       {flow.triggerKeywords.length > 2 && (
                         <span className="text-xs text-muted-foreground">+{flow.triggerKeywords.length - 2}</span>
                       )}
                     </div>
                   </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              {/* Ref Link */}
+              <td className="px-4 py-3">
+                {flow.triggerRef ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">
+                    {flow.triggerRef}
+                    {flow.waPhoneNumber && (
+                      <a
+                        href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(flow.triggerRef)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        title="Test ref link on WhatsApp"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+                  </span>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}
@@ -380,6 +461,24 @@ export default function FlowsPage() {
                     <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     <code className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">{flow.flowSlug}</code>
                   </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              {/* Account */}
+              <td className="px-4 py-3">
+                {flow.platform === "whatsapp" ? (
+                  flow.waAccountId ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+                      <PlugZap className="h-3 w-3" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Plug className="h-3 w-3" />
+                      None
+                    </span>
+                  )
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}

@@ -10,6 +10,17 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
 import { Plus, Edit3, X, Sparkles, Minimize2, Loader2 } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
+import { MediaAttachment } from "@/components/nodes/shared/media-attachment"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { useState, useEffect, useRef } from "react"
@@ -31,6 +42,8 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
   const [editingButtonValue, setEditingButtonValue] = useState("")
   const editingContainerRef = useRef<HTMLDivElement>(null)
   const [improvingButtonIndex, setImprovingButtonIndex] = useState<number | null>(null)
+  const [showMediaAlert, setShowMediaAlert] = useState(false)
+  const [pendingConversion, setPendingConversion] = useState<(() => void) | null>(null)
 
   const platform = (data.platform || "whatsapp") as Platform
   const nodeType = "whatsappQuickReply"
@@ -143,10 +156,10 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
       id: btn.id,
       value: btn.value
     }))
-    
+
     // If we have more buttons than the Quick Reply limit, trigger conversion to List
     if (formattedButtons.length > maxButtons) {
-      handleConvertToListWithButtons(formattedButtons)
+      maybeConvertToList(formattedButtons)
     } else {
       if (data.onNodeUpdate) {
         data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
@@ -154,7 +167,7 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
     }
   }
 
-  const handleConvertToListWithButtons = (buttons: any[]) => {
+  const doConvertToList = (buttons: any[]) => {
     // Convert buttons to options using shared utility
     const buttonData = buttons.map((b: any) => ({
       text: b.text || b.label || "",
@@ -175,6 +188,15 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
       toast.success('Upgraded to WhatsApp List!', {
         description: `Now you have ${options.length} options (was limited to ${maxButtons} buttons)`
       })
+    }
+  }
+
+  const maybeConvertToList = (buttons: any[]) => {
+    if (data.media) {
+      setPendingConversion(() => () => doConvertToList(buttons))
+      setShowMediaAlert(true)
+    } else {
+      doConvertToList(buttons)
     }
   }
 
@@ -289,6 +311,16 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-2 pb-12 px-4">
+          <MediaAttachment
+            media={data.media}
+            selected={!!selected}
+            disabledTypes={["audio"]}
+            onUpdate={(media) => {
+              if (data.onNodeUpdate) {
+                data.onNodeUpdate(data.id, { ...data, media })
+              }
+            }}
+          />
           {isEditingQuestion ? (
             <div ref={editingContainerRef} className="space-y-2 group/question">
               <VariablePickerTextarea
@@ -523,6 +555,22 @@ export function WhatsAppQuickReplyNode({ data, selected }: { data: any; selected
           />
         </div>
       </Card>
+      <AlertDialog open={showMediaAlert} onOpenChange={setShowMediaAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Media won't be shown in lists</AlertDialogTitle>
+            <AlertDialogDescription>
+              WhatsApp lists don't support media headers. Your media will be kept but won't appear in the message.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingConversion(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { pendingConversion?.(); setPendingConversion(null) }}>
+              Convert anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -47,6 +47,7 @@ export interface QuestionNodeData extends BaseNodeData {
   characterLimit?: number
   storeAs?: string
   validation?: ValidationConfig
+  media?: MediaAttachment
 }
 
 export interface QuickReplyNodeData extends BaseNodeData {
@@ -54,6 +55,7 @@ export interface QuickReplyNodeData extends BaseNodeData {
   buttons?: ButtonData[]
   storeAs?: string
   validation?: ValidationConfig
+  media?: MediaAttachment
 }
 
 export interface ListNodeData extends BaseNodeData {
@@ -61,11 +63,20 @@ export interface ListNodeData extends BaseNodeData {
   options?: OptionData[]
   storeAs?: string
   validation?: ValidationConfig
+  media?: MediaAttachment
 }
 
 export interface MessageNodeData extends BaseNodeData {
   text?: string
+  media?: MediaAttachment
 }
+
+export interface MediaAttachment {
+  type: 'image' | 'video' | 'audio' | 'document'
+  url: string
+}
+
+export type MediaType = MediaAttachment['type']
 
 export interface CommentNodeData extends BaseNodeData {
   comment?: string

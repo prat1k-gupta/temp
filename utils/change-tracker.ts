@@ -248,9 +248,9 @@ export class ChangeTracker {
     
     // Properties that are meaningful to users
     const userFacingProperties = [
-      'label', 'text', 'message', 'question', 'title', 'description', 
+      'label', 'text', 'message', 'question', 'title', 'description',
       'placeholder', 'buttonText', 'options', 'buttons', 'validation',
-      'required', 'type', 'style', 'color', 'size', 'nodeType'
+      'required', 'type', 'style', 'color', 'size', 'nodeType', 'media'
     ]
     
     // Properties to ignore (technical/internal/callbacks)
@@ -261,7 +261,8 @@ export class ChangeTracker {
       '_timestamp', '__id',
       'position', 'selected', 'dragging', 'data', 'sourcePosition',
       'targetPosition', 'sourceHandle', 'targetHandle', 'animated',
-      'hidden', 'deletable', 'selectable', 'dragHandle', 'dragHandleClass'
+      'hidden', 'deletable', 'selectable', 'dragHandle', 'dragHandleClass',
+      'flowVariables', 'flowVariablesRich', 'nodeCount'
     ])
     
     // Get all properties from both objects
@@ -364,6 +365,13 @@ export class ChangeTracker {
       }
     }
     
+    if (property === 'media') {
+      if (!oldValue && newValue) return `Added ${newValue.type} media`
+      if (oldValue && !newValue) return `Removed ${oldValue.type} media`
+      if (oldValue?.type !== newValue?.type) return `Changed media type: ${oldValue?.type} → ${newValue?.type}`
+      return `Updated media URL`
+    }
+
     if (property === 'required') {
       return `${oldValue ? 'Made required' : 'Made optional'}`
     }

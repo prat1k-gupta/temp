@@ -841,3 +841,268 @@ describe("apiFetch success/failure handles", () => {
     expect(errorEdge).toBeDefined()
   })
 })
+
+// --- Media Attachment ---
+
+describe("media attachment", () => {
+  it("includes media fields in forward conversion for message node", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("m1", "whatsappMessage", {
+        label: "Welcome",
+        text: "Welcome to our store!",
+        media: { type: "image", url: "https://example.com/welcome.jpg" },
+      }),
+    ]
+    const edges = [edge("start-1", "m1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Media Message")
+    expect(result.steps).toHaveLength(1)
+
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBe("image")
+    expect(step.input_config?.media_url).toBe("https://example.com/welcome.jpg")
+  })
+
+  it("includes media fields in forward conversion for quick reply node", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("qr1", "whatsappQuickReply", {
+        label: "Pick",
+        question: "Choose an option",
+        buttons: [
+          { id: "btn-yes", text: "Yes" },
+          { id: "btn-no", text: "No" },
+        ],
+        media: { type: "video", url: "https://example.com/promo.mp4" },
+      }),
+    ]
+    const edges = [edge("start-1", "qr1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Media QR")
+    expect(result.steps).toHaveLength(1)
+
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBe("video")
+    expect(step.input_config?.media_url).toBe("https://example.com/promo.mp4")
+  })
+
+  it("includes media fields in forward conversion for question node", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("q1", "whatsappQuestion", {
+        label: "Ask",
+        question: "What do you see?",
+        media: { type: "document", url: "https://example.com/menu.pdf" },
+      }),
+    ]
+    const edges = [edge("start-1", "q1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Media Question")
+    expect(result.steps).toHaveLength(1)
+
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBe("document")
+    expect(step.input_config?.media_url).toBe("https://example.com/menu.pdf")
+  })
+
+  it("preserves media on interactive list for round-trip", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("list1", "whatsappInteractiveList", {
+        label: "Menu",
+        question: "Pick a dish",
+        options: [
+          { id: "opt-1", text: "Pizza" },
+          { id: "opt-2", text: "Pasta" },
+          { id: "opt-3", text: "Salad" },
+          { id: "opt-4", text: "Soup" },
+        ],
+        media: { type: "image", url: "https://example.com/menu.jpg" },
+      }),
+    ]
+    const edges = [edge("start-1", "list1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Media List")
+    expect(result.steps).toHaveLength(1)
+
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBe("image")
+    expect(step.input_config?.media_url).toBe("https://example.com/menu.jpg")
+  })
+
+  it("reconstructs media in reverse conversion", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Media Reverse",
+      steps: [
+        {
+          step_name: "welcome",
+          step_order: 1,
+          message: "Welcome!",
+          message_type: "text",
+          input_type: "none",
+          input_config: { media_type: "image", media_url: "https://example.com/welcome.jpg" },
+        },
+      ],
+    }
+
+    const { nodes } = convertFromFsWhatsApp(flow)
+    expect(nodes).toHaveLength(2) // start + 1 step
+    expect(nodes[1].type).toBe("whatsappMessage")
+    expect((nodes[1].data as any).media).toEqual({
+      type: "image",
+      url: "https://example.com/welcome.jpg",
+    })
+  })
+
+  it("reconstructs media on question node in reverse conversion", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Media Question Reverse",
+      steps: [
+        {
+          step_name: "ask_photo",
+          step_order: 1,
+          message: "What do you see?",
+          message_type: "text",
+          input_type: "text",
+          input_config: { media_type: "video", media_url: "https://example.com/clip.mp4" },
+        },
+      ],
+    }
+
+    const { nodes } = convertFromFsWhatsApp(flow)
+    expect(nodes[1].type).toBe("whatsappQuestion")
+    expect((nodes[1].data as any).media).toEqual({
+      type: "video",
+      url: "https://example.com/clip.mp4",
+    })
+  })
+
+  it("reconstructs media on quick reply node in reverse conversion", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Media QR Reverse",
+      steps: [
+        {
+          step_name: "pick_color",
+          step_order: 1,
+          message: "Pick a color",
+          message_type: "buttons",
+          input_type: "button",
+          buttons: [
+            { id: "btn-red", title: "Red" },
+            { id: "btn-blue", title: "Blue" },
+          ],
+          input_config: { media_type: "image", media_url: "https://example.com/colors.png" },
+        },
+      ],
+    }
+
+    const { nodes } = convertFromFsWhatsApp(flow)
+    expect(nodes[1].type).toBe("whatsappQuickReply")
+    expect((nodes[1].data as any).media).toEqual({
+      type: "image",
+      url: "https://example.com/colors.png",
+    })
+  })
+
+  it("reconstructs media on interactive list node in reverse conversion", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Media List Reverse",
+      steps: [
+        {
+          step_name: "pick_fruit",
+          step_order: 1,
+          message: "Pick a fruit",
+          message_type: "buttons",
+          input_type: "select",
+          buttons: [
+            { id: "opt-apple", title: "Apple" },
+            { id: "opt-banana", title: "Banana" },
+          ],
+          input_config: { media_type: "audio", media_url: "https://example.com/intro.mp3" },
+        },
+      ],
+    }
+
+    const { nodes } = convertFromFsWhatsApp(flow)
+    expect(nodes[1].type).toBe("whatsappInteractiveList")
+    expect((nodes[1].data as any).media).toEqual({
+      type: "audio",
+      url: "https://example.com/intro.mp3",
+    })
+  })
+
+  it("does not include media fields when no media", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("m1", "whatsappMessage", { label: "Plain", text: "No media here" }),
+    ]
+    const edges = [edge("start-1", "m1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "No Media")
+    expect(result.steps).toHaveLength(1)
+
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBeUndefined()
+    expect(step.input_config?.media_url).toBeUndefined()
+  })
+
+  it("does not include media when media object has no type", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("m1", "whatsappMessage", {
+        label: "Incomplete",
+        text: "Partial media",
+        media: { url: "https://example.com/file.jpg" },
+      }),
+    ]
+    const edges = [edge("start-1", "m1")]
+
+    const result = convertToFsWhatsApp(nodes, edges, "Incomplete Media")
+    const step = result.steps[0]
+    expect(step.input_config?.media_type).toBeUndefined()
+    expect(step.input_config?.media_url).toBeUndefined()
+  })
+
+  it("does not reconstruct media in reverse when only media_type is set", () => {
+    const flow: FsWhatsAppFlow = {
+      name: "Partial Media",
+      steps: [
+        {
+          step_name: "msg",
+          step_order: 1,
+          message: "Hello",
+          message_type: "text",
+          input_type: "none",
+          input_config: { media_type: "image" },
+        },
+      ],
+    }
+
+    const { nodes } = convertFromFsWhatsApp(flow)
+    expect((nodes[1].data as any).media).toBeUndefined()
+  })
+
+  it("round-trips media through forward and reverse conversion", () => {
+    const nodes = [
+      node("start-1", "start"),
+      node("m1", "whatsappMessage", {
+        label: "Promo",
+        text: "Check this out!",
+        media: { type: "image", url: "https://example.com/promo.jpg" },
+      }),
+    ]
+    const edges = [edge("start-1", "m1")]
+
+    const fsFlow = convertToFsWhatsApp(nodes, edges, "Round Trip Media")
+    expect(fsFlow.steps[0].input_config?.media_type).toBe("image")
+    expect(fsFlow.steps[0].input_config?.media_url).toBe("https://example.com/promo.jpg")
+
+    const { nodes: rtNodes } = convertFromFsWhatsApp(fsFlow)
+    expect(rtNodes[1].type).toBe("whatsappMessage")
+    expect((rtNodes[1].data as any).media).toEqual({
+      type: "image",
+      url: "https://example.com/promo.jpg",
+    })
+  })
+})

@@ -149,6 +149,15 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
       if (value.text) {
         return `"${value.text}"`
       }
+      // Handle media objects — show type + truncated URL
+      if (value.type && value.url) {
+        try {
+          const filename = new URL(value.url).pathname.split("/").pop() || value.url
+          return `${value.type}: ${filename}`
+        } catch {
+          return `${value.type}: ${value.url.slice(0, 40)}...`
+        }
+      }
       // Handle other objects
       return `{${Object.keys(value).length} properties}`
     }

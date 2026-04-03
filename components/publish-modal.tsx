@@ -143,6 +143,21 @@ export function PublishModal({
         })
         return
       }
+
+      // Validate: media nodes must have a URL
+      const mediaErrors = nodes.filter((n) => {
+        const data = n.data as any
+        return data.media && !data.media.url
+      })
+      if (mediaErrors.length > 0) {
+        setIsOpen(false)
+        onValidationError?.(mediaErrors.map((n) => n.id))
+        toast.error("Cannot publish: media missing URL", {
+          description: `Node "${(mediaErrors[0].data as any).label || mediaErrors[0].id}" has media attached but no URL`,
+          duration: 5000,
+        })
+        return
+      }
     }
 
     const finalVersionName = versionName.trim() || generateDefaultVersionName()

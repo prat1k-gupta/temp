@@ -8,6 +8,7 @@ import { VariableHighlightText } from "@/components/variable-highlight-text"
 import { Badge } from "@/components/ui/badge"
 import { Edit3 } from "lucide-react"
 import { WhatsAppIcon } from "@/components/platform-icons"
+import { MediaAttachment } from "@/components/nodes/shared/media-attachment"
 import { AIToolbar } from "@/components/ai"
 import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
@@ -115,6 +116,15 @@ export function WhatsAppMessageNode({ data, selected }: { data: any; selected?: 
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-3 pb-8 px-4">
+          <MediaAttachment
+            media={data.media}
+            selected={!!selected}
+            onUpdate={(media) => {
+              if (data.onNodeUpdate) {
+                data.onNodeUpdate(data.id, { ...data, media })
+              }
+            }}
+          />
           {isEditingMessage ? (
             <div ref={editingContainerRef} className="space-y-2 group/message">
               <VariablePickerTextarea

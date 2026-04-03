@@ -253,6 +253,14 @@ function buildDataStructure(
     base.question = "string (the question/prompt text)"
   }
 
+  // Media attachments
+  if (t === "question") {
+    base.media = "{ type: 'image'|'video'|'audio'|'document', url: string } — optional media attachment"
+  }
+  if (t === "quickReply") {
+    base.media = "{ type: 'image'|'video'|'document', url: string } — optional media header (no audio on buttons)"
+  }
+
   // Buttons
   if (t === "quickReply") {
     base.buttons = [{ text: "string (button label)", id: "string (optional)" }]
@@ -269,6 +277,11 @@ function buildDataStructure(
   // Message nodes (text, not question)
   if (["whatsappMessage", "instagramDM", "instagramStory"].includes(t)) {
     base.text = "string (the message content)"
+  }
+
+  // Media on message nodes
+  if (t === "whatsappMessage") {
+    base.media = "{ type: 'image'|'video'|'audio'|'document', url: string } — optional media attachment"
   }
 
   // Condition

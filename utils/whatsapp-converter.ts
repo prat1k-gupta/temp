@@ -275,6 +275,10 @@ export function convertToFsWhatsApp(
         step.message_type = "text"
         // Default edge → next_step
         step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        // Media attachment — stored in input_config so Go model picks it up
+        if (data.media?.type && data.media?.url) {
+          step.input_config = { ...step.input_config, media_type: data.media.type, media_url: data.media.url }
+        }
         break
       }
 
@@ -304,6 +308,10 @@ export function convertToFsWhatsApp(
         const qrSyncTarget = resolveNextStep(node.id, "sync-next", edgeMap, nodeStepNames)
         if (qrSyncTarget !== "__complete__") {
           step.synchronous_next = qrSyncTarget
+        }
+        // Media attachment — stored in input_config so Go model picks it up
+        if (data.media?.type && data.media?.url) {
+          step.input_config = { ...step.input_config, media_type: data.media.type, media_url: data.media.url }
         }
         break
       }
@@ -335,6 +343,10 @@ export function convertToFsWhatsApp(
         if (listSyncTarget !== "__complete__") {
           step.synchronous_next = listSyncTarget
         }
+        // Media attachment — stored in input_config, preserved for round-trip, runtime ignores for lists
+        if (data.media?.type && data.media?.url) {
+          step.input_config = { ...step.input_config, media_type: data.media.type, media_url: data.media.url }
+        }
         break
       }
 
@@ -343,6 +355,10 @@ export function convertToFsWhatsApp(
         step.message_type = "text"
         step.message = data.text || ""
         step.next_step = resolveNextStep(node.id, "", edgeMap, nodeStepNames)
+        // Media attachment — stored in input_config so Go model picks it up
+        if (data.media?.type && data.media?.url) {
+          step.input_config = { ...step.input_config, media_type: data.media.type, media_url: data.media.url }
+        }
         break
       }
 
@@ -732,6 +748,9 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
     switch (nodeType) {
       case "whatsappQuestion":
         data.question = step.message
+        if (step.input_config?.media_type && step.input_config?.media_url) {
+          data.media = { type: step.input_config.media_type as string, url: step.input_config.media_url as string }
+        }
         break
       case "whatsappQuickReply":
         data.question = step.message
@@ -741,6 +760,9 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           label: btn.title,
           value: btn.title.toLowerCase().replace(/\s+/g, "_"),
         }))
+        if (step.input_config?.media_type && step.input_config?.media_url) {
+          data.media = { type: step.input_config.media_type as string, url: step.input_config.media_url as string }
+        }
         break
       case "whatsappInteractiveList":
         data.question = step.message
@@ -748,9 +770,15 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
           id: btn.id,
           text: btn.title,
         }))
+        if (step.input_config?.media_type && step.input_config?.media_url) {
+          data.media = { type: step.input_config.media_type as string, url: step.input_config.media_url as string }
+        }
         break
       case "whatsappMessage":
         data.text = step.message
+        if (step.input_config?.media_type && step.input_config?.media_url) {
+          data.media = { type: step.input_config.media_type as string, url: step.input_config.media_url as string }
+        }
         break
       case "condition":
         data.conditionLogic = "AND"

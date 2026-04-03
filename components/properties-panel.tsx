@@ -90,6 +90,7 @@ interface PropertiesPanelProps {
   onRemoveButton?: (nodeId: string, buttonIndex: number) => void
   allNodes?: Node[] // All nodes in the flow for variable mapping
   onOpenFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
+  publishedFlowId?: string
 }
 
 // Limits are resolved dynamically from getNodeLimits() per-node, not hardcoded.
@@ -671,8 +672,8 @@ function ApiTestSection({
   )
 }
 
-function StartNodePanel({ selectedNode, platform, allNodes = [] }: { selectedNode: any; platform: string; allNodes?: Node[] }) {
-  const publishedFlowId = selectedNode.data?.publishedFlowId
+function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowIdOverride }: { selectedNode: any; platform: string; allNodes?: Node[]; publishedFlowIdOverride?: string }) {
+  const publishedFlowId = publishedFlowIdOverride || selectedNode.data?.publishedFlowId
   const waAccountId = selectedNode.data?.waAccountId
   const { data: accounts = [] } = useAccounts()
 
@@ -863,6 +864,7 @@ export function PropertiesPanel({
   onRemoveButton,
   allNodes = [],
   onOpenFlowBuilder,
+  publishedFlowId: publishedFlowIdProp,
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
@@ -3192,6 +3194,7 @@ export function PropertiesPanel({
               selectedNode={selectedNode}
               platform={platform}
               allNodes={allNodes}
+              publishedFlowIdOverride={publishedFlowIdProp}
             />
           )}
         </div>

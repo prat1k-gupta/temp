@@ -783,6 +783,7 @@ function MagicFlowInner() {
         pasteNodes={clipboard.pasteNodes}
         selectAllNodes={clipboard.selectAllNodes}
         onOpenFlowBuilder={openFlowBuilder}
+        publishedFlowId={persistence.currentFlow?.publishedFlowId}
       />
 
       {/* WhatsApp Flow Builder Modal — page-level so both node + properties panel can open it */}

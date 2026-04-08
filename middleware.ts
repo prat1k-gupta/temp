@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { jwtVerify } from "jose"
 
-export function middleware(request: NextRequest) {
+// Routes that don't require authentication
+const PUBLIC_ROUTES = ["/login", "/register", "/api/auth"]
+const STATIC_PREFIXES = ["/_next", "/app/_next", "/favicon.ico"]
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Public routes and static assets
+  // Allow public routes and static assets
   if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/register") ||
-    pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/app/_next") ||
+    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
+    STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     pathname === "/favicon.ico"
   ) {
     return NextResponse.next()
@@ -22,6 +24,28 @@ export function middleware(request: NextRequest) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("redirect", pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // Verify JWT signature
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    // No secret configured — allow through (backend still enforces)
+    return NextResponse.next()
+  }
+
+  try {
+    await jwtVerify(
+      token,
+      new TextEncoder().encode(secret),
+      { issuer: "fschat" }
+    )
+  } catch {
+    // Invalid/expired JWT — clear cookie and redirect to login
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("redirect", pathname)
+    const response = NextResponse.redirect(loginUrl)
+    response.cookies.delete("mf_access_token")
+    return response
   }
 
   return NextResponse.next()

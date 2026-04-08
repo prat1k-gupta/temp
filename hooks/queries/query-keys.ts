@@ -51,3 +51,8 @@ export const flowApiKeyKeys = {
   all: ["flowApiKeys"] as const,
   list: () => [...flowApiKeyKeys.all, "list"] as const,
 } as const
+
+export const rolePermissionKeys = {
+  all: ["rolePermissions"] as const,
+  list: () => [...rolePermissionKeys.all, "list"] as const,
+} as const

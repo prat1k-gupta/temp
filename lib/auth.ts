@@ -88,6 +88,32 @@ export async function refreshAccessToken(): Promise<string> {
   return data.access_token
 }
 
+/**
+ * Fetch fresh user data from the backend.
+ * Called on app load to ensure role and user data are current.
+ */
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  const token = getAccessToken()
+  if (!token) return null
+
+  const fsWhatsappUrl = process.env.NEXT_PUBLIC_FS_WHATSAPP_URL
+  const baseUrl = fsWhatsappUrl || ""
+
+  try {
+    const response = await fetch(`${baseUrl}/api/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) return null
+    const json = await response.json()
+    // Unwrap fs-whatsapp envelope
+    const user = json?.data ?? json
+    setUser(user)
+    return user as AuthUser
+  } catch {
+    return null
+  }
+}
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null
   return localStorage.getItem(ACCESS_TOKEN_KEY)

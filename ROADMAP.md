@@ -452,20 +452,33 @@ Share a read-only view of a flow with anyone (no login required), and a comment 
 
 **Depends on:** 3.7 (Node-Level Comments) for comment mode. View-only sharing can ship independently.
 
-### 3.10 RBAC Research + Migration
+### 3.10 RBAC ✅
 
-MagicFlow currently has basic JWT auth (login/register) but no role-based access control. FS Chat's Vue frontend has a full RBAC system that needs to be understood and replicated.
+Role-based access control with flat feature names and backend as source of truth.
 
-**Research needed:**
-- How does fs-chat handle roles? (Admin, Manager, Agent — see middleware in `cmd/fs-chat/main.go`)
-- What endpoints are role-gated? How does the Vue frontend check permissions?
-- How are roles stored? (`users` table, `role` column?)
-- What UI elements are hidden/shown per role in the Vue frontend?
+**Backend (fs-whatsapp):**
+- `FeatureRegistry` in `rbac.go` — single source of truth for all 12 features
+- `PathFeatureMap` — maps API paths to required features (longest-prefix wins). Every `/api/*` route must be mapped.
+- `HasFeature()` — handler-level checks for action-level or data-scoping permissions
+- `org_role_permissions` table — per-org, per-role feature config, Redis-cached (5min TTL)
+- Auto-seeds defaults with `FirstOrCreate` if empty (race-safe, no manual migration needed)
+- `GET /api/settings/features` — returns FeatureRegistry for frontend consumption
+- `GET/PUT /api/settings/role-permissions` — CRUD for per-org role config
+- 22 RBAC middleware tests
 
-**What MagicFlow needs:**
-- Store user role from JWT in auth context
-- Role-aware UI: hide/show settings pages, flow delete, publish, user management based on role
-- Middleware on sensitive API calls (already exists in fs-whatsapp — just need frontend to respect it)
+**Frontend (magic-flow):**
+- `lib/permissions.ts` — `canAccess()` with prefix matching, `DEFAULT_ROLE_FEATURES` as fallback
+- `AuthProvider` + `useAuth()` hook — fetches permissions from backend API, exposes `can(feature)`
+- `FeatureGate` component — layout-level access control
+- Sidebar filtering — nav items filtered by `can()`, `SETTINGS_CHILDREN` exported for reuse
+- Roles & Permissions settings page — reads feature list from backend
+- Settings redirect — first accessible page based on `can()`
+
+**12 flat features:** `flows`, `templates`, `chat`, `campaigns`, `contacts`, `analytics`, `accounts`, `users`, `teams`, `chatbot-settings`, `api-keys`, `agent-analytics`. Prefix matching for future sub-features (e.g., `users` grants `users.invite`).
+
+**Adding a new feature:** Add to `FeatureRegistry` + `DefaultRoleFeatures` + `PathFeatureMap` in Go → add nav item + `FeatureGate` in React. See root `CLAUDE.md` for full checklist.
+
+> Spec: `docs/superpowers/specs/2026-04-04-rbac-design.md`
 
 ### 3.11 Chat Interface in MagicFlow
 
@@ -622,6 +635,12 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 - Flow card enhancements (wa.me links, account indicator, ref link column)
 - Test Flow panel on start node with End Session & Retry
 - Start node draggable, apiClient error messages, header consolidation
+
+**Phase 3.10 — RBAC ✅** (April 2026)
+- Backend: 12 flat features, longest-prefix PathFeatureMap, auto-seed with FirstOrCreate, agent-analytics feature, 22 Go tests
+- Frontend: AuthProvider fetches from backend API, canAccess, FeatureGate layouts, sidebar filtering, Roles settings page, smart settings redirect
+- All API routes mapped in PathFeatureMap — no unprotected endpoints
+- Org-level permission overrides with backward-compatible defaults
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

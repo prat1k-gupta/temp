@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -61,7 +61,7 @@ import {
   useDeleteUser,
   type OrgUser,
 } from "@/hooks/queries"
-import { getUser, type AuthUser } from "@/lib/auth"
+import { useAuth } from "@/contexts/auth-context"
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
@@ -143,16 +143,14 @@ export default function UsersPage() {
   const updateUser = useUpdateUser()
   const deleteUser = useDeleteUser()
 
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null)
+  const { user: currentUser, can } = useAuth()
+  const canManageUsers = can("users")
+
   const [searchQuery, setSearchQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<OrgUser | null>(null)
   const [userToDelete, setUserToDelete] = useState<OrgUser | null>(null)
   const [form, setForm] = useState<UserFormState>(EMPTY_FORM)
-
-  useEffect(() => {
-    setCurrentUser(getUser())
-  }, [])
 
   const isEditing = editingUser !== null
   const isSelf = isEditing && editingUser.id === currentUser?.id
@@ -282,7 +280,7 @@ export default function UsersPage() {
             Manage your team members and their roles
           </p>
         </div>
-        <Button onClick={openCreate} className="cursor-pointer">
+        <Button onClick={openCreate} disabled={!canManageUsers} className="cursor-pointer">
           <Plus className="mr-2 h-4 w-4" />
           Invite User
         </Button>
@@ -333,7 +331,7 @@ export default function UsersPage() {
               Invite your first user to get started.
             </p>
           </div>
-          <Button onClick={openCreate} className="cursor-pointer">
+          <Button onClick={openCreate} disabled={!canManageUsers} className="cursor-pointer">
             <Plus className="mr-2 h-4 w-4" />
             Invite Your First User
           </Button>
@@ -420,6 +418,7 @@ export default function UsersPage() {
                           variant="ghost"
                           size="icon"
                           className="cursor-pointer hover:bg-muted"
+                          disabled={!canManageUsers}
                           onClick={() => openEdit(user)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -428,7 +427,7 @@ export default function UsersPage() {
                           variant="ghost"
                           size="icon"
                           className="cursor-pointer text-destructive hover:text-destructive hover:bg-muted"
-                          disabled={isCurrentUser}
+                          disabled={isCurrentUser || !canManageUsers}
                           onClick={() => setUserToDelete(user)}
                         >
                           <Trash2 className="h-4 w-4" />

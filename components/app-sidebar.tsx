@@ -1,6 +1,5 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
@@ -38,9 +37,9 @@ import {
   Users,
   Bot,
   Key,
+  Shield,
   LogOut,
   User,
-  ChevronLeft,
   ChevronRight,
   Sun,
   Moon,
@@ -48,25 +47,28 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { LogoClosed, LogoFull } from "@/components/freestand-logo"
-import { getUser, logout, type AuthUser } from "@/lib/auth"
+import { logout } from "@/lib/auth"
+import { useAuth } from "@/contexts/auth-context"
+import type { Feature } from "@/lib/permissions"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 
-const NAV_ITEMS = [
-  { label: "Flows", icon: Workflow, path: "/flows" },
-  { label: "Flow Templates", icon: Layers, path: "/flow-templates" },
-  { label: "WhatsApp Templates", icon: FileText, path: "/templates" },
+const NAV_ITEMS: { label: string; icon: React.ElementType; path: string; feature: Feature }[] = [
+  { label: "Flows", icon: Workflow, path: "/flows", feature: "flows" },
+  { label: "Flow Templates", icon: Layers, path: "/flow-templates", feature: "flows" },
+  { label: "WhatsApp Templates", icon: FileText, path: "/templates", feature: "templates" },
 ]
 
-const SETTINGS_CHILDREN = [
-  { label: "Accounts", icon: Phone, path: "/settings/accounts" },
-  { label: "Users", icon: Users, path: "/settings/users" },
-  { label: "Teams", icon: Users, path: "/settings/teams" },
-  { label: "Chatbot", icon: Bot, path: "/settings/chatbot" },
-  { label: "API Keys", icon: Key, path: "/settings/api-keys" },
+export const SETTINGS_CHILDREN: { label: string; icon: React.ElementType; path: string; feature: Feature }[] = [
+  { label: "Accounts", icon: Phone, path: "/settings/accounts", feature: "accounts" },
+  { label: "Users", icon: Users, path: "/settings/users", feature: "users" },
+  { label: "Teams", icon: Users, path: "/settings/teams", feature: "teams" },
+  { label: "Chatbot", icon: Bot, path: "/settings/chatbot", feature: "chatbot-settings" },
+  { label: "API Keys", icon: Key, path: "/settings/api-keys", feature: "api-keys" },
+  { label: "Roles", icon: Shield, path: "/settings/roles", feature: "users" },
 ]
 
 function getInitials(name: string): string {
@@ -80,12 +82,14 @@ function getInitials(name: string): string {
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { state, toggleSidebar } = useSidebar()
+  const { state } = useSidebar()
   const { theme, setTheme } = useTheme()
-  const [user, setUser] = useState<AuthUser | null>(null)
-  useEffect(() => { setUser(getUser()) }, [])
+  const { user, can } = useAuth()
   const isCollapsed = state === "collapsed"
   const isSettingsActive = pathname.startsWith("/settings")
+  const visibleNav = NAV_ITEMS.filter((item) => can(item.feature))
+  const visibleSettings = SETTINGS_CHILDREN.filter((item) => can(item.feature))
+  const hasAnySettings = visibleSettings.length > 0
 
   return (
     <Sidebar collapsible="icon">
@@ -103,7 +107,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {NAV_ITEMS.map((item) => (
+              {visibleNav.map((item) => (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     asChild
@@ -120,39 +124,41 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Settings with collapsible submenu */}
-              <Collapsible defaultOpen={isSettingsActive} className="group/collapsible">
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      isActive={isSettingsActive}
-                      tooltip="Settings"
-                      className="h-9 text-[13px]"
-                    >
-                      <Settings className="!w-[18px] !h-[18px]" />
-                      <span>Settings</span>
-                      <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {SETTINGS_CHILDREN.map((child) => (
-                        <SidebarMenuSubItem key={child.path}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={pathname === child.path}
-                          >
-                            <Link href={child.path}>
-                              <child.icon />
-                              <span>{child.label}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+              {/* Settings with collapsible submenu — hidden if no settings access */}
+              {hasAnySettings && (
+                <Collapsible defaultOpen={isSettingsActive} className="group/collapsible">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isSettingsActive}
+                        tooltip="Settings"
+                        className="h-9 text-[13px]"
+                      >
+                        <Settings className="!w-[18px] !h-[18px]" />
+                        <span>Settings</span>
+                        <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {visibleSettings.map((child) => (
+                          <SidebarMenuSubItem key={child.path}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === child.path}
+                            >
+                              <Link href={child.path}>
+                                <child.icon />
+                                <span>{child.label}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

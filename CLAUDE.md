@@ -134,6 +134,15 @@ All server data fetching MUST use TanStack React Query hooks. Never use raw `api
 - Auth, AI, test-api, campaigns, debug routes stay on Next.js server (have server-side secrets).
 - `lib/whatsapp-api.ts` has client-side helpers for chatbot endpoints that need response shaping.
 
+## RBAC (Frontend)
+
+- `lib/permissions.ts` — `FEATURES`, `DEFAULT_ROLE_FEATURES`, `canAccess()`. Fallback only — runtime features come from the backend API.
+- `contexts/auth-context.tsx` — `AuthProvider` provides `useAuth()` hook with `can(feature)` function. Fetches permissions from `GET /api/settings/role-permissions`.
+- `components/app-sidebar.tsx` — nav items have `feature` field, filtered by `can()`. `SETTINGS_CHILDREN` exported for reuse (e.g., settings redirect page).
+- Settings layout files use `<FeatureGate feature="...">` to block unauthorized access.
+- 12 flat features: `flows`, `templates`, `chat`, `campaigns`, `contacts`, `analytics`, `accounts`, `users`, `teams`, `chatbot-settings`, `api-keys`, `agent-analytics`.
+- When adding a new page: add `feature` to nav item + `FeatureGate` in layout + update `DEFAULT_ROLE_FEATURES` fallback.
+
 ## Key Patterns
 
 - Inline editing on nodes: click to edit, useState for edit mode, VariablePickerTextarea for text, StoreAsPill for variable names.

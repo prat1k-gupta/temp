@@ -544,6 +544,7 @@ Per-step execution trace for debugging flow runs. Currently API errors are saved
 
 | Item | Issue | Priority |
 |------|-------|----------|
+| Split `generate-flow.ts` monolith into focused modules ✅ | — | Done |
 | Replace primitive HTML with shadcn components ✅ | [#17](https://github.com/freestandtech/magic-flow/issues/17) | Done |
 | Version history modal UI redesign | [#26](https://github.com/freestandtech/magic-flow/issues/26) | High |
 | API Fetch response mapping key collision | [#27](https://github.com/freestandtech/magic-flow/issues/27) | High |

@@ -6,7 +6,7 @@ import { X, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { buildFlowGraphString } from "@/lib/ai/tools/generate-flow"
+import { buildFlowGraphString } from "@/lib/ai/tools/flow-graph-string"
 
 interface FlowGraphPanelProps {
   nodes: Node[]

@@ -1,0 +1,223 @@
+import type { Node, Edge } from "@xyflow/react"
+import { isMultiOutputType, getFixedHandles } from "@/utils/platform-helpers"
+
+/**
+ * Build a human-readable tree representation of the flow graph.
+ * Walks the graph via DFS from the start node, showing button labels,
+ * convergence points, cycles, and disconnected nodes.
+ */
+export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
+  if (nodes.length === 0) return "(empty flow)"
+
+  // Build adjacency: source+sourceHandle → target
+  const adjacency = new Map<string, Array<{ target: string; sourceHandle?: string }>>()
+  for (const edge of edges) {
+    const key = edge.source
+    if (!adjacency.has(key)) adjacency.set(key, [])
+    adjacency.get(key)!.push({ target: edge.target, sourceHandle: edge.sourceHandle || undefined })
+  }
+
+  const nodeMap = new Map<string, Node>(nodes.map(n => [n.id, n]))
+
+  // Find start node
+  const startNode = nodes.find(n => n.type === "start")
+  const startId = startNode?.id || "1"
+
+  const visited = new Set<string>()
+  const dfsStack = new Set<string>() // for cycle detection
+  const lines: string[] = ["Flow Graph:\n"]
+
+  function getNodeSummary(node: Node): string {
+    const data = node.data as any
+    const label = data?.label || ""
+    const question = typeof data?.question === "string" ? data.question : ""
+    const text = typeof data?.text === "string" ? data.text : ""
+    const storeAs = typeof data?.storeAs === "string" ? data.storeAs : ""
+    const displayText = question || text
+    const labelPart = label ? ` ${label}` : ""
+    const contentPart = displayText ? ` — "${displayText.substring(0, 60)}${displayText.length > 60 ? "..." : ""}"` : ""
+    const storeAsPart = storeAs ? ` {storeAs: "${storeAs}"}` : ""
+
+    // Flow template nodes: show as collapsed with internal node count
+    if (node.type === "flowTemplate") {
+      const templateName = data?.templateName || label
+      const nodeCount = data?.nodeCount || data?.internalNodes?.length || 0
+      return `[${node.id}] [Template: ${templateName}] (flowTemplate) — ${nodeCount} internal nodes`
+    }
+
+    return `[${node.id}]${labelPart} (${node.type})${contentPart}${storeAsPart}`
+  }
+
+  function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {
+    if (!sourceHandle) return null
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    // Match by handle ID like "button-0", "button-1"
+    const match = sourceHandle.match(/^button-(\d+)$/)
+    if (match) {
+      const idx = parseInt(match[1], 10)
+      if (idx < buttons.length) {
+        return buttons[idx]?.text || buttons[idx]?.label || `Button ${idx}`
+      }
+    }
+    // Match by handle ID like "option-0", "option-1"
+    const optMatch = sourceHandle.match(/^option-(\d+)$/)
+    if (optMatch) {
+      const idx = parseInt(optMatch[1], 10)
+      if (idx < options.length) {
+        return options[idx]?.text || `Option ${idx}`
+      }
+    }
+    // Also try matching by button.id
+    const byId = buttons.find(b => b.id === sourceHandle)
+    if (byId) return byId.text || byId.label || sourceHandle
+    // Also try matching by option.id
+    const byOptId = options.find(o => o.id === sourceHandle)
+    if (byOptId) return byOptId.text || sourceHandle
+    // API fetch success/error handles
+    if (sourceHandle === "success") return "Success"
+    if (sourceHandle === "error") return "Error"
+    // Handle "sync-next" or other named handles
+    if (sourceHandle === "sync-next") return null
+    return null
+  }
+
+  function getButtonIndex(node: Node, sourceHandle: string | undefined): number {
+    if (!sourceHandle) return Infinity
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    // Check button-N index handles
+    const btnMatch = sourceHandle.match(/^button-(\d+)$/)
+    if (btnMatch) return parseInt(btnMatch[1], 10)
+    // Check option-N index handles
+    const optMatch = sourceHandle.match(/^option-(\d+)$/)
+    if (optMatch) return buttons.length + parseInt(optMatch[1], 10)
+    // Check by button.id
+    const btnIdx = buttons.findIndex(b => b.id === sourceHandle)
+    if (btnIdx !== -1) return btnIdx
+    // Check by option.id (offset by buttons length to avoid collisions)
+    const optIdx = options.findIndex(o => o.id === sourceHandle)
+    if (optIdx !== -1) return buttons.length + optIdx
+    return Infinity
+  }
+
+  function dfs(nodeId: string, prefix: string, connector: string) {
+    const node = nodeMap.get(nodeId)
+    if (!node) return
+
+    // Cycle detection
+    if (dfsStack.has(nodeId)) {
+      lines.push(`${prefix}${connector} [${nodeId}] (cycle)`)
+      return
+    }
+
+    // Already visited — convergence
+    if (visited.has(nodeId)) {
+      lines.push(`${prefix}${connector} ${getNodeSummary(node)} (see above)`)
+      return
+    }
+
+    visited.add(nodeId)
+    dfsStack.add(nodeId)
+
+    lines.push(`${prefix}${connector} ${getNodeSummary(node)}`)
+
+    // Get children
+    const children = adjacency.get(nodeId) || []
+
+    // Show output handles for multi-output nodes
+    const isButtonNode = node.type ? isMultiOutputType(node.type) : false
+    const fixedHandles = node.type ? getFixedHandles(node.type) : null
+    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
+    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+
+    if (fixedHandles) {
+      // Fixed-handle nodes (apiFetch): show "success" and "error" handles
+      const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+      lines.push(`${childPrefix}│ Handles: [${fixedHandles.map(h => `"${h}" (handle: ${h})`).join(", ")}]`)
+    } else if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
+      const seen = new Set<string>()
+      const items: string[] = []
+      for (let i = 0; i < buttons.length; i++) {
+        const b = buttons[i]
+        const handle = b.id || `button-${i}`
+        if (!seen.has(handle)) {
+          seen.add(handle)
+          items.push(`"${b.text || b.label || "?"}" (handle: ${handle})`)
+        }
+      }
+      for (let i = 0; i < options.length; i++) {
+        const o = options[i]
+        const handle = o.id || `option-${i}`
+        if (!seen.has(handle)) {
+          seen.add(handle)
+          items.push(`"${o.text || "?"}" (handle: ${handle})`)
+        }
+      }
+      const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+      lines.push(`${childPrefix}│ Buttons: [${items.join(", ")}]`)
+    }
+
+    if (children.length === 0) {
+      dfsStack.delete(nodeId)
+      return
+    }
+
+    const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
+
+    // For button nodes: sort by button order, filter out redundant unlabeled edges
+    // (stale edges whose target is already reached by a labeled button edge)
+    let sortedChildren = children
+    if (isButtonNode) {
+      const labeledTargets = new Set(
+        children
+          .filter(c => getButtonLabel(node, c.sourceHandle) !== null)
+          .map(c => c.target)
+      )
+      sortedChildren = children
+        .filter(c => {
+          // Keep all labeled edges; drop unlabeled edges to targets already covered
+          if (getButtonLabel(node, c.sourceHandle) !== null) return true
+          return !labeledTargets.has(c.target)
+        })
+        .sort((a, b) => {
+          const aLabel = getButtonLabel(node, a.sourceHandle)
+          const bLabel = getButtonLabel(node, b.sourceHandle)
+          const aIdx = aLabel ? getButtonIndex(node, a.sourceHandle) : Infinity
+          const bIdx = bLabel ? getButtonIndex(node, b.sourceHandle) : Infinity
+          return aIdx - bIdx
+        })
+    }
+
+    sortedChildren.forEach((child, idx) => {
+      const isLast = idx === sortedChildren.length - 1
+      const childConnector = isLast ? "└→ " : "├→ "
+      const buttonLabel = getButtonLabel(node, child.sourceHandle)
+      if (buttonLabel) {
+        const labelPrefix = isLast ? "└─ " : "├─ "
+        const handleInfo = child.sourceHandle ? ` [handle: ${child.sourceHandle}]` : ""
+        lines.push(`${childPrefix}${labelPrefix}"${buttonLabel}"${handleInfo} →`)
+        const deeperPrefix = childPrefix + (isLast ? "   " : "│  ")
+        dfs(child.target, deeperPrefix, "└→ ")
+      } else {
+        dfs(child.target, childPrefix, childConnector)
+      }
+    })
+
+    dfsStack.delete(nodeId)
+  }
+
+  // Walk from start
+  dfs(startId, "", "")
+
+  // Find disconnected nodes
+  const disconnected = nodes.filter(n => !visited.has(n.id) && n.type !== "start")
+  if (disconnected.length > 0) {
+    lines.push("\nDisconnected Nodes:")
+    for (const node of disconnected) {
+      lines.push(`  ${getNodeSummary(node)}`)
+    }
+  }
+
+  return lines.join("\n")
+}

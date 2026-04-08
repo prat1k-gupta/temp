@@ -10,6 +10,8 @@ export interface TemplateAIMetadata {
   contentFields?: string     // What content fields the template accepts
 }
 
+export type TemplateResolver = (templateId: string) => { nodes: Node[], edges: Edge[] } | null
+
 export type WhatsAppInputType = "none" | "text" | "number" | "email" | "phone" | "date" | "select" | "button" | "whatsapp_flow"
 
 export interface ValidationConfig {

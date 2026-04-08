@@ -3,7 +3,7 @@ import { getPlatformGuidelines } from "../core/ai-context"
 import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies, getUserTemplateDocumentation } from "../core/node-documentation"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
-import type { Platform, TemplateAIMetadata } from "@/types"
+import type { Platform, TemplateAIMetadata, TemplateResolver } from "@/types"
 import type { Node, Edge } from "@xyflow/react"
 import { z } from "zod"
 import { generateText, tool, stepCountIs } from "ai"
@@ -28,6 +28,7 @@ export interface GenerateFlowRequest {
   }
   selectedNode?: Node
   userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
+  userTemplateData?: Array<{ id: string; name: string; nodes: Node[]; edges: Edge[] }>
 }
 
 export interface GenerateFlowResponse {
@@ -45,7 +46,12 @@ export interface GenerateFlowResponse {
     removeEdges?: Array<{ source: string; target: string; sourceHandle?: string }>
     positionShifts?: Array<{ nodeId: string; dx: number }>
   }
-  action: "create" | "edit" | "suggest"
+  action: "create" | "edit" | "suggest" | "save_as_template"
+  templateMetadata?: {
+    suggestedName: string
+    description: string
+    aiMetadata: TemplateAIMetadata
+  }
   warnings?: string[]
   debugData?: Record<string, unknown>
 }
@@ -544,6 +550,14 @@ export async function generateFlow(
       request.prompt.toLowerCase().includes("modify") ||
       request.prompt.toLowerCase().includes("change")
 
+    // Build template resolver from user template data
+    const templateResolver: TemplateResolver | undefined = request.userTemplateData
+      ? (id: string) => {
+          const tpl = request.userTemplateData!.find(t => t.id === id)
+          return tpl ? { nodes: tpl.nodes, edges: tpl.edges } : null
+        }
+      : undefined
+
     const systemPrompt = buildSystemPrompt(request, platformGuidelines, isEditRequest)
     const userPrompt = buildUserPrompt(request, isEditRequest)
 
@@ -554,6 +568,7 @@ export async function generateFlow(
         const existingNodes = request.existingFlow?.nodes || []
         const existingEdges = request.existingFlow?.edges || []
         let finalEditResult: BuildEditFlowResult | null = null as BuildEditFlowResult | null
+        let finalTemplateMetadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata } | null = null
 
         const result = await generateText({
           model: getModel('claude-sonnet'),
@@ -629,7 +644,8 @@ export async function generateFlow(
                     plan as EditFlowPlan,
                     request.platform,
                     existingNodes,
-                    existingEdges
+                    existingEdges,
+                    templateResolver
                   )
                   finalEditResult = editResult
 
@@ -722,6 +738,36 @@ export async function generateFlow(
                 }
               },
             }),
+
+            save_as_template: tool({
+              description: 'Save the current flow as a reusable template. Call this when the user asks to save, convert, or make the flow into a template. Generates AI metadata (name, description, when to use) and returns it for user confirmation.',
+              inputSchema: z.object({}),
+              execute: async () => {
+                try {
+                  const { generateTemplateMetadata } = await import("./generate-template-metadata")
+                  const metadata = await generateTemplateMetadata(
+                    existingNodes,
+                    existingEdges,
+                    request.platform,
+                  )
+                  finalTemplateMetadata = metadata
+                  console.log("[generate-flow] Tool save_as_template:", metadata)
+                  return {
+                    success: true,
+                    suggestedName: metadata.suggestedName,
+                    description: metadata.description,
+                    whenToUse: metadata.aiMetadata.whenToUse,
+                    selectionRule: metadata.aiMetadata.selectionRule,
+                  }
+                } catch (error) {
+                  console.error("[generate-flow] Tool save_as_template error:", error)
+                  return {
+                    success: false,
+                    error: error instanceof Error ? error.message : "Failed to generate template metadata",
+                  }
+                }
+              },
+            }),
           },
           stopWhen: stepCountIs(12),
           temperature: 0.3,
@@ -748,6 +794,15 @@ export async function generateFlow(
           hasEditResult: !!finalEditResult,
           message: aiMessage.substring(0, 100),
         })
+
+        // AI called save_as_template — return metadata for confirmation
+        if (finalTemplateMetadata) {
+          return {
+            message: aiMessage,
+            action: "save_as_template",
+            templateMetadata: finalTemplateMetadata,
+          }
+        }
 
         if (!finalEditResult) {
           // AI didn't call apply_edit — return message only
@@ -812,7 +867,7 @@ export async function generateFlow(
             model: 'claude-haiku',
           })
 
-          const build = buildFlowFromPlan(plan, request.platform)
+          const build = buildFlowFromPlan(plan, request.platform, templateResolver)
           const validation = validateGeneratedFlow(build.nodes, build.edges, request.platform)
 
           if (validation.isValid || attempt === MAX_CORRECTION_RETRIES) {
@@ -868,10 +923,13 @@ export async function generateFlow(
           if (isEditRequest) {
             const editPlan = editFlowPlanSchema.parse(rawPlan)
             const existingNodes = request.existingFlow?.nodes || []
+            const existingEdgesFallback = request.existingFlow?.edges || []
             const { newNodes, newEdges, nodeOrder, nodeUpdates, removeNodeIds, removeEdges, positionShifts, warnings } = buildEditFlowFromPlan(
               editPlan,
               request.platform,
-              existingNodes
+              existingNodes,
+              existingEdgesFallback,
+              templateResolver
             )
             const updatedNodes: Node[] = nodeUpdates.map((update) => {
               const existing = existingNodes.find((n) => n.id === update.nodeId)
@@ -898,7 +956,7 @@ export async function generateFlow(
             }
           } else {
             const plan = flowPlanSchema.parse(rawPlan)
-            const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform)
+            const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform, templateResolver)
 
             // Validate — no retry in fallback path (already a fallback, don't compound latency)
             const validation = validateGeneratedFlow(nodes, edges, request.platform)
@@ -1092,9 +1150,10 @@ function getCreateInstructions(): string {
 function getEditInstructions(): string {
   // NOTE: Using array join to avoid esbuild template literal parse issues with { } chars
   return [
-    '**You have tools to inspect and edit the flow.** Follow this workflow:',
+    '**You have tools to inspect, edit, and manage the flow.** Follow this workflow:',
     '1. Call `get_node_details` / `get_node_connections` to inspect relevant nodes',
     '2. Call `apply_edit` ONCE with your COMPLETE edit plan — include ALL chains, edges, removals, and updates in a single call',
+    '   - If the user asks to save/convert/make the flow into a template, call `save_as_template` instead of apply_edit',
     '3. After apply_edit succeeds, call `validate_result` to check for issues (orphaned nodes, undefined variables, unconnected handles)',
     '4. If validate_result finds issues, call `apply_edit` again with a COMPLETE replacement plan (all original edits + fixes), then `validate_result` again',
     '5. Once validate_result reports no issues (or apply_edit warnings are addressed), respond with your message',

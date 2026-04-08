@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       existingFlow,
       selectedNode,
       userTemplates,
+      userTemplateData,
     } = body
 
     const validPlatforms: Platform[] = ["web", "whatsapp", "instagram"]
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
       existingFlow,
       selectedNode,
       userTemplates,
+      userTemplateData,
     })
 
     if (!result) {

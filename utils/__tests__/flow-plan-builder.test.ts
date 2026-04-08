@@ -6,7 +6,7 @@ import {
   isNodeTypeValidForPlatform,
 } from "../flow-plan-builder"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
-import type { Platform, ButtonData, OptionData } from "@/types"
+import type { Platform, ButtonData, OptionData, TemplateResolver } from "@/types"
 import { START_X, HORIZONTAL_GAP } from "../flow-layout"
 
 // ─── helpers ──────────────────────────────────────────
@@ -1601,5 +1601,120 @@ describe("buildEditFlowFromPlan — backward edge + orphan warnings", () => {
     // No existingEdges provided — should not crash or warn
     const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
     expect(result.warnings.some(w => w.includes("orphaned"))).toBe(false)
+  })
+})
+
+// ─── buildFlowFromPlan — templateResolver ───────────
+
+describe("buildFlowFromPlan with templateResolver", () => {
+  it("resolves user templates via templateResolver", () => {
+    const plan: FlowPlan = {
+      message: "Test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "flowTemplate",
+          content: { templateId: "user-template-123" },
+        },
+      ],
+    }
+
+    const resolver: TemplateResolver = (id) => {
+      if (id === "user-template-123") {
+        return {
+          nodes: [{
+            id: "inner-1",
+            type: "whatsappQuestion",
+            position: { x: 0, y: 0 },
+            data: { platform: "whatsapp", label: "Test Q", question: "Test?", storeAs: "test_var" },
+          }],
+          edges: [],
+        }
+      }
+      return null
+    }
+
+    const result = buildFlowFromPlan(plan, "whatsapp", resolver)
+    expect(result.nodes.length).toBe(1)
+    expect(result.nodes[0].type).toBe("flowTemplate")
+    expect((result.nodes[0].data as any).internalNodes.length).toBe(1)
+    expect(result.warnings.length).toBe(0)
+  })
+
+  it("warns when template not found in resolver", () => {
+    const plan: FlowPlan = {
+      message: "Test",
+      steps: [
+        {
+          step: "node",
+          nodeType: "flowTemplate",
+          content: { templateId: "nonexistent-id" },
+        },
+      ],
+    }
+
+    const resolver: TemplateResolver = () => null
+
+    const result = buildFlowFromPlan(plan, "whatsapp", resolver)
+    expect(result.warnings.some(w => w.includes("nonexistent-id"))).toBe(true)
+  })
+
+  it("works without a resolver (backward compatible)", () => {
+    const plan: FlowPlan = {
+      message: "Test",
+      steps: [
+        { step: "node", nodeType: "question", content: { question: "Name?", storeAs: "name" } },
+      ],
+    }
+
+    const result = buildFlowFromPlan(plan, "whatsapp")
+    expect(result.nodes.length).toBe(1)
+  })
+})
+
+// ─── buildEditFlowFromPlan — templateResolver ───────
+
+describe("buildEditFlowFromPlan with templateResolver", () => {
+  it("resolves user templates via templateResolver in edit mode", () => {
+    const editPlan: EditFlowPlan = {
+      message: "Test",
+      chains: [{
+        attachTo: "existing-1",
+        steps: [
+          {
+            step: "node",
+            nodeType: "flowTemplate",
+            content: { templateId: "user-template-456" },
+          },
+        ],
+      }],
+    }
+
+    const existingNodes = [{
+      id: "existing-1",
+      type: "whatsappQuestion",
+      position: { x: 0, y: 0 },
+      data: { platform: "whatsapp", label: "Q1", question: "Test?" },
+    }]
+
+    const resolver: TemplateResolver = (id) => {
+      if (id === "user-template-456") {
+        return {
+          nodes: [{
+            id: "inner-1",
+            type: "whatsappQuestion",
+            position: { x: 0, y: 0 },
+            data: { platform: "whatsapp", label: "Inner Q", question: "Inner?", storeAs: "inner_var" },
+          }],
+          edges: [],
+        }
+      }
+      return null
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes, [], resolver)
+    expect(result.newNodes.length).toBe(1)
+    expect(result.newNodes[0].type).toBe("flowTemplate")
+    expect((result.newNodes[0].data as any).internalNodes.length).toBe(1)
   })
 })

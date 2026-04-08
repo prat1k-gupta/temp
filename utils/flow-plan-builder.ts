@@ -10,7 +10,7 @@
 import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform, ButtonData, OptionData } from "@/types"
+import type { Platform, ButtonData, OptionData, TemplateResolver } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
 import { createNode, createFlowTemplateNode } from "./node-factory"
@@ -62,7 +62,8 @@ export interface BuildFlowResult {
 
 export function buildFlowFromPlan(
   plan: FlowPlan,
-  platform: Platform
+  platform: Platform,
+  templateResolver?: TemplateResolver,
 ): BuildFlowResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -84,6 +85,7 @@ export function buildFlowFromPlan(
     branchEndpoints: [],
     maxBranchX: 0,
     warnings,
+    templateResolver,
   })
 
   autoPopulateStoreAs(nodes)
@@ -116,7 +118,8 @@ export function buildEditFlowFromPlan(
   plan: EditFlowPlan,
   platform: Platform,
   existingNodes: Node[],
-  existingEdges: Edge[] = []
+  existingEdges: Edge[] = [],
+  templateResolver?: TemplateResolver,
 ): BuildEditFlowResult {
   const newNodes: Node[] = []
   const newEdges: Edge[] = []
@@ -226,6 +229,7 @@ export function buildEditFlowFromPlan(
       branchEndpoints: [],
       maxBranchX: 0,
       warnings,
+      templateResolver,
     }
 
     // If attaching via a button handle, the first step gets that sourceHandle
@@ -582,6 +586,7 @@ interface WalkContext {
   branchEndpoints: string[]  // last node ID from each completed branch
   maxBranchX: number          // rightmost X across all branches (for positioning)
   warnings: string[]
+  templateResolver?: TemplateResolver
 }
 
 function walkSteps(steps: FlowStep[], ctx: WalkContext): void {
@@ -604,22 +609,30 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
   // Handle flowTemplate nodes — look up the template by ID
   if (step.nodeType === "flowTemplate" && step.content?.templateId) {
     const templateId = step.content.templateId
-    // Look up in default templates
+    // Check default templates first
     const defaultTpl = DEFAULT_TEMPLATES.find(t => t.id === templateId)
-    if (defaultTpl) {
+    // Then try the resolver for user templates
+    const resolvedData = !defaultTpl && ctx.templateResolver
+      ? ctx.templateResolver(templateId)
+      : null
+
+    const tplNodes = defaultTpl?.nodes ?? resolvedData?.nodes
+    const tplEdges = defaultTpl?.edges ?? resolvedData?.edges
+    const tplName = defaultTpl?.name ?? step.content?.label ?? "Template"
+
+    if (tplNodes) {
       let position = ctx.layout.getNextSequentialPosition()
       const nodeId = `plan-flowTemplate-${ctx.nodes.length + 1}-${rand4()}`
       const node = createFlowTemplateNode(platform, position, {
-        sourceTemplateId: defaultTpl.id,
-        templateName: defaultTpl.name,
-        internalNodes: defaultTpl.nodes,
-        internalEdges: defaultTpl.edges,
+        sourceTemplateId: templateId,
+        templateName: tplName,
+        internalNodes: tplNodes,
+        internalEdges: tplEdges || [],
       }, nodeId)
 
       ctx.nodes.push(node)
       ctx.nodeOrder.push(nodeId)
 
-      // Normal sequential edge from previous
       const edgeId = `e-${ctx.previousNodeId}-${nodeId}`
       ctx.edges.push({
         id: edgeId,
@@ -632,7 +645,10 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
       ctx.previousNodeId = nodeId
       return
     }
-    // If not found, fall through to regular createNode which will handle it gracefully
+
+    // Template not found anywhere
+    ctx.warnings.push(`Template "${templateId}" not found — skipped`)
+    return
   }
 
   // Validate type for platform

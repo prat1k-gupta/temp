@@ -140,3 +140,6 @@ describe("buildCorrectionPrompt", () => {
     expect(prompt).toContain("instagram")
   })
 })
+
+// save-as-template intent detection is now handled by the AI via the save_as_template tool
+// in EDIT mode (no regex needed). The AI naturally understands user intent and calls the tool.

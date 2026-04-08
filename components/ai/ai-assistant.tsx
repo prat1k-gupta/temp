@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check, Undo2 } from "lucide-react"
-import { getAllTemplates } from "@/utils/flow-storage"
+import { getAllTemplates, getFlow } from "@/utils/flow-storage"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
+import { toast } from "sonner"
+import type { TemplateAIMetadata } from "@/types"
 
 interface Message {
   id: string
@@ -16,9 +18,15 @@ interface Message {
   flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
   updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }
   isAutoApplied?: boolean
+  isTemplateSaved?: boolean
   isError?: boolean
   warnings?: string[]
   debugData?: Record<string, unknown>
+  templateMetadata?: {
+    suggestedName: string
+    description: string
+    aiMetadata: TemplateAIMetadata
+  }
 }
 
 interface AIAssistantProps {
@@ -77,11 +85,24 @@ export function AIAssistant({
   const [userTemplates, setUserTemplates] = useState<Array<{ id: string; name: string; aiMetadata?: any }>>(() => {
     return DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
   })
+  // Full template data for the resolver (nodes/edges)
+  const [userTemplateData, setUserTemplateData] = useState<Array<{ id: string; name: string; nodes: any[]; edges: any[] }>>(() => {
+    return DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, nodes: t.nodes, edges: t.edges }))
+  })
   useEffect(() => {
-    getAllTemplates().then((templates) => {
+    getAllTemplates().then(async (templates) => {
       const defaults = DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
       const userCreated = templates.map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
       setUserTemplates([...defaults, ...userCreated])
+
+      // Load full data for user templates (for resolver)
+      const defaultData = DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, nodes: t.nodes, edges: t.edges }))
+      const userDataPromises = templates.map(async (t) => {
+        const full = await getFlow(t.id)
+        return full ? { id: t.id, name: t.name, nodes: full.nodes, edges: full.edges } : null
+      })
+      const userData = (await Promise.all(userDataPromises)).filter(Boolean) as Array<{ id: string; name: string; nodes: any[]; edges: any[] }>
+      setUserTemplateData([...defaultData, ...userData])
     }).catch(() => {})
   }, [])
 
@@ -258,6 +279,7 @@ export function AIAssistant({
             content: m.content,
           })),
           userTemplates,
+          userTemplateData,
         }),
       })
 
@@ -281,6 +303,7 @@ export function AIAssistant({
         isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
         warnings: data.warnings,
         debugData: data.debugData,
+        templateMetadata: data.templateMetadata,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
@@ -457,6 +480,46 @@ export function AIAssistant({
                             <RotateCcw className="w-3 h-3 mr-1" /> Retry
                           </Button>
                         )}
+                      </div>
+                    )}
+
+                    {/* Save as Template buttons */}
+                    {message.templateMetadata && !message.isTemplateSaved && (
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          size="sm"
+                          className="cursor-pointer"
+                          onClick={async () => {
+                            try {
+                              const meta = message.templateMetadata!
+                              const { createTemplate } = await import("@/utils/flow-storage")
+                              await createTemplate(
+                                meta.suggestedName,
+                                meta.description,
+                                platform,
+                                existingFlow?.nodes ?? [],
+                                existingFlow?.edges ?? [],
+                                meta.aiMetadata,
+                              )
+                              toast.success("Template created successfully")
+                              setMessages(prev => prev.map(m =>
+                                m.id === message.id ? { ...m, isTemplateSaved: true } : m
+                              ))
+                            } catch {
+                              toast.error("Failed to create template")
+                            }
+                          }}
+                        >
+                          Save as Template
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="cursor-pointer"
+                          onClick={() => setInput("Change the template name to ")}
+                        >
+                          Edit Details
+                        </Button>
                       </div>
                     )}
 

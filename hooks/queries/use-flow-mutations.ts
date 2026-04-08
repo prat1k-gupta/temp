@@ -4,10 +4,12 @@ import {
   updateFlow,
   deleteFlow,
   duplicateFlow,
+  createTemplate,
   type FlowData,
   type FlowMetadata,
 } from "@/utils/flow-storage"
-import type { Platform } from "@/types"
+import type { Platform, TemplateAIMetadata } from "@/types"
+import type { Node, Edge } from "@xyflow/react"
 import { flowKeys } from "./query-keys"
 
 interface CreateFlowParams {
@@ -110,6 +112,38 @@ export function useDuplicateFlow() {
       duplicateFlow(flowId, newName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: flowKeys.lists() })
+    },
+  })
+}
+
+interface SaveAsTemplateParams {
+  name: string
+  description?: string
+  platform: Platform
+  nodes: Node[]
+  edges: Edge[]
+  aiMetadata?: TemplateAIMetadata
+}
+
+/**
+ * Save a flow as a reusable template. Invalidates both flow and template lists.
+ */
+export function useSaveAsTemplate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: SaveAsTemplateParams) =>
+      createTemplate(
+        params.name,
+        params.description,
+        params.platform,
+        params.nodes,
+        params.edges,
+        params.aiMetadata,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: flowKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: flowKeys.templates() })
     },
   })
 }

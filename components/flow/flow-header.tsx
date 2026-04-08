@@ -48,12 +48,14 @@ import {
   ChevronDown,
   Smartphone,
   CloudUpload,
+  FileBox,
   Sun,
   Moon,
   Monitor,
 } from "lucide-react"
 import { toast } from "sonner"
 import { logout } from "@/lib/auth"
+import { SaveAsTemplateDialog } from "@/components/save-as-template-dialog"
 
 function SaveStatus({ isSaving, isEditMode }: { isSaving?: boolean; isEditMode: boolean }) {
   const [showSaved, setShowSaved] = useState(false)
@@ -196,6 +198,7 @@ export function FlowHeader({
   isSaving,
 }: FlowHeaderProps) {
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false)
   const { theme, setTheme } = useTheme()
 
   const versionStatus: "draft" | "published" = isEditMode ? "draft" : (currentVersion?.isPublished ? "published" : "draft")
@@ -476,6 +479,10 @@ export function FlowHeader({
                 <Upload className="size-4" />
                 Export/Import Flow
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setShowSaveAsTemplate(true)}>
+                <FileBox className="size-4" />
+                Save as Template
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setIsScreenshotModalOpen(true)}>
                 <Camera className="size-4" />
                 Take Screenshot
@@ -548,6 +555,14 @@ export function FlowHeader({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SaveAsTemplateDialog
+        open={showSaveAsTemplate}
+        onOpenChange={setShowSaveAsTemplate}
+        nodes={nodes}
+        edges={edges}
+        platform={platform}
+        flowName={currentFlow?.name || ""}
+      />
     </TooltipProvider>
   )
 }

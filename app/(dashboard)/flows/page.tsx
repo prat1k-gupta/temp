@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List, Zap, Link2, GitBranch, MoreHorizontal, ExternalLink, Plug, PlugZap } from "lucide-react"
+import { Plus, Trash2, Copy, Loader2, Search, LayoutGrid, List, Zap, Link2, GitBranch, MoreHorizontal, ExternalLink, Plug, PlugZap, FileBox } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon, WebIcon } from "@/components/platform-icons"
 import { cn } from "@/lib/utils"
 import { useFlows, useDeleteFlow, useDuplicateFlow } from "@/hooks/queries"
@@ -15,6 +15,9 @@ import type { FlowMetadata } from "@/utils/flow-storage"
 import type { Platform } from "@/types"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
+import { SaveAsTemplateDialog } from "@/components/save-as-template-dialog"
+import { getFlow } from "@/utils/flow-storage"
+import type { Node, Edge } from "@xyflow/react"
 
 type SortOption = "last-updated" | "name-asc" | "name-desc" | "newest" | "oldest"
 type PlatformFilter = "all" | Platform
@@ -39,6 +42,8 @@ export default function FlowsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("cards")
   const [sortOption, setSortOption] = useState<SortOption>("last-updated")
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all")
+  const [saveAsTemplateFlow, setSaveAsTemplateFlow] = useState<FlowMetadata | null>(null)
+  const [saveAsTemplateData, setSaveAsTemplateData] = useState<{ nodes: Node[], edges: Edge[] } | null>(null)
 
   const handleCreateFlow = () => {
     router.push("/flow/new")
@@ -76,6 +81,20 @@ export default function FlowsPage() {
         },
       },
     )
+  }
+
+  async function handleSaveAsTemplate(flow: FlowMetadata) {
+    try {
+      const fullFlow = await getFlow(flow.id)
+      if (!fullFlow) {
+        toast.error("Failed to load flow data")
+        return
+      }
+      setSaveAsTemplateData({ nodes: fullFlow.nodes, edges: fullFlow.edges })
+      setSaveAsTemplateFlow(flow)
+    } catch {
+      toast.error("Failed to load flow data")
+    }
   }
 
   const getPlatformIcon = (platform: Platform) => {
@@ -202,7 +221,7 @@ export default function FlowsPage() {
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem
                     className="cursor-pointer"
                     disabled={isDuplicating}
@@ -210,6 +229,13 @@ export default function FlowsPage() {
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); handleSaveAsTemplate(flow) }}
+                  >
+                    <FileBox className="mr-2 h-4 w-4" />
+                    Save as Template
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -499,7 +525,7 @@ export default function FlowsPage() {
                       <MoreHorizontal className="h-4 w-4" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem
                       className="cursor-pointer"
                       disabled={isDuplicating}
@@ -507,6 +533,13 @@ export default function FlowsPage() {
                     >
                       <Copy className="mr-2 h-4 w-4" />
                       Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); handleSaveAsTemplate(flow) }}
+                    >
+                      <FileBox className="mr-2 h-4 w-4" />
+                      Save as Template
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -720,6 +753,22 @@ export default function FlowsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {saveAsTemplateFlow && saveAsTemplateData && (
+        <SaveAsTemplateDialog
+          open={!!saveAsTemplateFlow}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSaveAsTemplateFlow(null)
+              setSaveAsTemplateData(null)
+            }
+          }}
+          nodes={saveAsTemplateData.nodes}
+          edges={saveAsTemplateData.edges}
+          platform={saveAsTemplateFlow.platform}
+          flowName={saveAsTemplateFlow.name}
+        />
+      )}
     </div>
   )
 }

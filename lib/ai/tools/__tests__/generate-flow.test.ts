@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { deduplicateEdges, buildCorrectionPrompt } from "../generate-flow"
+import { deduplicateEdges } from "../generate-flow"
+import { buildCorrectionPrompt } from "../generate-flow-create"
 import type { Edge } from "@xyflow/react"
 import type { FlowIssue } from "@/utils/flow-validator"
 

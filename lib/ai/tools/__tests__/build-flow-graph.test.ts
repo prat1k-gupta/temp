@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { buildFlowGraphString } from "../generate-flow"
+import { buildFlowGraphString } from "../flow-graph-string"
 import type { Node, Edge } from "@xyflow/react"
 
 function makeNode(id: string, type: string, data: Record<string, any> = {}): Node {

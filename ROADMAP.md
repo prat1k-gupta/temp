@@ -640,7 +640,19 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 - Backend: 12 flat features, longest-prefix PathFeatureMap, auto-seed with FirstOrCreate, agent-analytics feature, 22 Go tests
 - Frontend: AuthProvider fetches from backend API, canAccess, FeatureGate layouts, sidebar filtering, Roles settings page, smart settings redirect
 - All API routes mapped in PathFeatureMap — no unprotected endpoints
-- Org-level permission overrides with backward-compatible defaults
+
+**AI Self-Correction ✅** (April 2026)
+- flow-validator.ts — validates AI-generated flows (orphaned nodes, undefined vars, button limits, unconnected handles, flowTemplate integrity)
+- CREATE mode: self-correction loop with max 2 retries (validate → feed issues to Haiku → retry)
+- EDIT mode: validate_result tool — Sonnet validates its own edits and self-corrects
+- generateJSON fallback: text generation + Zod schema validation when structured output fails (Anthropic compatibility)
+- Works with both Anthropic and OpenAI providers
+
+**Save Flow as Template ✅** (April 2026)
+- 3 entry points: flow editor dropdown, dashboard 3-dot menu, AI chat (save_as_template tool)
+- SaveAsTemplateDialog with AI-prefilled metadata (Haiku generates name, description, whenToUse)
+- Template resolution: plan builder resolves user templates by ID via templateResolver
+- Full template data loaded in AI assistant for resolver pipeline
 
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)

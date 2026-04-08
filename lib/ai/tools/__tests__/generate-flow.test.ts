@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { deduplicateEdges } from "../generate-flow"
+import { deduplicateEdges, buildCorrectionPrompt } from "../generate-flow"
 import type { Edge } from "@xyflow/react"
+import type { FlowIssue } from "@/utils/flow-validator"
 
 function edge(
   id: string,
@@ -102,5 +103,40 @@ describe("deduplicateEdges", () => {
     // button-1 should still connect to meta-1
     const button1Edge = result.find(e => e.sourceHandle === "button-1")
     expect(button1Edge?.target).toBe("meta-1")
+  })
+})
+
+describe("buildCorrectionPrompt", () => {
+  it("includes all issues in the correction prompt", () => {
+    const issues: FlowIssue[] = [
+      { type: "orphaned_node", nodeId: "q2", detail: 'Node "q2" has no incoming connections.' },
+      { type: "button_limit_exceeded", nodeId: "qr1", detail: 'Node "qr1" has 5 buttons but whatsapp allows 3.' },
+    ]
+    const prompt = buildCorrectionPrompt(issues, "whatsapp")
+    expect(prompt).toContain("orphaned_node")
+    expect(prompt).toContain("button_limit_exceeded")
+    expect(prompt).toContain("whatsapp")
+    expect(prompt).toContain("5 buttons")
+  })
+
+  it("returns empty string when no issues", () => {
+    expect(buildCorrectionPrompt([], "whatsapp")).toBe("")
+  })
+
+  it("includes node IDs when present", () => {
+    const issues: FlowIssue[] = [
+      { type: "empty_content", nodeId: "q1", detail: "Node q1 has no content" },
+    ]
+    const prompt = buildCorrectionPrompt(issues, "whatsapp")
+    expect(prompt).toContain("(node: q1)")
+  })
+
+  it("omits node ID when not present", () => {
+    const issues: FlowIssue[] = [
+      { type: "converter_error", detail: "Converter failed" },
+    ]
+    const prompt = buildCorrectionPrompt(issues, "instagram")
+    expect(prompt).not.toContain("(node:")
+    expect(prompt).toContain("instagram")
   })
 })

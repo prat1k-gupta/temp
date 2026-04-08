@@ -98,23 +98,28 @@ export class AIClient {
     const modelId = params.model || DEFAULT_MODEL
 
     try {
-      // If schema is provided, use structured outputs (more reliable)
+      // If schema is provided, try structured outputs first, fall back to text + parse
       if (params.schema) {
-        const response = await generateObject({
-          model: getModel(modelId),
-          schema: params.schema,
-          system: params.systemPrompt,
-          prompt: params.userPrompt,
-          temperature: 0.3, // Lower temperature for more consistent JSON
-        })
+        try {
+          const response = await generateObject({
+            model: getModel(modelId),
+            schema: params.schema,
+            system: params.systemPrompt,
+            prompt: params.userPrompt,
+            temperature: 0.3,
+          })
 
-        const duration = Date.now() - startTime
-        console.log(`[AI Client] ${modelId} — Generated structured JSON in ${duration}ms`)
+          const duration = Date.now() - startTime
+          console.log(`[AI Client] ${modelId} — Generated structured JSON in ${duration}ms`)
 
-        return response.object as T
+          return response.object as T
+        } catch (structuredError) {
+          console.warn(`[AI Client] ${modelId} — Structured output failed, falling back to text generation:`, structuredError instanceof Error ? structuredError.message : structuredError)
+          // Fall through to text generation below
+        }
       }
 
-      // Fallback to text generation with strict JSON instructions
+      // Text generation with strict JSON instructions (also used as fallback when structured output fails)
       const enhancedSystemPrompt = `${params.systemPrompt}
 
 **CRITICAL JSON FORMATTING RULES:**
@@ -151,9 +156,10 @@ Respond with raw JSON only.`
         jsonText = extracted
       }
 
-      // Try to parse the JSON
+      // Try to parse the JSON (and validate against schema if provided)
       try {
-        const parsed = JSON.parse(jsonText) as T
+        const raw = JSON.parse(jsonText)
+        const parsed = params.schema ? params.schema.parse(raw) as T : raw as T
         const duration = Date.now() - startTime
         console.log(`[AI Client] ${modelId} — Generated JSON in ${duration}ms`)
         return parsed

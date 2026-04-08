@@ -15,6 +15,7 @@ import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { isMultiOutputType, getFixedHandles } from "@/utils/platform-helpers"
 import { collectFlowVariables } from "@/utils/flow-variables"
+import { validateGeneratedFlow, type FlowIssue } from "@/utils/flow-validator"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -74,6 +75,18 @@ export function deduplicateEdges(edges: Edge[]): Edge[] {
     }
   })
   return Array.from(edgeKeyMap.values())
+}
+
+/**
+ * Build a correction prompt from validation issues.
+ * Returns empty string if no issues.
+ */
+export function buildCorrectionPrompt(issues: FlowIssue[], platform: Platform): string {
+  if (issues.length === 0) return ""
+  const issueList = issues
+    .map((i, idx) => `${idx + 1}. [${i.type}]${i.nodeId ? ` (node: ${i.nodeId})` : ""}: ${i.detail}`)
+    .join("\n")
+  return `Your previous flow plan had ${issues.length} issue(s) that need fixing for ${platform}:\n\n${issueList}\n\nPlease regenerate the flow plan with these issues fixed. Keep the same overall structure but correct the problems listed above.`
 }
 
 /**
@@ -649,8 +662,68 @@ export async function generateFlow(
                 }
               },
             }),
+
+            validate_result: tool({
+              description: 'Validate the current state of the flow after applying edits. Call this after apply_edit to check for issues like orphaned nodes, missing connections, undefined variables, or button limit violations. If issues are found, call apply_edit again to fix them.',
+              inputSchema: z.object({}),
+              execute: async () => {
+                if (!finalEditResult) {
+                  return {
+                    valid: false,
+                    issueCount: 0,
+                    issues: [],
+                    suggestion: "No edits applied yet. Call apply_edit first.",
+                  }
+                }
+
+                // Build current flow state: existing + applied edits
+                const currentNodes = [...existingNodes]
+                const currentEdges = [...existingEdges]
+
+                // Add new nodes
+                currentNodes.push(...finalEditResult.newNodes)
+                // Add new edges
+                currentEdges.push(...finalEditResult.newEdges)
+                // Apply node updates
+                for (const update of finalEditResult.nodeUpdates) {
+                  const idx = currentNodes.findIndex(n => n.id === update.nodeId)
+                  if (idx !== -1) {
+                    currentNodes[idx] = {
+                      ...currentNodes[idx],
+                      type: update.newType || currentNodes[idx].type,
+                      data: { ...currentNodes[idx].data, ...update.data },
+                    }
+                  }
+                }
+                // Remove deleted nodes
+                const removeIds = new Set(finalEditResult.removeNodeIds)
+                const filteredNodes = currentNodes.filter(n => !removeIds.has(n.id))
+                // Remove deleted edges
+                const removeEdgeKeys = new Set(
+                  finalEditResult.removeEdges.map(e => `${e.source}-${e.target}-${e.sourceHandle || ""}`)
+                )
+                const filteredEdges = currentEdges.filter(e =>
+                  !removeEdgeKeys.has(`${e.source}-${e.target}-${e.sourceHandle || ""}`)
+                )
+
+                const validation = validateGeneratedFlow(filteredNodes, filteredEdges, request.platform)
+                console.log("[generate-flow] Tool validate_result:", {
+                  valid: validation.isValid,
+                  issueCount: validation.issues.length,
+                  issues: validation.issues.map(i => i.type),
+                })
+                return {
+                  valid: validation.isValid,
+                  issueCount: validation.issues.length,
+                  issues: validation.issues.map(i => ({ type: i.type, nodeId: i.nodeId, detail: i.detail })),
+                  suggestion: validation.isValid
+                    ? "Flow looks good — no issues found."
+                    : "Issues found. Call apply_edit to fix them, then validate_result again.",
+                }
+              },
+            }),
           },
-          stopWhen: stepCountIs(8),
+          stopWhen: stepCountIs(12),
           temperature: 0.3,
           onStepFinish: (step) => {
             const calls = step.toolCalls?.map((tc: any) => ({
@@ -717,24 +790,53 @@ export async function generateFlow(
         }
       } else {
         // CREATE MODE: LLM outputs a semantic plan, code builds the flow
-        // Use Haiku for speed — plan structure is simple and well-constrained by the schema
-        const plan = await aiClient.generateJSON<FlowPlan>({
-          systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
-          userPrompt,
-          schema: flowPlanSchema,
-          model: 'claude-haiku',
-        })
+        // Self-correction: validate output, feed issues back to Haiku, retry up to 2x
+        const MAX_CORRECTION_RETRIES = 2
+        let cachedBuild: ReturnType<typeof buildFlowFromPlan> | null = null
+        let cachedIssues: FlowIssue[] | null = null
 
-        // Convert plan → ReactFlow nodes + edges
-        const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform)
+        for (let attempt = 0; attempt <= MAX_CORRECTION_RETRIES; attempt++) {
+          const isRetry = attempt > 0
+          const correctionFeedback = isRetry && cachedIssues
+            ? buildCorrectionPrompt(cachedIssues, request.platform)
+            : ""
 
-        return {
-          message: plan.message || "Flow generated successfully",
-          flowData: { nodes, edges, nodeOrder },
-          action: "create",
-          warnings: warnings.length > 0 ? warnings : undefined,
-          debugData: { rawPlan: plan },
+          const effectiveUserPrompt = isRetry
+            ? `${userPrompt}\n\n--- CORRECTION FEEDBACK ---\n${correctionFeedback}`
+            : userPrompt
+
+          const plan = await aiClient.generateJSON<FlowPlan>({
+            systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
+            userPrompt: effectiveUserPrompt,
+            schema: flowPlanSchema,
+            model: 'claude-haiku',
+          })
+
+          const build = buildFlowFromPlan(plan, request.platform)
+          const validation = validateGeneratedFlow(build.nodes, build.edges, request.platform)
+
+          if (validation.isValid || attempt === MAX_CORRECTION_RETRIES) {
+            const allWarnings = [
+              ...build.warnings,
+              ...(attempt > 0 && validation.isValid ? [`Flow validated after ${attempt} correction retry(s)`] : []),
+              ...(attempt > 0 && !validation.isValid ? [`${validation.issues.length} issue(s) remain after ${attempt} correction retry(s)`] : []),
+            ]
+            return {
+              message: plan.message || "Flow generated successfully",
+              flowData: { nodes: build.nodes, edges: build.edges, nodeOrder: build.nodeOrder },
+              action: "create" as const,
+              warnings: allWarnings.length > 0 ? allWarnings : undefined,
+              debugData: { rawPlan: plan, correctionAttempts: attempt, remainingIssues: validation.issues.length },
+            }
+          }
+
+          console.log(`[generate-flow] Self-correction attempt ${attempt + 1}: ${validation.issues.length} issues`, validation.summary)
+          cachedBuild = build
+          cachedIssues = validation.issues
         }
+
+        // Unreachable (loop always returns), but TypeScript needs it
+        return { message: "Flow generated", action: "create" as const }
       }
     } catch (error) {
       console.warn("[generate-flow] Structured output failed, falling back to text generation:", error)
@@ -797,11 +899,19 @@ export async function generateFlow(
           } else {
             const plan = flowPlanSchema.parse(rawPlan)
             const { nodes, edges, nodeOrder, warnings } = buildFlowFromPlan(plan, request.platform)
+
+            // Validate — no retry in fallback path (already a fallback, don't compound latency)
+            const validation = validateGeneratedFlow(nodes, edges, request.platform)
+            const allWarnings = [
+              ...warnings,
+              ...validation.issues.map(i => `[${i.type}] ${i.detail}`),
+            ]
+
             return {
               message: plan.message || "Flow generated successfully",
               flowData: { nodes, edges, nodeOrder },
               action: "create",
-              warnings: warnings.length > 0 ? warnings : undefined,
+              warnings: allWarnings.length > 0 ? allWarnings : undefined,
             }
           }
         }
@@ -970,6 +1080,7 @@ function getCreateInstructions(): string {
     '  - Content fields: variables (array of {name, value}, max 10), tagAction ("add" or "remove"), tags (string[], max 10).',
     '  - Values and tags support {{variable}} interpolation (e.g. value: "{{first_name}} {{last_name}}").',
     '  - Tags can be checked in condition nodes using has_tag/not_has_tag operators on the _tags field.',
+    '- **NEVER use nodeType "flowTemplate" directly.** For data collection, use the specific type: "name", "email", "dob", "address". For user-created templates, use "flowTemplate" with a templateId in content. A bare flowTemplate with no templateId will fail validation.',
     '- Include integrations (metaAudience, shopify, etc.) only when relevant',
     '- Write full sentences for questions, not "Choose:" or "Select:"',
     '- Each branch must have a unique buttonIndex',
@@ -984,10 +1095,13 @@ function getEditInstructions(): string {
     '**You have tools to inspect and edit the flow.** Follow this workflow:',
     '1. Call `get_node_details` / `get_node_connections` to inspect relevant nodes',
     '2. Call `apply_edit` ONCE with your COMPLETE edit plan — include ALL chains, edges, removals, and updates in a single call',
-    '3. If apply_edit returns warnings, you may call it again with corrections — otherwise you are DONE, just respond with your message',
+    '3. After apply_edit succeeds, call `validate_result` to check for issues (orphaned nodes, undefined variables, unconnected handles)',
+    '4. If validate_result finds issues, call `apply_edit` again with a COMPLETE replacement plan (all original edits + fixes), then `validate_result` again',
+    '5. Once validate_result reports no issues (or apply_edit warnings are addressed), respond with your message',
     '',
     '**CRITICAL RULES:**',
-    '- **ONE apply_edit call** — put everything in a single call. Do NOT split across multiple calls.',
+    '- **ONE apply_edit call for your initial edit** — put everything in a single call. Do NOT split across multiple calls.',
+    '- **Correction apply_edit must be a COMPLETE REPLACEMENT** — if validate_result finds issues, your next apply_edit must include ALL operations (original edits + corrections). It replaces the previous edit entirely, so include everything.',
     '- **NEVER call apply_edit with an empty plan** — it will return an error.',
     '- **NEVER create disconnected nodes** — every new node MUST connect to the existing flow via chains (with connectTo) or addEdges.',
     '- Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.',
@@ -1023,6 +1137,7 @@ function getEditInstructions(): string {
     '- Write full sentences for questions.',
     '- Max branches: web=10, whatsapp=3, instagram=3.',
     '- Use addEdges with sourceButtonIndex to connect new quickReply/list buttons to existing nodes (no chain needed).',
+    '- **NEVER use nodeType "flowTemplate" directly in chains.** For data collection, use "name", "email", "dob", "address". These resolve to templates automatically.',
   ].join("\n")
 }
 

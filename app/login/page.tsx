@@ -42,7 +42,8 @@ function LoginForm() {
     try {
       await login(email, password)
       const redirect = searchParams.get("redirect") || "/flows"
-      router.push(redirect)
+      // Full page navigation to ensure middleware sees the auth cookie
+      window.location.href = redirect
     } catch (error: any) {
       toast.error(error.message || "Login failed")
     } finally {

@@ -1,4 +1,4 @@
-export { flowKeys, versionKeys, userKeys, teamKeys, apiKeyKeys, chatbotSettingsKeys, profileKeys, accountKeys, flowApiKeyKeys } from "./query-keys"
+export { flowKeys, versionKeys, userKeys, teamKeys, apiKeyKeys, chatbotSettingsKeys, profileKeys, accountKeys, flowApiKeyKeys, contactKeys, messageKeys } from "./query-keys"
 export { useFlows, useFlow, useTemplateFlows } from "./use-flows"
 export { useCreateFlow, useUpdateFlow, useDeleteFlow, useDuplicateFlow } from "./use-flow-mutations"
 export { useVersions, useDraft, useCreateVersion, usePublishVersion, useSaveDraft, useDeleteDraft } from "./use-versions"
@@ -13,3 +13,5 @@ export { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam, type Team } from
 export { useChatbotSettings, useUpdateChatbotSettings, type ChatbotSettings } from "./use-chatbot-settings"
 export { useApiKeys, useCreateApiKey, useDeleteApiKey, type ApiKey } from "./use-api-keys"
 export { useFlowApiKeys, useCreateFlowApiKey, useDeleteFlowApiKey, type FlowApiKey } from "./use-flow-api-keys"
+export { useContacts, useContact } from "./use-contacts"
+export { useMessages, useSendMessage, useSendMedia } from "./use-messages"

@@ -32,6 +32,7 @@ import {
   Workflow,
   Layers,
   FileText,
+  MessageSquare,
   Settings,
   Phone,
   Users,
@@ -48,8 +49,10 @@ import {
 import { useTheme } from "next-themes"
 import { LogoClosed, LogoFull } from "@/components/freestand-logo"
 import { logout } from "@/lib/auth"
+import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/auth-context"
 import type { Feature } from "@/lib/permissions"
+import { contactKeys } from "@/hooks/queries/query-keys"
 import {
   Collapsible,
   CollapsibleContent,
@@ -60,6 +63,7 @@ const NAV_ITEMS: { label: string; icon: React.ElementType; path: string; feature
   { label: "Flows", icon: Workflow, path: "/flows", feature: "flows" },
   { label: "Flow Templates", icon: Layers, path: "/flow-templates", feature: "flows" },
   { label: "WhatsApp Templates", icon: FileText, path: "/templates", feature: "templates" },
+  { label: "Chat", icon: MessageSquare, path: "/chat", feature: "chat" },
 ]
 
 export const SETTINGS_CHILDREN: { label: string; icon: React.ElementType; path: string; feature: Feature }[] = [
@@ -85,7 +89,12 @@ export function AppSidebar() {
   const { state } = useSidebar()
   const { theme, setTheme } = useTheme()
   const { user, can } = useAuth()
+  const queryClient = useQueryClient()
   const isCollapsed = state === "collapsed"
+  const contactsData = queryClient.getQueryData<any>(contactKeys.lists())
+  const totalUnread = contactsData?.pages
+    ?.flatMap((p: any) => p.contacts)
+    ?.reduce((sum: number, c: any) => sum + (c.unread_count || 0), 0) ?? 0
   const isSettingsActive = pathname.startsWith("/settings")
   const visibleNav = NAV_ITEMS.filter((item) => can(item.feature))
   const visibleSettings = SETTINGS_CHILDREN.filter((item) => can(item.feature))
@@ -119,6 +128,11 @@ export function AppSidebar() {
                     <Link href={item.path}>
                       <item.icon className="!w-[18px] !h-[18px]" />
                       <span>{item.label}</span>
+                      {item.label === "Chat" && totalUnread > 0 && (
+                        <span className="bg-primary text-primary-foreground text-[10px] font-medium rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                          {totalUnread > 99 ? "99+" : totalUnread}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

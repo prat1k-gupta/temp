@@ -56,3 +56,17 @@ export const rolePermissionKeys = {
   all: ["rolePermissions"] as const,
   list: () => [...rolePermissionKeys.all, "list"] as const,
 } as const
+
+export const contactKeys = {
+  all: ["contacts"] as const,
+  lists: () => [...contactKeys.all, "list"] as const,
+  list: (filters: { search?: string; channel?: string | null }) =>
+    [...contactKeys.lists(), filters] as const,
+  detail: (id: string) => [...contactKeys.all, "detail", id] as const,
+} as const
+
+export const messageKeys = {
+  all: ["messages"] as const,
+  lists: () => [...messageKeys.all, "list"] as const,
+  list: (contactId: string) => [...messageKeys.lists(), contactId] as const,
+} as const

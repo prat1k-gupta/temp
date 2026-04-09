@@ -9,7 +9,7 @@ export function useChat() {
   const router = useRouter()
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [replyingTo, setReplyingToState] = useState<Message | null>(null)
-  const [showInfoPanel, setShowInfoPanel] = useState(true)
+  const [showInfoPanel, setShowInfoPanel] = useState(false)
 
   const activeContactId = searchParams.get("contact")
 

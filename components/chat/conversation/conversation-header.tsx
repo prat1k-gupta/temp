@@ -1,6 +1,6 @@
 "use client"
 
-import { PanelRight } from "lucide-react"
+import { Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Contact } from "@/types/chat"
 import { cn } from "@/lib/utils"
@@ -44,7 +44,7 @@ export function ConversationHeader({ contact, showInfoPanel, onInfoToggle }: Con
           className={cn("h-8 w-8 cursor-pointer", showInfoPanel && "bg-muted")}
           title="Contact Info"
         >
-          <PanelRight className="h-4 w-4" />
+          <Info className="h-4 w-4" />
         </Button>
       )}
     </div>

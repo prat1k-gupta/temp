@@ -70,3 +70,17 @@ export const messageKeys = {
   lists: () => [...messageKeys.all, "list"] as const,
   list: (contactId: string) => [...messageKeys.lists(), contactId] as const,
 } as const
+
+export const cannedResponseKeys = {
+  all: ["cannedResponses"] as const,
+  lists: () => [...cannedResponseKeys.all, "list"] as const,
+  list: () => [...cannedResponseKeys.lists()] as const,
+} as const
+
+export const contactInfoKeys = {
+  all: ["contactInfo"] as const,
+  sessionData: (contactId: string) =>
+    [...contactInfoKeys.all, "sessionData", contactId] as const,
+  variables: (contactId: string) =>
+    [...contactInfoKeys.all, "variables", contactId] as const,
+} as const

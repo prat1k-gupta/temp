@@ -1,32 +1,60 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useContact } from "@/hooks/queries/use-contacts"
 import { useWebSocket } from "@/hooks/use-websocket"
+import { contactKeys } from "@/hooks/queries/query-keys"
+import type { Contact as ContactType, ContactsResponse } from "@/types/chat"
 import { ConversationHeader } from "./conversation-header"
 import { MessageList } from "./message-list"
 import { MessageInput } from "./message-input"
 import { MediaUploadPreview } from "./media-upload-preview"
+import type { Message } from "@/types/chat"
 
 interface ConversationProps {
   contactId: string
   isAtBottom: boolean
   onAtBottomChange: (atBottom: boolean) => void
+  replyingTo: Message | null
+  onReply: (message: Message) => void
+  onClearReply: () => void
+  showInfoPanel?: boolean
+  onInfoToggle?: () => void
 }
 
-export function Conversation({ contactId, isAtBottom, onAtBottomChange }: ConversationProps) {
+export function Conversation({ contactId, isAtBottom, onAtBottomChange, replyingTo, onReply, onClearReply, showInfoPanel, onInfoToggle }: ConversationProps) {
+  const queryClient = useQueryClient()
   const { data: contact, isLoading } = useContact(contactId)
   const { sendEvent } = useWebSocket()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Tell server which contact we're viewing (for broadcast scoping + read status)
+  // Tell server which contact we're viewing + reset unread count in cache
   useEffect(() => {
     sendEvent("set_contact", { contact_id: contactId })
+
+    // Reset unread count in contact list cache (backend marks as read on fetch)
+    queryClient.setQueriesData<{ pages: ContactsResponse[]; pageParams: unknown[] }>(
+      { queryKey: contactKeys.lists() },
+      (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            contacts: page.contacts.map((c: ContactType) =>
+              c.id === contactId ? { ...c, unread_count: 0 } : c
+            ),
+          })),
+        }
+      }
+    )
+
     return () => {
       sendEvent("set_contact", { contact_id: null })
     }
-  }, [contactId, sendEvent])
+  }, [contactId, sendEvent, queryClient])
 
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -49,15 +77,20 @@ export function Conversation({ contactId, isAtBottom, onAtBottomChange }: Conver
 
   return (
     <>
-      <ConversationHeader contact={contact} />
+      <ConversationHeader contact={contact} showInfoPanel={showInfoPanel} onInfoToggle={onInfoToggle} />
       <MessageList
         contactId={contactId}
         isAtBottom={isAtBottom}
         onAtBottomChange={onAtBottomChange}
+        onReply={onReply}
       />
       <MessageInput
         contactId={contactId}
+        contact={contact}
         onAttachClick={handleAttachClick}
+        replyingTo={replyingTo}
+        onClearReply={onClearReply}
+        onAtBottomChange={onAtBottomChange}
       />
 
       <input

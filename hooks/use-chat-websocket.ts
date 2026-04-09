@@ -4,11 +4,13 @@ import { useEffect, useCallback, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useWebSocket } from "@/hooks/use-websocket"
 import { contactKeys, messageKeys } from "@/hooks/queries/query-keys"
+import { playNotificationSound } from "@/lib/notification-sound"
 import type {
   Contact,
   ContactsResponse,
   Message,
   MessagesResponse,
+  Reaction,
 } from "@/types/chat"
 
 type InfiniteData<T> = { pages: T[]; pageParams: unknown[] }
@@ -122,13 +124,26 @@ export function useChatWebSocket(activeContactId: string | null) {
           }
         }
       )
+
+      // Play notification sound for incoming messages not being viewed
+      if (
+        payload.direction === "incoming" &&
+        activeContactIdRef.current !== contactId
+      ) {
+        playNotificationSound()
+      }
     },
     [queryClient]
   )
 
   const handleStatusUpdate = useCallback(
-    (payload: { id: string; status: Message["status"] }) => {
-      const contactId = activeContactIdRef.current
+    (payload: { id?: string; message_id?: string; contact_id?: string; status: Message["status"]; error_message?: string }) => {
+      // Backend sends message_id for status updates, id for new messages
+      const messageId = payload.message_id || payload.id
+      if (!messageId) return
+
+      // Use contact_id from payload if available, otherwise use active contact
+      const contactId = payload.contact_id || activeContactIdRef.current
       if (!contactId) return
 
       queryClient.setQueryData<InfiniteData<MessagesResponse>>(
@@ -139,7 +154,7 @@ export function useChatWebSocket(activeContactId: string | null) {
           let found = false
           const updatedPages = old.pages.map((page) => {
             const msgIdx = page.messages.findIndex(
-              (m) => m.id === payload.id
+              (m) => m.id === messageId
             )
             if (msgIdx === -1) return page
 
@@ -148,6 +163,37 @@ export function useChatWebSocket(activeContactId: string | null) {
             updatedMessages[msgIdx] = {
               ...updatedMessages[msgIdx],
               status: payload.status,
+              ...(payload.error_message ? { error_message: payload.error_message } : {}),
+            }
+            return { ...page, messages: updatedMessages }
+          })
+
+          return found ? { ...old, pages: updatedPages } : old
+        }
+      )
+    },
+    [queryClient]
+  )
+
+  const handleReactionUpdate = useCallback(
+    (payload: { message_id: string; contact_id: string; reactions: Reaction[] }) => {
+      if (payload.contact_id !== activeContactIdRef.current) return
+
+      queryClient.setQueryData<InfiniteData<MessagesResponse>>(
+        messageKeys.list(payload.contact_id),
+        (old) => {
+          if (!old) return old
+
+          let found = false
+          const updatedPages = old.pages.map((page) => {
+            const msgIdx = page.messages.findIndex((m) => m.id === payload.message_id)
+            if (msgIdx === -1) return page
+
+            found = true
+            const updatedMessages = [...page.messages]
+            updatedMessages[msgIdx] = {
+              ...updatedMessages[msgIdx],
+              reactions: payload.reactions,
             }
             return { ...page, messages: updatedMessages }
           })
@@ -162,10 +208,12 @@ export function useChatWebSocket(activeContactId: string | null) {
   useEffect(() => {
     const unsubMessage = subscribe("new_message", handleNewMessage)
     const unsubStatus = subscribe("status_update", handleStatusUpdate)
+    const unsubReaction = subscribe("reaction_update", handleReactionUpdate)
 
     return () => {
       unsubMessage()
       unsubStatus()
+      unsubReaction()
     }
-  }, [subscribe, handleNewMessage, handleStatusUpdate])
+  }, [subscribe, handleNewMessage, handleStatusUpdate, handleReactionUpdate])
 }

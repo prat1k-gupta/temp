@@ -3,6 +3,8 @@
 import { cn } from "@/lib/utils"
 import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react"
 import type { Message } from "@/types/chat"
+import type { Reaction } from "@/types/chat"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TextMessage } from "@/components/chat/messages/text-message"
 import { ImageMessage } from "@/components/chat/messages/image-message"
 import { VideoMessage } from "@/components/chat/messages/video-message"
@@ -21,6 +23,7 @@ interface MessageBubbleProps {
   blobUrl?: string
   isGrouped?: boolean
   showAvatar?: boolean
+  actions?: React.ReactNode
 }
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -31,7 +34,21 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
   failed: <AlertCircle className="h-3 w-3 text-destructive" />,
 }
 
-export function MessageBubble({ message, blobUrl, isGrouped = false, showAvatar = true }: MessageBubbleProps) {
+function groupReactions(reactions: Reaction[]): { emoji: string; count: number; users: string[] }[] {
+  const grouped = new Map<string, string[]>()
+  for (const r of reactions) {
+    const users = grouped.get(r.emoji) || []
+    users.push(r.from_phone || r.from_user || "Unknown")
+    grouped.set(r.emoji, users)
+  }
+  return Array.from(grouped.entries()).map(([emoji, users]) => ({
+    emoji,
+    count: users.length,
+    users,
+  }))
+}
+
+export function MessageBubble({ message, blobUrl, isGrouped = false, showAvatar = true, actions }: MessageBubbleProps) {
   const isOutgoing = message.direction === "outgoing"
   const time = new Date(message.created_at).toLocaleTimeString(undefined, {
     hour: "2-digit",
@@ -41,10 +58,9 @@ export function MessageBubble({ message, blobUrl, isGrouped = false, showAvatar 
   return (
     <div
       className={cn(
-        "flex",
+        "group flex",
         isGrouped ? "mb-0.5" : "mb-2",
-        isOutgoing ? "justify-end" : "justify-start",
-        !showAvatar && !isOutgoing && "pl-10"
+        isOutgoing ? "justify-end" : "justify-start"
       )}
     >
       <div
@@ -70,6 +86,23 @@ export function MessageBubble({ message, blobUrl, isGrouped = false, showAvatar 
 
         <MessageContent message={message} blobUrl={blobUrl} />
 
+        {(message.reactions ?? []).length > 0 && (
+          <div className="flex gap-1 mt-1 flex-wrap">
+            {groupReactions(message.reactions ?? []).map(({ emoji, count, users }) => (
+              <Tooltip key={emoji}>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-0.5 bg-muted/50 rounded-full px-1 py-0.5 text-sm cursor-default">
+                    {emoji} {count > 1 && <span className="text-muted-foreground">{count}</span>}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {users.join(", ")}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        )}
+
         {!isGrouped && (
           <div className={cn("flex items-center gap-1 mt-1", isOutgoing ? "justify-end" : "justify-start")}>
             <span className="text-[10px] text-muted-foreground">
@@ -83,6 +116,7 @@ export function MessageBubble({ message, blobUrl, isGrouped = false, showAvatar 
           <div className="text-xs text-destructive mt-1">{message.error_message}</div>
         )}
       </div>
+      {actions}
     </div>
   )
 }

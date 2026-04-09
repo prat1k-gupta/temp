@@ -4,12 +4,23 @@ import { Suspense } from "react"
 import { ChatLayout } from "@/components/chat/chat-layout"
 import { ContactList } from "@/components/chat/contact-list/contact-list"
 import { Conversation } from "@/components/chat/conversation/conversation"
+import { ContactInfoPanel } from "@/components/chat/contact-info-panel/contact-info-panel"
 import { useChat } from "@/hooks/use-chat"
 import { useChatWebSocket } from "@/hooks/use-chat-websocket"
 import { useWebSocket } from "@/hooks/use-websocket"
 
 function ChatPageContent() {
-  const { activeContactId, setActiveContact, isAtBottom, setIsAtBottom } = useChat()
+  const {
+    activeContactId,
+    setActiveContact,
+    isAtBottom,
+    setIsAtBottom,
+    replyingTo,
+    setReplyingTo,
+    clearReplyingTo,
+    showInfoPanel,
+    toggleInfoPanel,
+  } = useChat()
   const { isConnected } = useWebSocket()
   useChatWebSocket(activeContactId)
 
@@ -34,12 +45,22 @@ function ChatPageContent() {
               contactId={activeContactId}
               isAtBottom={isAtBottom}
               onAtBottomChange={setIsAtBottom}
+              replyingTo={replyingTo}
+              onReply={setReplyingTo}
+              onClearReply={clearReplyingTo}
+              showInfoPanel={showInfoPanel}
+              onInfoToggle={toggleInfoPanel}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               Select a conversation to start messaging
             </div>
           )
+        }
+        infoPanel={
+          activeContactId && showInfoPanel ? (
+            <ContactInfoPanel contactId={activeContactId} onClose={toggleInfoPanel} />
+          ) : undefined
         }
       />
     </div>

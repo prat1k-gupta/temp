@@ -1,10 +1,13 @@
 "use client"
 
 import { useRef, useState, useCallback, useEffect } from "react"
-import { useMessages } from "@/hooks/queries/use-messages"
+import { useQueryClient } from "@tanstack/react-query"
+import { useMessages, useSendMessage, useReaction } from "@/hooks/queries/use-messages"
+import { messageKeys } from "@/hooks/queries/query-keys"
 import { getAccessToken } from "@/lib/auth"
 import { MessageBubble } from "./message-bubble"
-import type { Message, MessageType } from "@/types/chat"
+import { MessageActions } from "./message-actions"
+import type { Message, MessageType, MessagesResponse } from "@/types/chat"
 
 const MEDIA_TYPES: Set<MessageType> = new Set(["image", "video", "audio", "document", "sticker"])
 
@@ -20,14 +23,19 @@ interface MessageListProps {
   contactId: string
   isAtBottom: boolean
   onAtBottomChange: (atBottom: boolean) => void
+  onReply: (message: Message) => void
 }
 
-export function MessageList({ contactId, isAtBottom, onAtBottomChange }: MessageListProps) {
+export function MessageList({ contactId, isAtBottom, onAtBottomChange, onReply }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const blobCacheRef = useRef<Map<string, string>>(new Map())
   const inFlightRef = useRef<Set<string>>(new Set())
   const [blobVersion, setBlobVersion] = useState(0)
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useMessages(contactId)
+  const queryClient = useQueryClient()
+  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null)
+  const { mutate: retrySend } = useSendMessage(contactId)
+  const { mutate: sendReaction } = useReaction(contactId)
 
   // Flatten pages — API returns messages in chronological order (ASC)
   const messages: Message[] = data?.pages.flatMap((p) => p.messages) ?? []
@@ -76,12 +84,26 @@ export function MessageList({ contactId, isAtBottom, onAtBottomChange }: Message
     }
   }, [contactId])
 
-  // Scroll to bottom on initial load and new messages (when at bottom)
+  // Scroll to bottom: on contact switch (always) or new messages (when at bottom)
+  const prevContactIdRef = useRef(contactId)
+  const shouldForceScrollRef = useRef(true)
+  if (prevContactIdRef.current !== contactId) {
+    prevContactIdRef.current = contactId
+    shouldForceScrollRef.current = true
+  }
+  const lastMessageId = messages[messages.length - 1]?.id
   useEffect(() => {
-    if (isAtBottom && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (!scrollRef.current) return
+    const shouldScroll = shouldForceScrollRef.current || isAtBottom
+    if (shouldScroll) {
+      const el = scrollRef.current
+      el.scrollTop = el.scrollHeight
+      shouldForceScrollRef.current = false
+      // Scroll again after images/media load (they increase scrollHeight)
+      const timer = setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
+      return () => clearTimeout(timer)
     }
-  }, [messages.length, isAtBottom])
+  }, [lastMessageId, isAtBottom])
 
   // Infinite scroll upward — load older messages
   const handleScroll = useCallback(async () => {
@@ -105,6 +127,44 @@ export function MessageList({ contactId, isAtBottom, onAtBottomChange }: Message
       })
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, onAtBottomChange])
+
+  const handleRetry = useCallback((message: Message) => {
+    if (retryingMessageId) return
+    setRetryingMessageId(message.id)
+    const body = typeof message.content === "string" ? message.content : message.content?.body || ""
+    retrySend(
+      { body },
+      {
+        onSuccess: (newMessage) => {
+          // Atomic: remove failed + append new in single update
+          queryClient.setQueryData<{
+            pages: MessagesResponse[]
+            pageParams: unknown[]
+          }>(messageKeys.list(contactId), (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              pages: old.pages.map((page, i) => ({
+                ...page,
+                messages: [
+                  ...page.messages.filter((m) => m.id !== message.id),
+                  ...(i === 0 && !page.messages.some((m) => m.id === newMessage.id)
+                    ? [newMessage]
+                    : []),
+                ],
+              })),
+            }
+          })
+          setRetryingMessageId(null)
+        },
+        onError: () => setRetryingMessageId(null),
+      }
+    )
+  }, [retryingMessageId, retrySend, contactId, queryClient])
+
+  const handleReact = useCallback((messageId: string, emoji: string) => {
+    sendReaction({ messageId, emoji })
+  }, [sendReaction])
 
   // Date separator helper
   const getDateLabel = (dateString: string) => {
@@ -152,8 +212,8 @@ export function MessageList({ contactId, isAtBottom, onAtBottomChange }: Message
         return (
           <div key={message.id}>
             {showDate && (
-              <div className="flex justify-center my-3">
-                <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+              <div className="sticky top-0 z-10 flex justify-center my-3 bg-background">
+                <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full shadow-sm">
                   {getDateLabel(message.created_at)}
                 </span>
               </div>
@@ -163,6 +223,15 @@ export function MessageList({ contactId, isAtBottom, onAtBottomChange }: Message
               blobUrl={blobCacheRef.current.get(message.id)}
               isGrouped={grouped && !isLastInGroup}
               showAvatar={!grouped}
+              actions={
+                <MessageActions
+                  message={message}
+                  onReply={onReply}
+                  onReact={handleReact}
+                  onRetry={handleRetry}
+                  isRetrying={retryingMessageId === message.id}
+                />
+              }
             />
           </div>
         )

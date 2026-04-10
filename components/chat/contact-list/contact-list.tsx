@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input"
 import { useContacts } from "@/hooks/queries/use-contacts"
 import { ContactListItem } from "./contact-list-item"
 import { ContactListFilters } from "./contact-list-filters"
+import { useContactFilterUI, countLeaves } from "./contact-filter"
 import { ContactListSkeleton } from "./contact-list-skeleton"
-import type { Contact } from "@/types/chat"
+import { useFilteredContacts } from "@/hooks/queries/use-contact-filters"
+import type { Contact, ContactFilter } from "@/types/chat"
 
 interface ContactListProps {
   activeContactId: string | null
@@ -18,6 +20,7 @@ export function ContactList({ activeContactId, onSelectContact }: ContactListPro
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [channel, setChannel] = useState<"whatsapp" | "instagram" | null>(null)
+  const [rootFilter, setRootFilter] = useState<ContactFilter>({ logic: "and", filters: [] })
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -28,10 +31,21 @@ export function ContactList({ activeContactId, onSelectContact }: ContactListPro
     debounceRef.current = setTimeout(() => setDebouncedSearch(value), 300)
   }, [])
 
-  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useContacts({
+  const hasFilters = countLeaves(rootFilter) > 0
+  const { filterButton, filterTree } = useContactFilterUI({ rootFilter, onRootFilterChange: setRootFilter })
+
+  const unfilteredQuery = useContacts({
     search: debouncedSearch || undefined,
     channel,
   })
+
+  const filteredQuery = useFilteredContacts(rootFilter, {
+    search: debouncedSearch || undefined,
+    channel: channel ?? undefined,
+  })
+
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    hasFilters ? filteredQuery : unfilteredQuery
 
   // Load more on scroll to bottom
   const handleScroll = useCallback(() => {
@@ -46,8 +60,8 @@ export function ContactList({ activeContactId, onSelectContact }: ContactListPro
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 pt-3 pb-1">
-        <div className="relative">
+      <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+        <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search contacts..."
@@ -56,9 +70,18 @@ export function ContactList({ activeContactId, onSelectContact }: ContactListPro
             className="pl-9 h-9"
           />
         </div>
+        {filterButton}
       </div>
 
+      {filterTree}
+
       <ContactListFilters channel={channel} onChannelChange={setChannel} />
+
+      {hasFilters && !isLoading && (
+        <div className="px-3 pb-1 text-[11px] text-muted-foreground">
+          {data?.pages[0]?.total ?? contacts.length} contacts matched
+        </div>
+      )}
 
       <div
         ref={scrollRef}

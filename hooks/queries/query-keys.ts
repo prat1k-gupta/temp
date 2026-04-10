@@ -84,3 +84,10 @@ export const contactInfoKeys = {
   variables: (contactId: string) =>
     [...contactInfoKeys.all, "variables", contactId] as const,
 } as const
+
+export const filterKeys = {
+  all: ["filters"] as const,
+  tags: () => [...filterKeys.all, "tags"] as const,
+  variables: (flowSlug: string) => [...filterKeys.all, "variables", flowSlug] as const,
+  contacts: (params: Record<string, unknown>) => [...contactKeys.all, "filtered", params] as const,
+} as const

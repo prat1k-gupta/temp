@@ -115,3 +115,18 @@ export interface ContactVariable {
   value: string
   updated_at: string
 }
+
+export interface ContactFilter {
+  // Leaf condition fields
+  type?: "tag" | "flow" | "variable"
+  op?: string
+  value?: string
+  values?: string[]
+  flowSlug?: string
+  flowName?: string  // display only
+  name?: string
+
+  // Group fields (recursive)
+  logic?: "and" | "or"
+  filters?: ContactFilter[]
+}

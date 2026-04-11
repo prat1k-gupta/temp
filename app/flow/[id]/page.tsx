@@ -36,8 +36,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Loader2, Sparkles } from "lucide-react"
+import { Loader2, Sparkles, Undo2, Redo2 } from "lucide-react"
 import { Toaster } from "@/components/ui/sonner"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useSearchParams, useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -50,6 +53,7 @@ import { useNodeOperations } from "@/hooks/use-node-operations"
 import { useClipboard } from "@/hooks/use-clipboard"
 import { useFlowAI } from "@/hooks/use-flow-ai"
 import { useFlowInteractions } from "@/hooks/use-flow-interactions"
+import { useUndoRedo } from "@/hooks/use-undo-redo"
 import { TemplateEditorModal } from "@/components/template-editor-modal"
 import { WhatsAppFlowBuilderModal } from "@/components/whatsapp-flow-builder-modal"
 import { FlowHeader } from "@/components/flow/flow-header"
@@ -157,13 +161,30 @@ function MagicFlowInner() {
   const autoSaveEnabled = !!flowId && !!persistence.currentFlow && !isSetupMode && !isNewFlow && nodes.length > 0 && persistence.flowLoaded && isEditMode
   const { isSaving, flush: autoSaveFlush } = useAutoSave(flowId, nodes, edges, platform, autoSaveEnabled, isEditMode)
 
+  const abortAIStaggerRef = useRef(false)
+
+  const {
+    trackedSetNodes,
+    trackedSetEdges,
+    snapshot: undoSnapshot,
+    resumeTracking: undoResumeTracking,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    clearHistory: undoClearHistory,
+  } = useUndoRedo(nodes, edges, setNodes, setEdges, {
+    isEnabled: isEditMode,
+    onBeforeUndo: () => { abortAIStaggerRef.current = true },
+  })
+
   const nodeOps = useNodeOperations({
     flowId,
     nodes,
     edges,
     platform,
-    setNodes,
-    setEdges,
+    setNodes: trackedSetNodes,
+    setEdges: trackedSetEdges,
     setPlatform,
     onNodesChangeOriginal,
     onEdgesChangeOriginal,
@@ -180,8 +201,8 @@ function MagicFlowInner() {
     nodes,
     edges,
     platform,
-    setNodes,
-    setEdges,
+    setNodes: trackedSetNodes,
+    setEdges: trackedSetEdges,
     setPlatform,
     deleteNode: nodeOps.deleteNode,
     setSelectedNode: nodeOps.setSelectedNode,
@@ -190,6 +211,10 @@ function MagicFlowInner() {
     isEditMode,
     autoEnterEditMode,
     updateDraftChanges,
+    undoSnapshot,
+    undoResumeTracking,
+    undo,
+    redo,
   })
 
   const flowAI = useFlowAI({
@@ -197,8 +222,8 @@ function MagicFlowInner() {
     nodes,
     edges,
     platform,
-    setNodes,
-    setEdges,
+    setNodes: trackedSetNodes,
+    setEdges: trackedSetEdges,
     setPlatform,
     selectedNode: nodeOps.selectedNode,
     deleteNode: nodeOps.deleteNode,
@@ -208,14 +233,17 @@ function MagicFlowInner() {
     updateDraftChanges,
     currentFlow: persistence.currentFlow,
     setCurrentFlow: persistence.setCurrentFlow,
+    undoSnapshot,
+    undoResumeTracking,
+    abortAIStaggerRef,
   })
 
   const interactions = useFlowInteractions({
     nodes,
     edges,
     platform,
-    setNodes,
-    setEdges,
+    setNodes: trackedSetNodes,
+    setEdges: trackedSetEdges,
     setPlatform,
     selectedNode: nodeOps.selectedNode,
     setSelectedNode: nodeOps.setSelectedNode,
@@ -274,13 +302,22 @@ function MagicFlowInner() {
 
   const handleModeToggle = useCallback(() => {
     autoSaveFlush() // Flush pending changes before switching modes
+    undoClearHistory()
     const publishedVersion = getAllVersions().find((v) => v.isPublished)
     if (publishedVersion) {
       toggleViewDraft(setNodes, setEdges, setPlatform)
     } else {
       toggleEditMode(setNodes, setEdges, setPlatform)
     }
-  }, [autoSaveFlush, getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
+  }, [autoSaveFlush, undoClearHistory, getAllVersions, toggleViewDraft, toggleEditMode, setNodes, setEdges, setPlatform])
+
+  const handleResetToPublished = useCallback(
+    (sn: typeof setNodes, se: typeof setEdges, sp: typeof setPlatform) => {
+      resetToPublished(sn, se, sp)
+      undoClearHistory()
+    },
+    [resetToPublished, undoClearHistory]
+  )
 
   const importFlow = useCallback(
     (importedNodes: Node[], importedEdges: Edge[], importedPlatform: Platform) => {
@@ -289,6 +326,7 @@ function MagicFlowInner() {
       }
       changeTracker.trackFlowImport(importedNodes, importedEdges, importedPlatform)
       updateDraftChanges()
+      undoClearHistory()
 
       setNodes([])
       setEdges([])
@@ -380,7 +418,7 @@ function MagicFlowInner() {
           getChangesCount={getChangesCount}
           getChangesSummary={getChangesSummary}
           getAllVersions={getAllVersions}
-          resetToPublished={resetToPublished}
+          resetToPublished={handleResetToPublished}
           setNodes={setNodes}
           setEdges={setEdges}
           setPlatform={setPlatform}
@@ -528,6 +566,7 @@ function MagicFlowInner() {
           currentVersion={currentVersion}
           onLoadVersion={(version) => {
                         loadVersion(version, setNodes, setEdges, setPlatform)
+            undoClearHistory()
             nodeOps.setSelectedNode(null)
             clipboard.setSelectedNodes([])
             nodeOps.setIsPropertiesPanelOpen(false)
@@ -610,6 +649,8 @@ function MagicFlowInner() {
                   deleteNode: nodeOps.deleteNode,
                   convertNode: nodeOps.convertNode,
                   openFlowBuilder,
+                  snapshot: undoSnapshot,
+                  resumeTracking: undoResumeTracking,
                   openTestPanel: (nodeId: string) => {
                     const startNode = nodes.find((n) => n.id === nodeId)
                     if (startNode) {
@@ -661,9 +702,43 @@ function MagicFlowInner() {
             onConnectStart={interactions.onConnectStart}
             onConnectEnd={interactions.onConnectEnd}
             elevateEdgesOnSelect
-            deleteKeyCode={["Backspace", "Delete"]}
+            deleteKeyCode={null}
             multiSelectionKeyCode={["Control", "Meta"]}
+            onNodeDragStart={(_event, _node, _nodes) => { undoSnapshot() }}
+            onReconnectStart={() => { undoSnapshot() }}
           >
+            <Panel position="top-left">
+              <TooltipProvider delayDuration={300}>
+                <div className="flex items-center gap-1 rounded-md border bg-card p-1 shadow-lg">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={undo}
+                        disabled={!canUndo}
+                        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8")}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Undo (⌘Z)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={redo}
+                        disabled={!canRedo}
+                        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8")}
+                      >
+                        <Redo2 className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Redo (⌘⇧Z)</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+            </Panel>
             <Controls className="bg-card border-border shadow-lg" />
             <MiniMap
               className="bg-card border-border shadow-lg"
@@ -696,7 +771,7 @@ function MagicFlowInner() {
                 selectedNode={nodeOps.selectedNode}
                 onApplyFlow={flowAI.handleApplyFlow}
                 onUpdateFlow={flowAI.handleUpdateFlow}
-                onUndo={flowAI.undoLastAIAction}
+                /* onUndo removed — shared undo (Cmd+Z) handles AI undo now */
               />
             </Panel>
           </ReactFlow>
@@ -784,6 +859,8 @@ function MagicFlowInner() {
         selectAllNodes={clipboard.selectAllNodes}
         onOpenFlowBuilder={openFlowBuilder}
         publishedFlowId={persistence.currentFlow?.publishedFlowId}
+        onSnapshot={undoSnapshot}
+        onResumeTracking={undoResumeTracking}
       />
 
       {/* WhatsApp Flow Builder Modal — page-level so both node + properties panel can open it */}

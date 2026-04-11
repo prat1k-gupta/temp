@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
 import type { Platform, ButtonData, OptionData } from "@/types"
@@ -41,6 +41,10 @@ interface UseFlowAIParams {
   updateDraftChanges: () => void
   currentFlow: FlowData | null
   setCurrentFlow: React.Dispatch<React.SetStateAction<FlowData | null>>
+  // Undo/redo — wired in Task 3, used in Task 6
+  undoSnapshot?: () => void
+  undoResumeTracking?: () => void
+  abortAIStaggerRef?: React.MutableRefObject<boolean>
 }
 
 /**
@@ -97,9 +101,11 @@ export function useFlowAI({
   updateDraftChanges,
   currentFlow,
   setCurrentFlow,
+  undoSnapshot,
+  undoResumeTracking,
+  abortAIStaggerRef,
 }: UseFlowAIParams) {
   const [isAISuggestionsPanelOpen, setIsAISuggestionsPanelOpen] = useState(false)
-  const aiUndoStackRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([])
 
   const { suggestions, loading: suggestionsLoading, fetchSuggestions, clearSuggestions } = useNodeSuggestions()
 
@@ -180,16 +186,6 @@ export function useFlowAI({
             platform,
             nodePosition,
             newNodeId,
-            (updates: any) => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node
-                )
-              )
-            },
-            () => deleteNode(newNodeId)
           )
         } else {
           newNode = createNode(nodeType, platform, nodePosition, newNodeId)
@@ -212,11 +208,9 @@ export function useFlowAI({
   const handleApplyFlow = useCallback(
     async (flowData: { nodes: Node[]; edges: Edge[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => {
       try {
-        // Snapshot current state for undo
-        const preApplyNodes = [...nodes]
-        const preApplyEdges = [...edges]
-        if (aiUndoStackRef.current.length >= 10) aiUndoStackRef.current.shift()
-        aiUndoStackRef.current.push({ nodes: preApplyNodes, edges: preApplyEdges })
+        // Snapshot for shared undo stack, then pause auto-capture during stagger
+        if (abortAIStaggerRef) abortAIStaggerRef.current = false
+        undoSnapshot?.()
 
         withEditTracking()
 
@@ -237,6 +231,8 @@ export function useFlowAI({
           if (existingStartNode) placedIds.add(existingStartNode.id)
 
           for (const nodeId of flowData.nodeOrder) {
+            if (abortAIStaggerRef?.current) break
+
             const node = processedNodes.find((n) => n.id === nodeId)
             if (node) {
               setNodes((prev) => [...prev, node])
@@ -255,12 +251,17 @@ export function useFlowAI({
           }
 
           // Safety net: set final edges state to ensure all edges are placed
-          setEdges(processedEdges)
+          if (!abortAIStaggerRef?.current) {
+            setEdges(processedEdges)
+          }
         } else {
           // No nodeOrder — apply all at once (legacy behavior)
           setNodes(processedNodes)
           setEdges(processedEdges)
         }
+
+        // Resume auto-capture after stagger completes (or aborts)
+        undoResumeTracking?.()
 
         processedNodes.forEach((node) => {
           if (node.id !== "1") {
@@ -272,14 +273,6 @@ export function useFlowAI({
 
         const addedCount = processedNodes.length - (existingStartNode ? 1 : 0)
         toast.success(`Flow created! ${addedCount} nodes added`, {
-          action: {
-            label: "Undo",
-            onClick: () => {
-              setNodes(preApplyNodes)
-              setEdges(preApplyEdges)
-              toast.info("Flow generation undone")
-            },
-          },
           duration: 8000,
         })
 
@@ -300,16 +293,17 @@ export function useFlowAI({
             newNodes: processedNodes.filter(n => n.id !== "1").map(n => ({ id: n.id, type: n.type || "" })),
             newEdges: processedEdges.map(e => ({ source: e.source, target: e.target, sourceHandle: e.sourceHandle || undefined })),
           },
-          flowBefore: { nodeCount: preApplyNodes.length, edgeCount: preApplyEdges.length, nodeIds: preApplyNodes.map(n => n.id) },
+          flowBefore: { nodeCount: nodes.length, edgeCount: edges.length, nodeIds: nodes.map(n => n.id) },
           flowAfter: { nodeCount: processedNodes.length, edgeCount: processedEdges.length, nodeIds: processedNodes.map(n => n.id) },
           warnings: meta?.warnings || [],
         })
       } catch (error) {
+        undoResumeTracking?.()
         console.error("[handleApplyFlow] Error:", error)
         toast.error("Failed to apply AI-generated flow. Please try again.")
       }
     },
-    [nodes, edges, platform, setNodes, setEdges, withEditTracking, updateDraftChanges]
+    [nodes, edges, platform, setNodes, setEdges, withEditTracking, updateDraftChanges, undoSnapshot, undoResumeTracking, abortAIStaggerRef]
   )
 
   const handleUpdateFlow = useCallback(
@@ -322,11 +316,9 @@ export function useFlowAI({
       positionShifts?: Array<{ nodeId: string; dx: number }>
     }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => {
       try {
-        // Snapshot current state for undo
-        const preUpdateNodes = [...nodes]
-        const preUpdateEdges = [...edges]
-        if (aiUndoStackRef.current.length >= 10) aiUndoStackRef.current.shift()
-        aiUndoStackRef.current.push({ nodes: preUpdateNodes, edges: preUpdateEdges })
+        // Snapshot for shared undo stack, then pause auto-capture during stagger
+        if (abortAIStaggerRef) abortAIStaggerRef.current = false
+        undoSnapshot?.()
 
         withEditTracking()
 
@@ -484,6 +476,8 @@ export function useFlowAI({
             const placedIds = new Set(nodes.map((n) => n.id))
 
             for (const node of brandNewNodes) {
+              if (abortAIStaggerRef?.current) break
+
               setNodes((prev) => [...prev, node])
               placedIds.add(node.id)
 
@@ -510,7 +504,7 @@ export function useFlowAI({
             }
 
             // Safety net: ensure all new edges are placed
-            if (newEdges.length > 0) {
+            if (!abortAIStaggerRef?.current && newEdges.length > 0) {
               setEdges((prev) => {
                 let updated = [...prev]
                 for (const edge of newEdges) {
@@ -644,6 +638,9 @@ export function useFlowAI({
           return changed ? normalized : eds
         })
 
+        // Resume auto-capture after all mutations complete (or abort)
+        undoResumeTracking?.()
+
         if (updates.description && flowId) {
           updateFlow(flowId, { description: updates.description }).catch(() => {})
           setCurrentFlow((prev) => (prev ? { ...prev, description: updates.description } : null))
@@ -656,14 +653,6 @@ export function useFlowAI({
         toast.success(
           `Flow updated! ${addedCount > 0 ? `${addedCount} nodes added` : ""}${addedCount > 0 && updatedCount > 0 ? ", " : ""}${updatedCount > 0 ? `${updatedCount} nodes updated` : ""}`,
           {
-            action: {
-              label: "Undo",
-              onClick: () => {
-                setNodes(preUpdateNodes)
-                setEdges(preUpdateEdges)
-                toast.info("Flow update undone")
-              },
-            },
             duration: 8000,
           }
         )
@@ -688,16 +677,17 @@ export function useFlowAI({
             removedNodeIds: updates.removeNodeIds,
             removedEdges: updates.removeEdges?.map(re => ({ source: re.source, target: re.target })),
           },
-          flowBefore: { nodeCount: preUpdateNodes.length, edgeCount: preUpdateEdges.length, nodeIds: preUpdateNodes.map(n => n.id) },
+          flowBefore: { nodeCount: nodes.length, edgeCount: edges.length, nodeIds: nodes.map(n => n.id) },
           flowAfter: { nodeCount: nodes.length + brandNewNodes.length, edgeCount: edges.length, nodeIds: [...nodes.map(n => n.id), ...brandNewNodes.map(n => n.id)] },
           warnings: meta?.warnings || [],
         })
       } catch (error) {
+        undoResumeTracking?.()
         console.error("[handleUpdateFlow] Error:", error)
         toast.error("Failed to apply updates. Please try again.")
       }
     },
-    [nodes, edges, platform, flowId, setNodes, setEdges, withEditTracking, updateDraftChanges, setCurrentFlow]
+    [nodes, edges, platform, flowId, setNodes, setEdges, withEditTracking, updateDraftChanges, setCurrentFlow, undoSnapshot, undoResumeTracking, abortAIStaggerRef]
   )
 
   const onAcceptAISuggestion = useCallback(
@@ -813,17 +803,6 @@ export function useFlowAI({
     [selectedNode, platform, nodes, edges, handleUpdateFlow, clearSuggestions, setNodeToFocus]
   )
 
-  const undoLastAIAction = useCallback(() => {
-    const snapshot = aiUndoStackRef.current.pop()
-    if (snapshot) {
-      setNodes(snapshot.nodes)
-      setEdges(snapshot.edges)
-      toast.success("Changes undone")
-      return true
-    }
-    return false
-  }, [setNodes, setEdges])
-
   return {
     isAISuggestionsPanelOpen,
     setIsAISuggestionsPanelOpen,
@@ -834,6 +813,5 @@ export function useFlowAI({
     onAddNode,
     handleApplyFlow,
     handleUpdateFlow,
-    undoLastAIAction,
   }
 }

@@ -239,16 +239,6 @@ export function useFlowInteractions({
             platform,
             position,
             newNodeId,
-            (updates: any) => {
-              setNodes((nds) =>
-                nds.map((node) =>
-                  node.id === newNodeId
-                    ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                    : node
-                )
-              )
-            },
-            () => deleteNode(newNodeId)
           )
         } else {
           newNode = createNode(draggedNodeType, platform, position, newNodeId)
@@ -270,7 +260,7 @@ export function useFlowInteractions({
         setDraggedNodeMeta(null)
       }
     },
-    [draggedNodeType, draggedNodeMeta, setNodes, deleteNode, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, setNodeToFocus]
+    [draggedNodeType, draggedNodeMeta, setNodes, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, setNodeToFocus]
   )
 
   const onPaneContextMenu = useCallback((event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
@@ -321,16 +311,6 @@ export function useFlowInteractions({
               platform,
               position,
               newNodeId,
-              (updates: any) => {
-                setNodes((nds) =>
-                  nds.map((node) =>
-                    node.id === newNodeId
-                      ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                      : node
-                  )
-                )
-              },
-              () => deleteNode(newNodeId)
             )
             break
           case "question":
@@ -360,7 +340,7 @@ export function useFlowInteractions({
         console.error(`[v0] Error creating node ${nodeType}:`, error)
       }
     },
-    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, deleteNode, withEditTracking, updateDraftChanges, setNodeToFocus]
+    [contextMenu, screenToFlowPosition, setNodes, closeContextMenu, platform, withEditTracking, updateDraftChanges, setNodeToFocus]
   )
 
   const onNodeClick = useCallback(
@@ -444,28 +424,6 @@ export function useFlowInteractions({
           platform,
           position,
           newNodeId,
-          (updates: any) => {
-            if (!isEditMode) {
-              autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
-            }
-
-            const currentNode = nodes.find((n) => n.id === newNodeId)
-            if (currentNode) {
-              const oldData = { ...currentNode.data }
-              const newData = { ...oldData, ...updates }
-              changeTracker.trackNodeUpdate(newNodeId, oldData, newData, currentNode.type, currentNode.type)
-              updateDraftChanges()
-            }
-
-            setNodes((nds) =>
-              nds.map((node) =>
-                node.id === newNodeId
-                  ? { ...node, data: { ...node.data, ...updates }, _timestamp: Date.now() }
-                  : node
-              )
-            )
-          },
-          () => deleteNode(newNodeId)
         )
 
         withEditTracking()
@@ -482,17 +440,10 @@ export function useFlowInteractions({
       lastClickTime,
       lastClickPosition,
       setNodes,
-      deleteNode,
       platform,
       setSelectedNodes,
       setSelectedNode,
       setIsPropertiesPanelOpen,
-      isEditMode,
-      autoEnterEditMode,
-      setEdges,
-      setPlatform,
-      nodes,
-      edges,
       withEditTracking,
       updateDraftChanges,
       screenToFlowPosition,
@@ -525,8 +476,6 @@ export function useFlowInteractions({
           platform,
           nodePosition,
           newNodeId,
-          (updates: any) => updateNodeData(newNodeId, updates),
-          () => deleteNode(newNodeId)
         )
       } else {
         try {
@@ -567,7 +516,7 @@ export function useFlowInteractions({
       setConnectionMenu({ isOpen: false, x: 0, y: 0, sourceNodeId: null, sourceHandleId: null })
       setNodeToFocus(newNodeId)
     },
-    [connectionMenu, nodes, setNodes, setEdges, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, deleteNode, updateNodeData, setNodeToFocus]
+    [connectionMenu, nodes, setNodes, setEdges, platform, withEditTracking, updateDraftChanges, screenToFlowPosition, setNodeToFocus]
   )
 
   const closeConnectionMenu = useCallback(() => {

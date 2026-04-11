@@ -44,7 +44,8 @@ export function TransferNode({ data, selected }: { data: any; selected?: boolean
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") setIsEditingLabel(false)

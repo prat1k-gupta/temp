@@ -27,6 +27,8 @@ interface PropertiesPanelWrapperProps {
   selectAllNodes: () => void
   onOpenFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
   publishedFlowId?: string
+  onSnapshot?: () => void
+  onResumeTracking?: () => void
 }
 
 export function PropertiesPanelWrapper({
@@ -45,6 +47,8 @@ export function PropertiesPanelWrapper({
   selectAllNodes,
   onOpenFlowBuilder,
   publishedFlowId,
+  onSnapshot,
+  onResumeTracking,
 }: PropertiesPanelWrapperProps) {
   const { screenToFlowPosition } = useReactFlow()
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
@@ -87,6 +91,7 @@ export function PropertiesPanelWrapper({
 
   return (
     <div
+      data-panel="properties"
       className="relative bg-background border-l border-border overflow-hidden flex-shrink-0"
       style={{
         width: isOpen ? panelWidth : 0,
@@ -119,6 +124,8 @@ export function PropertiesPanelWrapper({
               allNodes={nodes}
               onOpenFlowBuilder={onOpenFlowBuilder}
               publishedFlowId={publishedFlowId}
+              onSnapshot={onSnapshot}
+              onResumeTracking={onResumeTracking}
             />
           </div>
         </div>

@@ -254,7 +254,8 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
@@ -279,7 +280,8 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
               <VariablePickerTextarea
                 value={editingQuestionValue}
                 onValueChange={setEditingQuestionValue}
-                onBlur={(e) => finishEditingQuestion(e as any)}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={(e) => { finishEditingQuestion(e as any); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -356,7 +358,8 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                       <Input
                         value={editingButtonValue}
                         onChange={(e) => setEditingButtonValue(e.target.value)}
-                        onBlur={finishEditingButton}
+                        onFocus={() => data.onSnapshot?.()}
+                        onBlur={() => { finishEditingButton(); data.onResumeTracking?.() }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") finishEditingButton()
                           if (e.key === "Escape") cancelEditingButton()

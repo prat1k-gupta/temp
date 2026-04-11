@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
-import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check, Undo2 } from "lucide-react"
+import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check } from "lucide-react"
 import { getAllTemplates, getFlow } from "@/utils/flow-storage"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { toast } from "sonner"
@@ -37,7 +37,6 @@ interface AIAssistantProps {
   selectedNode?: any
   onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
-  onUndo?: () => boolean
 }
 
 const CHAT_STORAGE_PREFIX = "magic-flow-chat-"
@@ -79,7 +78,6 @@ export function AIAssistant({
   selectedNode,
   onApplyFlow,
   onUpdateFlow,
-  onUndo,
 }: AIAssistantProps) {
   // Collect all templates (default + user-created) for AI context
   const [userTemplates, setUserTemplates] = useState<Array<{ id: string; name: string; aiMetadata?: any }>>(() => {
@@ -396,11 +394,8 @@ export function AIAssistant({
               const msgIdx = messages.indexOf(message)
               const precedingUserMsg = messages.slice(0, msgIdx).reverse().find((m) => m.role === "user")
               const buttonMeta = { warnings: message.warnings, debugData: message.debugData, userPrompt: precedingUserMsg?.content }
-              const isUndoable = message.isAutoApplied && onUndo && !appliedMessageIds.has(`undo-${message.id}`)
-              const isUndone = appliedMessageIds.has(`undo-${message.id}`)
               const hasActions = message.role === "assistant" && (
                 (message.flowData && onApplyFlow && !message.isAutoApplied) ||
-                isUndoable || isUndone ||
                 (message.isError && lastFailedInputRef.current)
               )
 
@@ -446,27 +441,6 @@ export function AIAssistant({
                               "Apply Flow"
                             )}
                           </Button>
-                        )}
-
-                        {/* Undo button for auto-applied messages */}
-                        {isUndoable && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs px-3 rounded-lg"
-                            onClick={() => {
-                              onUndo()
-                              setAppliedMessageIds((prev) => new Set([...prev, `undo-${message.id}`]))
-                            }}
-                            disabled={isLoading}
-                          >
-                            <Undo2 className="w-3 h-3 mr-1" /> Undo
-                          </Button>
-                        )}
-                        {isUndone && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Undo2 className="w-3 h-3" /> Undone
-                          </span>
                         )}
 
                         {message.isError && lastFailedInputRef.current && (

@@ -91,6 +91,8 @@ interface PropertiesPanelProps {
   allNodes?: Node[] // All nodes in the flow for variable mapping
   onOpenFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
   publishedFlowId?: string
+  onSnapshot?: () => void
+  onResumeTracking?: () => void
 }
 
 // Limits are resolved dynamically from getNodeLimits() per-node, not hardcoded.
@@ -163,6 +165,8 @@ function SortableButtonItem({
   onRemove,
   isOverLimit,
   limits,
+  onSnapshot,
+  onResumeTracking,
 }: {
   button: any
   index: number
@@ -171,6 +175,8 @@ function SortableButtonItem({
   onRemove: (index: number) => void
   isOverLimit: (text: string, type: "question" | "button") => boolean
   limits: any
+  onSnapshot?: () => void
+  onResumeTracking?: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: itemId,
@@ -195,6 +201,8 @@ function SortableButtonItem({
         <Input
           value={button.text || ""}
           onChange={(e) => onUpdate(index, e.target.value)}
+          onFocus={() => onSnapshot?.()}
+          onBlur={() => onResumeTracking?.()}
           placeholder={`Button ${index + 1}`}
           className={`flex-1 ${isOverLimit(button.text || "", "button") ? "border-destructive" : ""}`}
         />
@@ -233,6 +241,8 @@ function SortableOptionItem({
   onRemove,
   isOverLimit,
   limits,
+  onSnapshot,
+  onResumeTracking,
 }: {
   option: any
   index: number
@@ -241,6 +251,8 @@ function SortableOptionItem({
   onRemove: (index: number) => void
   isOverLimit: (text: string, type: "question" | "button") => boolean
   limits: any
+  onSnapshot?: () => void
+  onResumeTracking?: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: itemId,
@@ -268,6 +280,8 @@ function SortableOptionItem({
         <Input
           value={option.text || ""}
           onChange={(e) => onUpdate(index, e.target.value)}
+          onFocus={() => onSnapshot?.()}
+          onBlur={() => onResumeTracking?.()}
           placeholder={`Option ${index + 1}`}
           className={`flex-1 ${isOverLimit(option.text || "", "button") ? "border-destructive" : ""}`}
         />
@@ -865,6 +879,8 @@ export function PropertiesPanel({
   allNodes = [],
   onOpenFlowBuilder,
   publishedFlowId: publishedFlowIdProp,
+  onSnapshot,
+  onResumeTracking,
 }: PropertiesPanelProps) {
   console.log("[v0] Selected node:", selectedNode)
   console.log("[v0] Platform:", platform)
@@ -1233,6 +1249,8 @@ export function PropertiesPanel({
                   id="comment-text"
                   value={selectedNode.data.comment || ""}
                   onChange={(e) => handleCommentChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter your comment..."
                   className="mt-2 min-h-[100px]"
                   rows={4}
@@ -1268,6 +1286,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter node label..."
                   className="mt-2"
                 />
@@ -1301,6 +1321,8 @@ export function PropertiesPanel({
                       handleQuestionChange(val)
                     }
                   }}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder={(selectedNode.type === "whatsappMessage" ||
                                selectedNode.type === "instagramDM" ||
                                selectedNode.type === "instagramStory")
@@ -1367,6 +1389,8 @@ export function PropertiesPanel({
                       id="store-as"
                       value={selectedNode.data.storeAs || ""}
                       onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, storeAs: e.target.value })}
+                      onFocus={() => onSnapshot?.()}
+                      onBlur={() => onResumeTracking?.()}
                       placeholder="e.g. customer_name"
                       className="mt-2 font-mono text-xs"
                     />
@@ -1410,6 +1434,8 @@ export function PropertiesPanel({
                               onRemove={removeButton}
                               isOverLimit={isOverLimit}
                               limits={limits}
+                              onSnapshot={onSnapshot}
+                              onResumeTracking={onResumeTracking}
                             />
                           ))}
                         </div>
@@ -1450,6 +1476,8 @@ export function PropertiesPanel({
                               onRemove={removeOption}
                               isOverLimit={isOverLimit}
                               limits={limits}
+                              onSnapshot={onSnapshot}
+                              onResumeTracking={onResumeTracking}
                             />
                           ))}
                         </div>
@@ -1588,6 +1616,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter condition name..."
                   className="mt-2"
                 />
@@ -1850,6 +1880,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter node label..."
                   className="mt-2"
                 />
@@ -1871,6 +1903,8 @@ export function PropertiesPanel({
                       id="node-description"
                       value={selectedNode.data.description || ""}
                       onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, description: e.target.value })}
+                      onFocus={() => onSnapshot?.()}
+                      onBlur={() => onResumeTracking?.()}
                       placeholder="Enter description..."
                       className="mt-2 min-h-[60px]"
                       rows={2}
@@ -2350,6 +2384,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter node label..."
                   className="mt-2"
                 />
@@ -2587,6 +2623,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter node label..."
                   className="mt-2"
                 />
@@ -2603,6 +2641,8 @@ export function PropertiesPanel({
                   id="transfer-team"
                   value={selectedNode.data.teamId || "_general"}
                   onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, teamId: e.target.value })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Team UUID or _general"
                   className="mt-2 font-mono text-xs"
                 />
@@ -2620,6 +2660,8 @@ export function PropertiesPanel({
                   id="transfer-team-name"
                   value={selectedNode.data.teamName || ""}
                   onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, teamName: e.target.value })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Display name for the team"
                   className="mt-2"
                 />
@@ -2636,6 +2678,8 @@ export function PropertiesPanel({
                   id="transfer-notes"
                   value={selectedNode.data.notes || ""}
                   onValueChange={(val) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, notes: val })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Notes for the receiving agent... Use {{variable}} for context."
                   className="mt-2 min-h-[80px]"
                   flowVariables={flowVariablesRich}
@@ -2654,6 +2698,8 @@ export function PropertiesPanel({
                   id="transfer-message"
                   value={selectedNode.data.message || ""}
                   onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, message: e.target.value })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Message to send before transferring..."
                   className="mt-2 min-h-[60px]"
                   rows={2}
@@ -2687,6 +2733,8 @@ export function PropertiesPanel({
                   id="node-label"
                   value={selectedNode.data.label || ""}
                   onChange={(e) => handleLabelChange(e.target.value)}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Enter node label..."
                   className="mt-2"
                 />
@@ -2874,6 +2922,8 @@ export function PropertiesPanel({
                 <Input
                   value={selectedNode.data.label || ""}
                   onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, label: e.target.value })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="Action"
                   className="mt-2"
                 />
@@ -3060,6 +3110,8 @@ export function PropertiesPanel({
                 <Input
                   value={selectedNode.data.label || ""}
                   onChange={(e) => onNodeUpdate(selectedNode.id, { ...selectedNode.data, label: e.target.value })}
+                  onFocus={() => onSnapshot?.()}
+                  onBlur={() => onResumeTracking?.()}
                   placeholder="WhatsApp Flow"
                   className="mt-2"
                 />

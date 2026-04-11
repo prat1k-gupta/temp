@@ -113,7 +113,8 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
@@ -139,7 +140,8 @@ export function TrackingNotificationNode({ data, selected }: { data: any; select
               <Textarea
                 value={editingMessageValue}
                 onChange={(e) => setEditingMessageValue(e.target.value)}
-                onBlur={finishEditingMessage}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingMessage(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()

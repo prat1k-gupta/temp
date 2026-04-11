@@ -50,6 +50,37 @@ When adding or modifying a node, consider each of these. Not all apply to every 
 - `components/publish-modal.tsx` — if node needs publish validation
 - `utils/node-data-injection.ts` — if node needs page-level callbacks
 
+### Undo/Redo (CRITICAL — every editable element must support this)
+
+Every `<input>`, `<textarea>`, `<VariablePickerTextarea>`, or `[contenteditable]` inside a node or properties panel **must** have explicit `onFocus` and `onBlur` handlers for undo grouping:
+
+```tsx
+<Input
+  onFocus={() => data.onSnapshot?.()}
+  onBlur={() => { saveMyData(); data.onResumeTracking?.() }}
+/>
+```
+
+- `onFocus` → `data.onSnapshot?.()` — captures state before editing, pauses auto-capture
+- `onBlur` → `data.onResumeTracking?.()` — resumes auto-capture after editing
+
+This groups the entire edit session (could be 50 keystrokes) into ONE undo entry. Without this, every keystroke that calls `trackedSetNodes` pushes a separate snapshot.
+
+**Why explicit, not root-level:** Radix/shadcn portals (Select, Popover, Combobox) move focus outside the node DOM when opened. A root-level `focusout` handler would think the user left the node and resume tracking mid-edit. Explicit per-input handlers avoid this because the node controls when to pause and resume, not the DOM focus tree.
+
+**Before committing any new node or editable feature:**
+1. Verify every editable input has `onFocus → onSnapshot` and `onBlur → onResumeTracking`
+2. Test: edit the field → Cmd+Z → entire edit reverts as one step (not per-keystroke)
+3. Test: edit → open a dropdown/popover mid-edit → select option → blur → Cmd+Z → whole session reverts
+
+**Multi-step operations** (delete node + edges, paste, AI generate) use the manual pattern:
+```typescript
+undoSnapshot()           // capture + pause
+setNodes(...)            // mutation 1 (no auto-capture — paused)
+setEdges(...)            // mutation 2 (no auto-capture — paused)
+undoResumeTracking()     // resume
+```
+
 ### Teach AI
 AI prompts auto-generate from NODE_TEMPLATES — ensure the `ai` field is complete (description, whenToUse, selectionRule, contentFields, bestPractices). Add data structure case in `node-documentation.ts` → `buildDataStructure()`.
 

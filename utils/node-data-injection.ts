@@ -12,6 +12,8 @@ interface NodeCallbacks {
   convertNode: (nodeId: string, newNodeType: string, updatedData: any) => void
   openFlowBuilder?: (nodeId: string, mode: "create" | "edit") => void
   openTestPanel?: (nodeId: string) => void
+  snapshot?: () => void
+  resumeTracking?: () => void
 }
 
 interface WhatsAppFlowContext {
@@ -76,11 +78,16 @@ export function injectNodeCallbacks(
       id: node.id,
       flowVariables,
       flowVariablesRich,
+      onSnapshot: callbacks.snapshot,
+      onResumeTracking: callbacks.resumeTracking,
       onNodeUpdate: callbacks.updateNodeData,
       onAddButton: () => callbacks.addButtonToNode(node.id),
       onAddOption: () => callbacks.addButtonToNode(node.id),
       onAddConnection: () => callbacks.addConnectedNode(node.id),
       onDelete: () => callbacks.deleteNode(node.id),
+      ...(node.type === "comment" && {
+        onUpdate: (updates: any) => callbacks.updateNodeData(node.id, updates),
+      }),
       onConvert: callbacks.convertNode,
       ...(node.type === "whatsappFlow" && {
         onOpenFlowBuilder: callbacks.openFlowBuilder,

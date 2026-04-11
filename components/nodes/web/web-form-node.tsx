@@ -85,6 +85,8 @@ export const WebFormNode = memo(({ data }: { data: WebFormNodeData }) => {
               <Input
                 value={editingTitleValue}
                 onChange={(e) => setEditingTitleValue(e.target.value)}
+                onFocus={() => (data as any).onSnapshot?.()}
+                onBlur={() => { handleTitleSave(); (data as any).onResumeTracking?.() }}
                 className="text-sm font-medium"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleTitleSave()

@@ -5,6 +5,19 @@ import type { Platform } from "@/types"
 import { changeTracker } from "@/utils/change-tracker"
 import { toast } from "sonner"
 
+function isInsideGuardedElement(element: Element | null): boolean {
+  if (!element) return false
+  return !!(
+    element.closest("input") ||
+    element.closest("textarea") ||
+    element.closest("[contenteditable]") ||
+    element.closest("[role='dialog']") ||
+    element.closest("[data-panel='properties']") ||
+    element.closest("[role='listbox']") ||
+    element.closest("[role='menu']")
+  )
+}
+
 interface UseClipboardParams {
   nodes: Node[]
   edges: Edge[]
@@ -26,6 +39,11 @@ interface UseClipboardParams {
     platform: Platform
   ) => void
   updateDraftChanges: () => void
+  // Undo/redo — wired in Task 3, used in Task 4
+  undoSnapshot?: () => void
+  undoResumeTracking?: () => void
+  undo?: () => void
+  redo?: () => void
 }
 
 export function useClipboard({
@@ -42,6 +60,10 @@ export function useClipboard({
   isEditMode,
   autoEnterEditMode,
   updateDraftChanges,
+  undoSnapshot,
+  undoResumeTracking,
+  undo,
+  redo,
 }: UseClipboardParams) {
   const [clipboard, _setClipboard] = useState<{ nodes: Node[]; edges: Edge[] } | null>(() => {
     try {
@@ -145,8 +167,18 @@ export function useClipboard({
         })
         .filter(Boolean) as Edge[]
 
-      setNodes((nds) => [...nds, ...newNodes])
+      undoSnapshot?.()
+
+      setNodes((nds) => [
+        ...nds.map(n => ({ ...n, selected: false })),
+        ...newNodes.map(n => ({ ...n, selected: true })),
+      ])
       setEdges((eds) => [...eds, ...newEdges])
+
+      newNodes.forEach(n => changeTracker.trackNodeAdd(n))
+      newEdges.forEach(e => changeTracker.trackEdgeAdd(e))
+      updateDraftChanges?.()
+      undoResumeTracking?.()
 
       setSelectedNodes(newNodes)
       setSelectedNode(newNodes[0] || null)
@@ -161,7 +193,7 @@ export function useClipboard({
 
       console.log("[v0] Pasted nodes:", newNodes.length, "edges:", newEdges.length, "at position:", targetPosition)
     },
-    [clipboard, setNodes, setEdges, pastePosition, setSelectedNode, setIsPropertiesPanelOpen, setNodeToFocus]
+    [clipboard, setNodes, setEdges, pastePosition, setSelectedNode, setIsPropertiesPanelOpen, setNodeToFocus, undoSnapshot, undoResumeTracking, updateDraftChanges]
   )
 
   const selectAllNodes = useCallback(() => {
@@ -172,29 +204,47 @@ export function useClipboard({
     setIsPropertiesPanelOpen(true)
   }, [getNodes, setSelectedNode, setIsPropertiesPanelOpen])
 
-  // Single merged keyboard shortcuts effect (Ctrl+C, Ctrl+V, Ctrl+A, Delete/Backspace)
+  // Single merged keyboard shortcuts effect (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z, Delete/Backspace)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.contentEditable === "true") {
-        return
-      }
+      const guarded = isInsideGuardedElement(document.activeElement)
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey
 
-      // Delete key - delete selected nodes
-      if (event.key === "Delete" || event.key === "Backspace") {
-        if (selectedNodes.length > 0) {
-          event.preventDefault()
-          console.log("[Keyboard] Delete key pressed - deleting selected nodes")
+      // Undo: Cmd+Z (no shift)
+      if (isCtrlOrCmd && event.key === "z" && !event.shiftKey && !guarded) {
+        event.preventDefault()
+        undo?.()
+        return
+      }
 
+      // Redo: Cmd+Shift+Z
+      if (isCtrlOrCmd && event.key === "z" && event.shiftKey && !guarded) {
+        event.preventDefault()
+        redo?.()
+        return
+      }
+
+      if (guarded) return
+
+      // Delete key - delete selected nodes and/or edges
+      if (event.key === "Delete" || event.key === "Backspace") {
+        const selectedEdgeIds = edges.filter(e => e.selected).map(e => e.id)
+
+        if (selectedNodes.length === 0 && selectedEdgeIds.length === 0) return
+
+        event.preventDefault()
+        console.log("[Keyboard] Delete key pressed - deleting selected nodes/edges")
+
+        undoSnapshot?.()
+
+        if (selectedNodes.length > 0) {
           selectedNodes.forEach((node) => {
             if (!isEditMode) {
               autoEnterEditMode(setNodes, setEdges, setPlatform, nodes, edges, platform)
             }
             changeTracker.trackNodeDelete(node.id, node.type, node.data?.label as string | undefined)
           })
-          updateDraftChanges()
 
           const nodeIds = selectedNodes.map((n) => n.id)
           setNodes((nds) => nds.filter((n) => !nodeIds.includes(n.id)))
@@ -206,6 +256,18 @@ export function useClipboard({
 
           toast.success(`${selectedNodes.length} node(s) deleted`)
         }
+
+        if (selectedEdgeIds.length > 0) {
+          selectedEdgeIds.forEach(id => {
+            const edge = edges.find(e => e.id === id)
+            if (edge) changeTracker.trackEdgeDelete(id, edge.source, edge.target)
+          })
+          setEdges(prev => prev.filter(e => !selectedEdgeIds.includes(e.id)))
+          toast.success(`${selectedEdgeIds.length} edge(s) deleted`)
+        }
+
+        updateDraftChanges()
+        undoResumeTracking?.()
       }
 
       if (isCtrlOrCmd) {
@@ -260,6 +322,10 @@ export function useClipboard({
     nodes,
     edges,
     platform,
+    undo,
+    redo,
+    undoSnapshot,
+    undoResumeTracking,
   ])
 
   return {

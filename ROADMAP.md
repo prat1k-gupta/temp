@@ -369,7 +369,40 @@ The flow assistant (Haiku create, Sonnet edit) builds chatbot flows but has no a
 - **Existing flow context** — the flow assistant needs awareness of already-created WhatsApp Flows (names, field names, what they collect) so it can reference them in chatbot flows instead of creating duplicates
 - **API**: new tool in `lib/ai/tools/` — `generate-whatsapp-flow.ts`
 
-### 3.6 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
+### 3.6 AI Template Subagent + Template Tools for Flow Assistant
+
+The flow assistant can build chatbot flows but has no ability to create or manage WhatsApp message templates. When a flow needs a template message node, the user must manually create the template first, then reference it. The AI should handle this end-to-end.
+
+**What's needed:**
+
+1. **Template Builder Subagent** — a dedicated AI agent that takes a description ("welcome message with customer name and order ID, quick reply buttons for confirm/cancel") and generates the full template structure (header, body with named parameters, footer, buttons). Knows Meta's template guidelines, character limits, variable syntax, and approval best practices.
+
+2. **Template CRUD + Publish Tools** — expose template operations as AI tools so the flow assistant can:
+   - `create_template` — create a new template via API
+   - `list_templates` — search/list existing templates (avoid duplicates)
+   - `publish_template` — submit template for Meta approval
+   - `get_template_status` — check approval status
+
+3. **Flow Assistant Integration** — when the flow assistant builds a flow with template message nodes, it delegates template creation to the subagent instead of leaving placeholder template IDs. The assistant checks existing templates first to avoid duplicates.
+
+**Architecture:**
+- Subagent definition in `lib/ai/agents/` or as a tool in `lib/ai/tools/template-agent.ts`
+- Template tools call existing React Query mutations (`useSaveTemplate`, `usePublishTemplate`) or hit fs-whatsapp API directly
+- Flow assistant's tool registry gets a `manage_template` tool that wraps the subagent
+
+### 3.7 Test Flow Tool for Flow Assistant
+
+The flow assistant and flow builder have no way to trigger a test run of the flow being built. Currently testing requires manually opening the Test Flow panel, entering a phone number, and sending. An AI tool would let the assistant (or a toolbar action) programmatically test a flow.
+
+**What's needed:**
+- **`test_flow` AI tool** — calls the existing send flow API (`POST /api/chatbot/sessions/test` or equivalent) with a target phone number and optional template parameters
+- **Flow assistant integration** — after building or editing a flow, the assistant can offer to test it ("Want me to send a test to your number?")
+- **Result feedback** — tool returns session ID + delivery status so the assistant can report success/failure
+- **Toolbar shortcut** — optional "AI Test" button that triggers the tool with saved test preferences (last used phone number, default params)
+
+**Depends on:** Pre-Phase 3 Test Flow panel (already shipped). This wraps the same API as an AI-callable tool.
+
+### 3.8 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
 
 WhatsApp supports several message types beyond text and buttons that we don't have nodes for yet. Need to research which ones are available and add support.
 
@@ -389,7 +422,7 @@ WhatsApp supports several message types beyond text and buttons that we don't ha
 - fs-whatsapp runtime support for each message type (some may already exist in `pkg/whatsapp/`)
 - Media upload depends on Phase 2.8 (S3 storage) for best UX, but URL-based sending works without it
 
-### 3.7 Node-Level Comments with Actionable Notifications [#16](https://github.com/freestandtech/magic-flow/issues/16)
+### 3.9 Node-Level Comments with Actionable Notifications [#16](https://github.com/freestandtech/magic-flow/issues/16)
 
 Currently MagicFlow has generic comment nodes that float anywhere on the canvas. Need per-node comments (like Google Sheets per-cell comments) that are attached to specific nodes and support collaboration.
 
@@ -408,7 +441,7 @@ Currently MagicFlow has generic comment nodes that float anywhere on the canvas.
 
 **Depends on:** Phase 2 (auth + database) for user identity and persistence
 
-### 3.8 Concurrent Editing / Flow Locking
+### 3.10 Concurrent Editing / Flow Locking
 
 Currently no protection when two users edit the same flow simultaneously. Drafts are per-user (`ON CONFLICT (project_id, user_id)`), but publishing is last-writer-wins — second publisher silently overwrites the first.
 
@@ -425,7 +458,7 @@ Currently no protection when two users edit the same flow simultaneously. Drafts
 
 **Recommendation:** Start with pessimistic locking (option 1). Add a `locked_by` + `locked_at` column to `magic_flow_projects`. Lock on edit mode enter, unlock on exit/timeout. Show lock holder's name in header.
 
-### 3.9 Shareable Flow View + Comment Mode
+### 3.11 Shareable Flow View + Comment Mode
 
 Share a read-only view of a flow with anyone (no login required), and a comment mode for reviewers.
 
@@ -438,21 +471,21 @@ Share a read-only view of a flow with anyone (no login required), and a comment 
 - **Share link generation** — `GET /flow/{id}/view?token={shareToken}` or slug-based URL. Token stored on project, regeneratable.
 - **Public view route** — new Next.js page that loads flow data without auth, renders ReactFlow in view-only mode (no sidebar, no editing, no properties panel)
 - **ReactFlow view-only** — no single `readOnly` prop, but composing ~10 props (`nodesDraggable={false}`, `nodesConnectable={false}`, `elementsSelectable={false}`, `connectOnClick={false}`, `deleteKeyCode={null}`, `edgesReconnectable={false}`, etc.) makes it fully read-only. Pan/zoom still work. Trivial to implement.
-- **Comment mode** — authenticated users can click nodes to add comments (depends on 3.7 Node-Level Comments). Shows comment indicators on nodes, comment panel on the side.
+- **Comment mode** — authenticated users can click nodes to add comments (depends on 3.9 Node-Level Comments). Shows comment indicators on nodes, comment panel on the side.
 - **Share button in header** — generates/copies the share link. Options: "View only" or "Can comment" (if logged in).
 
 **Backend:**
 - `share_token` column on `magic_flow_projects` (UUID, nullable)
 - New public endpoint: `GET /api/magic-flow/projects/{id}/public?token={shareToken}` — returns project data without auth
-- Comment mode reuses the node comments system (3.7)
+- Comment mode reuses the node comments system (3.9)
 
 **Research:** Full analysis of ReactFlow, Excalidraw, tldraw-sync, Langflow, n8n, and collaboration libraries in [`docs/research/2026-04-02-collaboration-sharing-research.md`](docs/research/2026-04-02-collaboration-sharing-research.md).
 
 **Key findings:** ReactFlow view-only is free (just props). No OSS project has node-level threaded comments. Excalidraw's element locking (context menu, Cmd+click override) is the pattern to follow. Yjs is the proven path for ReactFlow collaboration. tldraw-sync pattern (server-authoritative, room-based) is an alternative using our Go stack.
 
-**Depends on:** 3.7 (Node-Level Comments) for comment mode. View-only sharing can ship independently.
+**Depends on:** 3.9 (Node-Level Comments) for comment mode. View-only sharing can ship independently.
 
-### 3.10 RBAC ✅
+### 3.12 RBAC ✅
 
 Role-based access control with flat feature names and backend as source of truth.
 
@@ -480,7 +513,7 @@ Role-based access control with flat feature names and backend as source of truth
 
 > Spec: `docs/superpowers/specs/2026-04-04-rbac-design.md`
 
-### 3.11 Chat Interface in MagicFlow
+### 3.13 Chat Interface in MagicFlow ⚡ URGENT
 
 Import the full chat section from fs-chat Vue frontend into MagicFlow React. This is the biggest transfer — ChatView.vue alone is 2,025 lines with ~137 functions.
 
@@ -499,6 +532,25 @@ Import the full chat section from fs-chat Vue frontend into MagicFlow React. Thi
 **Reference:** `fs-whatsapp/frontend/src/views/chat/ChatView.vue` (2,025 lines), plus stores in `frontend/src/stores/` (chat, contacts, websocket).
 
 **Approach:** Research the Vue implementation first, then plan the React rebuild. Don't 1:1 port — redesign for React patterns (React Query for data, Zustand or context for chat state, proper component decomposition).
+
+### 3.14 Undo/Redo in Flow Builder ✅
+
+> Shipped: magic-flow #54
+
+Canvas-level undo/redo for the flow editor. Snapshot-based `useUndoRedo` hook wraps `setNodes`/`setEdges` with `trackedSetNodes`/`trackedSetEdges` — all downstream hooks get undo support automatically.
+
+**What shipped:**
+- `useUndoRedo` hook with JSON deep clone, 50-entry max, dedup, ephemeral field stripping
+- Auto-capture via `trackedSetNodes`/`trackedSetEdges` wrappers — every mutation is undoable
+- Manual capture (`snapshot()` + `resumeTracking()`) for multi-step ops (delete, paste, AI)
+- Inline edit grouping: `onFocus → onSnapshot`, `onBlur → onResumeTracking` on all 21+ editable nodes
+- Keyboard shortcuts: Cmd+Z (undo), Cmd+Shift+Z (redo) with guard for inputs/modals/panels
+- Toolbar undo/redo buttons with disabled state
+- AI undo: shared stack, stagger abort on Cmd+Z mid-generation
+- `clearHistory()` on reset to published, version load, mode toggle, flow import
+- Change tracker integration: `restoreChanges()` keeps auto-save dirty flag correct
+- 41 unit tests
+- Claude Code pre-commit hook enforces `onSnapshot`/`onResumeTracking` on new node components
 
 ---
 
@@ -637,7 +689,7 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 - Test Flow panel on start node with End Session & Retry
 - Start node draggable, apiClient error messages, header consolidation
 
-**Phase 3.10 — RBAC ✅** (April 2026)
+**Phase 3.12 — RBAC ✅** (April 2026)
 - Backend: 12 flat features, longest-prefix PathFeatureMap, auto-seed with FirstOrCreate, agent-analytics feature, 22 Go tests
 - Frontend: AuthProvider fetches from backend API, canAccess, FeatureGate layouts, sidebar filtering, Roles settings page, smart settings redirect
 - All API routes mapped in PathFeatureMap — no unprotected endpoints

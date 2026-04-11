@@ -55,7 +55,8 @@ export const InstagramStoryNode = memo(({ data }: { data: InstagramStoryNodeData
             <VariablePickerTextarea
               value={editingValue}
               onValueChange={setEditingValue}
-              onBlur={handleSave}
+              onFocus={() => (data as any).onSnapshot?.()}
+              onBlur={() => { handleSave(); (data as any).onResumeTracking?.() }}
               className={`text-sm resize-none ${isOverLimit ? "border-red-500" : ""}`}
               rows={3}
               onKeyDown={(e) => {

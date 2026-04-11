@@ -158,7 +158,8 @@ export function WhatsAppFlowNode({ data, selected }: { data: any; selected?: boo
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") setIsEditingLabel(false)
@@ -204,7 +205,8 @@ export function WhatsAppFlowNode({ data, selected }: { data: any; selected?: boo
                   <Input
                     value={editingHeaderValue}
                     onChange={(e) => { if (e.target.value.length <= 60) setEditingHeaderValue(e.target.value) }}
-                    onBlur={(e) => finishEditingHeader(e)}
+                    onFocus={() => data.onSnapshot?.()}
+                    onBlur={(e) => { finishEditingHeader(e); data.onResumeTracking?.() }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") finishEditingHeader()
                       if (e.key === "Escape") setIsEditingHeader(false)
@@ -234,7 +236,8 @@ export function WhatsAppFlowNode({ data, selected }: { data: any; selected?: boo
                   <VariablePickerTextarea
                     value={editingBodyValue}
                     onValueChange={setEditingBodyValue}
-                    onBlur={(e) => finishEditingBody(e as any)}
+                    onFocus={() => data.onSnapshot?.()}
+                    onBlur={(e) => { finishEditingBody(e as any); data.onResumeTracking?.() }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); finishEditingBody() }
                       if (e.key === "Escape") setIsEditingBody(false)
@@ -267,7 +270,8 @@ export function WhatsAppFlowNode({ data, selected }: { data: any; selected?: boo
                 <Input
                   value={editingCtaValue}
                   onChange={(e) => { if (e.target.value.length <= 20) setEditingCtaValue(e.target.value) }}
-                  onBlur={finishEditingCta}
+                  onFocus={() => data.onSnapshot?.()}
+                  onBlur={() => { finishEditingCta(); data.onResumeTracking?.() }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") finishEditingCta()
                     if (e.key === "Escape") setIsEditingCta(false)

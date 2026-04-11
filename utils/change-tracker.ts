@@ -83,6 +83,14 @@ export class ChangeTracker {
   }
 
   /**
+   * Restore changes from undo/redo snapshot — marks dirty so auto-save includes them
+   */
+  restoreChanges(changes: FlowChange[]): void {
+    this.changes = changes
+    this.hasDirtyChanges = true
+  }
+
+  /**
    * Add a change to the tracker
    */
   private addChange(

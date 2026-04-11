@@ -145,7 +145,8 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                 <Input
                   value={editingLabelValue}
                   onChange={(e) => setEditingLabelValue(e.target.value)}
-                  onBlur={finishEditingLabel}
+                  onFocus={() => data.onSnapshot?.()}
+                  onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") finishEditingLabel()
                     if (e.key === "Escape") cancelEditingLabel()
@@ -174,7 +175,8 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               <VariablePickerTextarea
                 value={editingQuestionValue}
                 onValueChange={setEditingQuestionValue}
-                onBlur={finishEditingQuestion}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingQuestion(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -256,7 +258,8 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                       <Input
                         value={editingOptionValue}
                         onChange={(e) => setEditingOptionValue(e.target.value)}
-                        onBlur={finishEditingOption}
+                        onFocus={() => data.onSnapshot?.()}
+                        onBlur={() => { finishEditingOption(); data.onResumeTracking?.() }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") finishEditingOption()
                           if (e.key === "Escape") cancelEditingOption()

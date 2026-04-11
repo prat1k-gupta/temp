@@ -88,8 +88,6 @@ export const createCommentNode = (
   platform: Platform,
   position: NodePosition,
   customId?: string,
-  onUpdate?: (updates: any) => void,
-  onDelete?: () => void
 ): Node => {
   const nodeId = customId || generateNodeId("comment")
   return {
@@ -101,8 +99,6 @@ export const createCommentNode = (
       comment: "Add your comment here...",
       createdBy: "You",
       createdAt: new Date().toISOString(),
-      onUpdate,
-      onDelete,
     } as NodeData,
   }
 }

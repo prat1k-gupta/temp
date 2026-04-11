@@ -225,7 +225,8 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
@@ -250,7 +251,8 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
               <VariablePickerTextarea
                 value={editingQuestionValue}
                 onValueChange={setEditingQuestionValue}
-                onBlur={(e) => finishEditingQuestion(e as any)}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={(e) => { finishEditingQuestion(e as any); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -340,6 +342,8 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                       <Input
                         value={editingButtonText}
                         onChange={(e) => setEditingButtonText(e.target.value)}
+                        onFocus={() => data.onSnapshot?.()}
+                        onBlur={() => { finishEditingButton(); data.onResumeTracking?.() }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault()

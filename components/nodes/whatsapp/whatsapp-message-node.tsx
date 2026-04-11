@@ -96,7 +96,8 @@ export function WhatsAppMessageNode({ data, selected }: { data: any; selected?: 
               <Input
                 value={editingLabelValue}
                 onChange={(e) => setEditingLabelValue(e.target.value)}
-                onBlur={finishEditingLabel}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={() => { finishEditingLabel(); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") finishEditingLabel()
                   if (e.key === "Escape") cancelEditingLabel()
@@ -130,7 +131,8 @@ export function WhatsAppMessageNode({ data, selected }: { data: any; selected?: 
               <VariablePickerTextarea
                 value={editingMessageValue}
                 onValueChange={setEditingMessageValue}
-                onBlur={(e) => finishEditingMessage(e as any)}
+                onFocus={() => data.onSnapshot?.()}
+                onBlur={(e) => { finishEditingMessage(e as any); data.onResumeTracking?.() }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()

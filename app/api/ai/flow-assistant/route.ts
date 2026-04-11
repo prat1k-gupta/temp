@@ -22,7 +22,11 @@ export async function POST(request: NextRequest) {
       selectedNode,
       userTemplates,
       userTemplateData,
+      publishedFlowId,
+      waAccountName,
     } = body
+
+    const authHeader = request.headers.get('Authorization') || ''
 
     const validPlatforms: Platform[] = ["web", "whatsapp", "instagram"]
 
@@ -49,6 +53,11 @@ export async function POST(request: NextRequest) {
       selectedNode,
       userTemplates,
       userTemplateData,
+      toolContext: {
+        publishedFlowId,
+        waAccountName,
+        authHeader,
+      },
     })
 
     if (!result) {

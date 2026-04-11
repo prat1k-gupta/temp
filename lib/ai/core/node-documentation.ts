@@ -9,6 +9,10 @@ import { BUTTON_LIMITS, CHARACTER_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES, type NodeTemplate } from "@/constants/node-categories"
 import { NODE_TYPE_MAPPINGS } from "@/constants/node-types"
 
+const simplifiedDocsCache = new Map<string, string>()
+const baseSelectionRulesCache = new Map<string, string>()
+const dependenciesCache = new Map<string, string>()
+
 export interface NodeDocumentation {
   type: string
   category: "template" | "interaction" | "information" | "fulfillment" | "integration" | "logic" | "action"
@@ -82,6 +86,9 @@ export function getNodeDocumentationString(platform?: Platform, nodeTypes?: stri
  * its category, what content fields it accepts, and platform restrictions.
  */
 export function getSimplifiedNodeDocumentation(platform: Platform): string {
+  const cached = simplifiedDocsCache.get(platform)
+  if (cached) return cached
+
   const lines: string[] = [
     `Available node types for ${platform}:`,
     "",
@@ -125,7 +132,9 @@ export function getSimplifiedNodeDocumentation(platform: Platform): string {
   lines.push(`Default character limits for ${platform}: question max=${charLimits.question} chars, button text max=${charLimits.button} chars`)
   lines.push(`IMPORTANT: When a node shows [max N chars] above, use that limit instead of the default. All generated text MUST fit within these character limits.`)
 
-  return lines.join("\n")
+  const result = lines.join("\n")
+  simplifiedDocsCache.set(platform, result)
+  return result
 }
 
 /**
@@ -136,24 +145,28 @@ export function getNodeSelectionRules(
   platform: Platform,
   userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
 ): string {
-  const lines: string[] = ["NODE SELECTION RULES:"]
-
-  for (const t of NODE_TEMPLATES) {
-    if (!t.platforms.includes(platform)) continue
-    if (!t.ai?.selectionRule) continue
-    lines.push(`- ${t.type}: ${t.ai.selectionRule}`)
+  let base = baseSelectionRulesCache.get(platform)
+  if (!base) {
+    const lines: string[] = ["NODE SELECTION RULES:"]
+    for (const t of NODE_TEMPLATES) {
+      if (!t.platforms.includes(platform)) continue
+      if (!t.ai?.selectionRule) continue
+      lines.push(`- ${t.type}: ${t.ai.selectionRule}`)
+    }
+    base = lines.join("\n")
+    baseSelectionRulesCache.set(platform, base)
   }
 
-  // Include selection rules from user templates
   if (userTemplates) {
+    const templateLines: string[] = []
     for (const t of userTemplates) {
       if (t.aiMetadata?.selectionRule) {
-        lines.push(`- flowTemplate:${t.id}: ${t.aiMetadata.selectionRule}`)
+        templateLines.push(`- flowTemplate:${t.id}: ${t.aiMetadata.selectionRule}`)
       }
     }
+    if (templateLines.length > 0) return base + "\n" + templateLines.join("\n")
   }
-
-  return lines.join("\n")
+  return base
 }
 
 /**
@@ -161,6 +174,9 @@ export function getNodeSelectionRules(
  * Tells the AI which nodes require other nodes to exist first.
  */
 export function getNodeDependencies(platform: Platform): string {
+  const cached = dependenciesCache.get(platform)
+  if (cached !== undefined) return cached
+
   const lines: string[] = ["NODE DEPENDENCIES:"]
   let hasAny = false
 
@@ -171,7 +187,9 @@ export function getNodeDependencies(platform: Platform): string {
     hasAny = true
   }
 
-  return hasAny ? lines.join("\n") : ""
+  const result = hasAny ? lines.join("\n") : ""
+  dependenciesCache.set(platform, result)
+  return result
 }
 
 /**

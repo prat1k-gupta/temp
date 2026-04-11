@@ -21,6 +21,11 @@ export interface GenerateFlowRequest {
   selectedNode?: Node
   userTemplates?: Array<{ id: string; name: string; aiMetadata?: TemplateAIMetadata }>
   userTemplateData?: Array<{ id: string; name: string; nodes: Node[]; edges: Edge[] }>
+  toolContext?: {
+    publishedFlowId?: string
+    waAccountName?: string
+    authHeader?: string
+  }
 }
 
 export interface GenerateFlowResponse {
@@ -122,7 +127,7 @@ async function handleFallback(
     userPrompt,
     temperature: 0.7,
     maxTokens: 2000,
-    model: isEditRequest ? 'claude-sonnet' : 'claude-haiku',
+    model: 'claude-sonnet',
   })
 
   const content = response.text

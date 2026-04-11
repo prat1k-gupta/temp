@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check } from "lucide-react"
 import { getAllTemplates, getFlow } from "@/utils/flow-storage"
+import { getAccessToken } from "@/lib/auth"
+import { useAccounts } from "@/hooks/queries"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { toast } from "sonner"
 import type { TemplateAIMetadata } from "@/types"
@@ -37,6 +39,8 @@ interface AIAssistantProps {
   selectedNode?: any
   onApplyFlow?: (flowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
+  publishedFlowId?: string
+  waAccountId?: string
 }
 
 const CHAT_STORAGE_PREFIX = "magic-flow-chat-"
@@ -78,7 +82,17 @@ export function AIAssistant({
   selectedNode,
   onApplyFlow,
   onUpdateFlow,
+  publishedFlowId,
+  waAccountId,
 }: AIAssistantProps) {
+  // Resolve waAccountId → account name for trigger_flow (backend expects name, not UUID)
+  const { data: accounts = [] } = useAccounts()
+  const waAccountName = useMemo(() => {
+    if (!waAccountId) return undefined
+    const account = accounts.find((a) => a.id === waAccountId || a.name === waAccountId)
+    return account?.name || waAccountId
+  }, [waAccountId, accounts])
+
   // Collect all templates (default + user-created) for AI context
   const [userTemplates, setUserTemplates] = useState<Array<{ id: string; name: string; aiMetadata?: any }>>(() => {
     return DEFAULT_TEMPLATES.map(t => ({ id: t.id, name: t.name, aiMetadata: t.aiMetadata }))
@@ -261,9 +275,13 @@ export function AIAssistant({
     lastFailedInputRef.current = null
 
     try {
+      const token = getAccessToken()
       const response = await fetch("/api/ai/flow-assistant", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           message: userMessage.content,
           platform,
@@ -278,6 +296,8 @@ export function AIAssistant({
           })),
           userTemplates,
           userTemplateData,
+          publishedFlowId,
+          waAccountName,
         }),
       })
 

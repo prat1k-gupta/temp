@@ -13,6 +13,16 @@ import type { Node, Edge } from "@xyflow/react"
 import type { Platform, ButtonData, OptionData, TemplateResolver } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
+
+/**
+ * Normalize sourceHandle values. "default" is not a real Handle ID —
+ * single-output nodes render with sourceHandle: undefined in ReactFlow.
+ * This ensures edges created by the plan builder match the actual DOM handles.
+ */
+function normalizeHandle(handle: string | undefined | null): string | undefined {
+  if (!handle || handle === "default") return undefined
+  return handle
+}
 import { createNode, createFlowTemplateNode } from "./node-factory"
 import { createButtonData, createOptionData, shouldConvertToList, convertButtonsToOptions } from "./node-operations"
 import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
@@ -273,11 +283,12 @@ export function buildEditFlowFromPlan(
             console.warn(`[buildEditFlow] Could not resolve attachHandle "${resolvedHandle}" on ${chain.attachTo} — no button at index ${idx}`)
           }
         }
+        const normalizedAttachHandle = normalizeHandle(resolvedHandle)
 
         newEdges.push({
-          id: `e-${chain.attachTo}-${nodeId}-${resolvedHandle}`,
+          id: `e-${chain.attachTo}-${nodeId}-${normalizedAttachHandle || "chain"}`,
           source: chain.attachTo,
-          sourceHandle: resolvedHandle,
+          sourceHandle: normalizedAttachHandle,
           target: nodeId,
           type: "default",
           style: DEFAULT_EDGE_STYLE,
@@ -332,9 +343,9 @@ export function buildEditFlowFromPlan(
           warnings.push(`Chain from "${chain.attachTo}": all button/option handles occupied, edge may be misplaced`)
         }
         newEdges.push({
-          id: `e-${chain.attachTo}-${nodeId}-${freeHandle || "default"}`,
+          id: `e-${chain.attachTo}-${nodeId}-${freeHandle || "chain"}`,
           source: chain.attachTo,
-          sourceHandle: freeHandle,
+          sourceHandle: normalizeHandle(freeHandle),
           target: nodeId,
           type: "default",
           style: DEFAULT_EDGE_STYLE,
@@ -493,11 +504,12 @@ export function buildEditFlowFromPlan(
         }
       }
 
+      const normalizedAddHandle = normalizeHandle(sourceHandle)
       newEdges.push({
-        id: `e-${newEdge.source}-${newEdge.target}-${sourceHandle || 'default'}`,
+        id: `e-${newEdge.source}-${newEdge.target}-${normalizedAddHandle || 'edge'}`,
         source: newEdge.source,
         target: newEdge.target,
-        sourceHandle,
+        sourceHandle: normalizedAddHandle,
         type: "default",
         style: DEFAULT_EDGE_STYLE,
       } as Edge)
@@ -1125,7 +1137,7 @@ function validateDependencies(allNodes: Node[], warnings: string[], onlyCheck?: 
 function deduplicateEdges(edges: Edge[]): Edge[] {
   const seen = new Map<string, Edge>()
   for (const edge of edges) {
-    const key = `${edge.source}-${edge.sourceHandle || "default"}`
+    const key = `${edge.source}-${edge.sourceHandle || ""}`
     if (!seen.has(key)) {
       seen.set(key, edge)
     }

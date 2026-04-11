@@ -771,6 +771,8 @@ function MagicFlowInner() {
                 selectedNode={nodeOps.selectedNode}
                 onApplyFlow={flowAI.handleApplyFlow}
                 onUpdateFlow={flowAI.handleUpdateFlow}
+                publishedFlowId={persistence.currentFlow?.publishedFlowId}
+                waAccountId={persistence.currentFlow?.waAccountId}
                 /* onUndo removed — shared undo (Cmd+Z) handles AI undo now */
               />
             </Panel>

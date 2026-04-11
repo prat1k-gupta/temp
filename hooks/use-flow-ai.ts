@@ -344,12 +344,16 @@ export function useFlowAI({
               filtered = filtered.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
             }
             if (updates.removeEdges && updates.removeEdges.length > 0) {
+              const normalizeHandle = (h: string | undefined | null) => (!h || h === "default") ? undefined : h
               filtered = filtered.filter((e) =>
                 !updates.removeEdges!.some(
-                  (re) =>
-                    re.source === e.source &&
-                    re.target === e.target &&
-                    (!re.sourceHandle || re.sourceHandle === e.sourceHandle)
+                  (re) => {
+                    const reHandle = normalizeHandle(re.sourceHandle)
+                    const eHandle = normalizeHandle(e.sourceHandle)
+                    return re.source === e.source &&
+                      re.target === e.target &&
+                      (!reHandle || reHandle === eHandle)
+                  }
                 )
               )
             }

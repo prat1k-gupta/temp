@@ -29,6 +29,7 @@ ${nodeDocs}${userTemplateDocs}
 
 ${selectionRules}
 ${dependencyRules ? `\n${dependencyRules}` : ""}
+${isEdit && request.toolContext?.publishedFlowId ? `\n**Testing:** This flow is published. You can use \`trigger_flow\` to send a test message after making changes. Only offer this if the user asks to test or you have just finished a significant edit.` : ""}
 
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}
@@ -173,12 +174,14 @@ function getEditInstructions(): string {
     '3. After apply_edit succeeds, call `validate_result` to check for issues (orphaned nodes, undefined variables, unconnected handles)',
     '4. If validate_result finds issues, call `apply_edit` again with a COMPLETE replacement plan (all original edits + fixes), then `validate_result` again',
     '5. Once validate_result reports no issues (or apply_edit warnings are addressed), respond with your message',
+    '6. If issues are too complex to fix, call `undo_last` to revert ALL your edits and start over or explain the problem to the user.',
     '',
     '**CRITICAL RULES:**',
     '- **ONE apply_edit call for your initial edit** — put everything in a single call. Do NOT split across multiple calls.',
     '- **Correction apply_edit must be a COMPLETE REPLACEMENT** — if validate_result finds issues, your next apply_edit must include ALL operations (original edits + corrections). It replaces the previous edit entirely, so include everything.',
     '- **NEVER call apply_edit with an empty plan** — it will return an error.',
     '- **NEVER create disconnected nodes** — every new node MUST connect to the existing flow via chains (with connectTo) or addEdges.',
+    '- **`undo_last` reverts ALL edits this turn** — not just the last apply_edit. Use it as a full reset.',
     '- Use BASE type names (e.g. "question", "quickReply"), NOT platform-prefixed names.',
     '',
     '**apply_edit Plan Structure:**',
@@ -201,6 +204,8 @@ function getEditInstructions(): string {
     '- storeAs: ALWAYS set for question/quickReply/interactiveList. Use snake_case (e.g. "delivery_slot").',
     '',
     '**Variables:** Use {{var_name}} for text inputs, {{var_name_title}} for button/list selections. Super nodes: {{user_name}}, {{user_email}}, {{user_dob}}, {{user_address}}. System: {{system.contact_name}}, {{system.phone_number}}. Global: {{global.variable_name}}.',
+    '',
+    '**list_variables tool:** Variables from the current flow are already listed in the prompt above. Only call `list_variables` after `apply_edit` if you need to check what new variables are available from nodes you just created.',
     '',
     '**apiFetch node:** Has dual output handles "success" and "error". Use attachHandle "success" or "error" when chaining from an apiFetch node. Content: url, method, headers, body (JSON string with {{variables}}), responseMapping ({varName: "jsonPath"}), fallbackMessage.',
     '',

@@ -359,48 +359,29 @@ Conditional screen routing in WhatsApp Flows via backend endpoint. Currently onl
 - Templates (current) = call by value, Subflows = call by reference
 - Multiple named exits
 
-### 3.5 AI WhatsApp Flow Builder Agent [#14](https://github.com/freestandtech/magic-flow/issues/14)
+### 3.5–3.7 AI Platform — Multi-Agent Tools + MCP Server ⚡ BUILDING
 
-The flow assistant (Haiku create, Sonnet edit) builds chatbot flows but has no ability to create WhatsApp Flows (native forms). Need a dedicated AI agent for form building, and the flow assistant should use it as a subagent.
+Upgrading the flow assistant into a multi-agent platform: 4 subagents, 6 direct tools, exposed internally (MagicFlow UI) and externally (MCP server for Claude Code, Cursor, etc.).
 
-**What's needed:**
-- **WhatsApp Flow Builder Agent** — takes a description ("registration form with name, email, phone, city dropdown") and generates the `screens[]` JSON for the WhatsApp Flow builder. Knows about all Meta components, constraints, and best practices.
-- **Flow assistant integration** — when the flow assistant encounters a WhatsApp Flow node, it delegates form design to the builder agent rather than generating `screens[]` itself
-- **Existing flow context** — the flow assistant needs awareness of already-created WhatsApp Flows (names, field names, what they collect) so it can reference them in chatbot flows instead of creating duplicates
-- **API**: new tool in `lib/ai/tools/` — `generate-whatsapp-flow.ts`
+> Full plan: [`docs/superpowers/specs/2026-04-11-ai-platform-plan.md`](docs/superpowers/specs/2026-04-11-ai-platform-plan.md)
 
-### 3.6 AI Template Subagent + Template Tools for Flow Assistant
+**Phase A** — Direct tools (in progress):
+- `node_docs_cache` → `trigger_flow` → `list_variables` → `undo_last`
+- Switch to Sonnet everywhere (dev mode)
 
-The flow assistant can build chatbot flows but has no ability to create or manage WhatsApp message templates. When a flow needs a template message node, the user must manually create the template first, then reference it. The AI should handle this end-to-end.
+**Phase B** — Infrastructure (strengthens foundation before subagents):
+- AI streaming (`streamText`/`streamObject`)
+- Handle resolution investigation
+- Suggest nodes revisit (future)
 
-**What's needed:**
+**Phase C** — Subagents (brainstorm per subagent, then build on streaming-capable foundation):
+- `template_manage` — WhatsApp template CRUD subagent (list, create, publish, get_status)
+- `wa_flow_manage` — WhatsApp Flow builder subagent (list, create, update, publish)
 
-1. **Template Builder Subagent** — a dedicated AI agent that takes a description ("welcome message with customer name and order ID, quick reply buttons for confirm/cancel") and generates the full template structure (header, body with named parameters, footer, buttons). Knows Meta's template guidelines, character limits, variable syntax, and approval best practices.
-
-2. **Template CRUD + Publish Tools** — expose template operations as AI tools so the flow assistant can:
-   - `create_template` — create a new template via API
-   - `list_templates` — search/list existing templates (avoid duplicates)
-   - `publish_template` — submit template for Meta approval
-   - `get_template_status` — check approval status
-
-3. **Flow Assistant Integration** — when the flow assistant builds a flow with template message nodes, it delegates template creation to the subagent instead of leaving placeholder template IDs. The assistant checks existing templates first to avoid duplicates.
-
-**Architecture:**
-- Subagent definition in `lib/ai/agents/` or as a tool in `lib/ai/tools/template-agent.ts`
-- Template tools call existing React Query mutations (`useSaveTemplate`, `usePublishTemplate`) or hit fs-whatsapp API directly
-- Flow assistant's tool registry gets a `manage_template` tool that wraps the subagent
-
-### 3.7 Test Flow Tool for Flow Assistant
-
-The flow assistant and flow builder have no way to trigger a test run of the flow being built. Currently testing requires manually opening the Test Flow panel, entering a phone number, and sending. An AI tool would let the assistant (or a toolbar action) programmatically test a flow.
-
-**What's needed:**
-- **`test_flow` AI tool** — calls the existing send flow API (`POST /api/chatbot/sessions/test` or equivalent) with a target phone number and optional template parameters
-- **Flow assistant integration** — after building or editing a flow, the assistant can offer to test it ("Want me to send a test to your number?")
-- **Result feedback** — tool returns session ID + delivery status so the assistant can report success/failure
-- **Toolbar shortcut** — optional "AI Test" button that triggers the tool with saved test preferences (last used phone number, default params)
-
-**Depends on:** Pre-Phase 3 Test Flow panel (already shipped). This wraps the same API as an AI-callable tool.
+**Phase D** — MCP server (wraps A + B + C for external agents):
+- 6 direct tools + 4 subagent tools + 3 resources
+- Progress notifications for subagent tools
+- `magic-flow/mcp-server/`
 
 ### 3.8 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
 
@@ -513,25 +494,18 @@ Role-based access control with flat feature names and backend as source of truth
 
 > Spec: `docs/superpowers/specs/2026-04-04-rbac-design.md`
 
-### 3.13 Chat Interface in MagicFlow ⚡ URGENT
+### 3.13 Chat Interface in MagicFlow (P1-P2 ✅, P3-P4 scoped)
 
-Import the full chat section from fs-chat Vue frontend into MagicFlow React. This is the biggest transfer — ChatView.vue alone is 2,025 lines with ~137 functions.
+Full chat interface ported from Vue to React.
 
-**What it includes:**
-- Real-time chat with contacts (WebSocket)
-- Message sending (text, media, templates, quick replies)
-- Chat list with search, filters, unread counts
-- Contact info sidebar (variables, tags, notes)
-- Agent assignment / transfer
-- Canned responses
-- Message status (sent, delivered, read)
-- Typing indicators
+**P1 — Shipped (PR #53):**
+WebSocket, contact list, conversation view, 12 message renderers, media blob cache, real-time updates.
 
-**Backend:** All endpoints already exist in fs-whatsapp. WebSocket hub exists at `/ws`. MagicFlow just needs React pages calling the same APIs.
+**P2 — Shipped (PR #56):**
+Hover toolbar, reply-to, reactions, emoji picker, canned responses, retry failed messages, contact info panel, sticky date headers, notification sounds.
 
-**Reference:** `fs-whatsapp/frontend/src/views/chat/ChatView.vue` (2,025 lines), plus stores in `frontend/src/stores/` (chat, contacts, websocket).
-
-**Approach:** Research the Vue implementation first, then plan the React rebuild. Don't 1:1 port — redesign for React patterns (React Query for data, Zustand or context for chat state, proper component decomposition).
+**P3-P4 — Scoped, not built:**
+Agent transfers, custom actions, remaining chat features.
 
 ### 3.14 Undo/Redo in Flow Builder ✅
 

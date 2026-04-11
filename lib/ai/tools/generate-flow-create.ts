@@ -46,7 +46,7 @@ export async function executeCreateMode(
       systemPrompt: systemPrompt + `\n\n**CRITICAL:** Return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the JSON object.`,
       userPrompt: effectiveUserPrompt,
       schema: flowPlanSchema,
-      model: 'claude-haiku',
+      model: 'claude-sonnet',
     })
 
     const build = buildFlowFromPlan(plan, request.platform, templateResolver)

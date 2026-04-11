@@ -6,6 +6,7 @@ import type { EditFlowPlan } from "@/types/flow-plan"
 import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
+import { collectFlowVariablesRich } from "@/utils/flow-variables"
 import type { Node, Edge } from "@xyflow/react"
 import type { TemplateAIMetadata, TemplateResolver } from "@/types"
 import type { GenerateFlowRequest, GenerateFlowResponse } from "./generate-flow"
@@ -51,7 +52,7 @@ export async function executeEditMode(
       setEditResult: (r) => { finalEditResult = r },
       setTemplateMetadata: (m) => { finalTemplateMetadata = m },
       getEditResult: () => finalEditResult,
-    }),
+    }, request.toolContext),
     stopWhen: stepCountIs(12),
     temperature: 0.3,
     onStepFinish: (step) => {
@@ -118,9 +119,47 @@ export async function executeEditMode(
 }
 
 interface EditToolCallbacks {
-  setEditResult: (result: BuildEditFlowResult) => void
+  setEditResult: (result: BuildEditFlowResult | null) => void
   setTemplateMetadata: (metadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata }) => void
   getEditResult: () => BuildEditFlowResult | null
+}
+
+/**
+ * Build the current flow state by merging existing nodes with applied edits.
+ * Shared by validate_result and list_variables tools.
+ */
+function buildCurrentNodes(
+  existingNodes: Node[],
+  editResult: BuildEditFlowResult | null,
+): Node[] {
+  if (!editResult) return [...existingNodes]
+  const nodes = [...existingNodes, ...editResult.newNodes]
+  for (const update of editResult.nodeUpdates) {
+    const idx = nodes.findIndex(n => n.id === update.nodeId)
+    if (idx !== -1) {
+      nodes[idx] = {
+        ...nodes[idx],
+        type: update.newType || nodes[idx].type,
+        data: { ...nodes[idx].data, ...update.data },
+      }
+    }
+  }
+  const removeIds = new Set(editResult.removeNodeIds)
+  return nodes.filter(n => !removeIds.has(n.id))
+}
+
+function buildCurrentEdges(
+  existingEdges: Edge[],
+  editResult: BuildEditFlowResult | null,
+): Edge[] {
+  if (!editResult) return [...existingEdges]
+  const edges = [...existingEdges, ...editResult.newEdges]
+  const removeEdgeKeys = new Set(
+    editResult.removeEdges.map(e => `${e.source}-${e.target}-${e.sourceHandle || ""}`)
+  )
+  return edges.filter(e =>
+    !removeEdgeKeys.has(`${e.source}-${e.target}-${e.sourceHandle || ""}`)
+  )
 }
 
 function createEditTools(
@@ -129,8 +168,9 @@ function createEditTools(
   request: GenerateFlowRequest,
   templateResolver: TemplateResolver | undefined,
   callbacks: EditToolCallbacks,
+  toolContext?: GenerateFlowRequest['toolContext'],
 ) {
-  return {
+  const baseTools = {
     get_node_details: tool({
       description: 'Get full details of a node including button/option handle IDs, storeAs, and content. Call this before editing nodes with buttons/options to get exact handle IDs for attachHandle and removeEdges.',
       inputSchema: z.object({
@@ -248,30 +288,8 @@ function createEditTools(
           }
         }
 
-        // Build current flow state: existing + applied edits
-        const currentNodes = [...existingNodes]
-        const currentEdges = [...existingEdges]
-
-        currentNodes.push(...finalEditResult.newNodes)
-        currentEdges.push(...finalEditResult.newEdges)
-        for (const update of finalEditResult.nodeUpdates) {
-          const idx = currentNodes.findIndex(n => n.id === update.nodeId)
-          if (idx !== -1) {
-            currentNodes[idx] = {
-              ...currentNodes[idx],
-              type: update.newType || currentNodes[idx].type,
-              data: { ...currentNodes[idx].data, ...update.data },
-            }
-          }
-        }
-        const removeIds = new Set(finalEditResult.removeNodeIds)
-        const filteredNodes = currentNodes.filter(n => !removeIds.has(n.id))
-        const removeEdgeKeys = new Set(
-          finalEditResult.removeEdges.map(e => `${e.source}-${e.target}-${e.sourceHandle || ""}`)
-        )
-        const filteredEdges = currentEdges.filter(e =>
-          !removeEdgeKeys.has(`${e.source}-${e.target}-${e.sourceHandle || ""}`)
-        )
+        const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult)
+        const filteredEdges = buildCurrentEdges(existingEdges, finalEditResult)
 
         const validation = validateGeneratedFlow(filteredNodes, filteredEdges, request.platform)
         console.log("[generate-flow] Tool validate_result:", {
@@ -319,5 +337,95 @@ function createEditTools(
         }
       },
     }),
+
+    undo_last: tool({
+      description: 'Revert ALL your apply_edit changes and return the flow to its original state (before any edits this turn). Use this if validate_result found issues that are too complex to fix, or if the user asks to undo. After undoing, you can start fresh with a new apply_edit or just respond with a message.',
+      inputSchema: z.object({
+        reason: z.string().describe('Why you are undoing the edit'),
+      }),
+      execute: async ({ reason }) => {
+        const currentResult = callbacks.getEditResult()
+        if (!currentResult) {
+          return { success: false, error: 'No edit to undo — apply_edit has not been called yet.' }
+        }
+        callbacks.setEditResult(null)
+        console.log("[generate-flow] Tool undo_last:", { reason })
+        return { success: true, message: `Edit reverted: ${reason}. The flow is back to its original state before any edits this turn.` }
+      },
+    }),
+
+    list_variables: tool({
+      description: 'List all available variables in the current flow, including any created by recent apply_edit calls. Returns flow variables (from storeAs, API response mapping, action nodes), system variables, and global variables. Use this AFTER apply_edit to check what new variables are available — the initial prompt already lists variables at conversation start.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const currentNodes = buildCurrentNodes(existingNodes, callbacks.getEditResult())
+        const flowVars = collectFlowVariablesRich(currentNodes)
+
+        return {
+          flowVariables: flowVars.map(v => ({
+            name: v.name,
+            reference: `{{${v.name}}}`,
+            titleVariant: v.hasTitleVariant ? `{{${v.name}_title}}` : null,
+            source: `${v.sourceNodeType}: "${v.sourceNodeLabel}"`,
+          })),
+          systemVariables: [
+            { name: 'system.contact_name', reference: '{{system.contact_name}}', description: 'Contact display name' },
+            { name: 'system.phone_number', reference: '{{system.phone_number}}', description: 'Contact phone number' },
+          ],
+          globalVariables: '(use {{global.variable_name}} syntax — available variables depend on org settings)',
+          usage: {
+            textInput: '{{variable_name}} — the raw response',
+            buttonSelection: '{{variable_name}} — internal ID, {{variable_name_title}} — display text',
+            system: '{{system.variable_name}} — always available',
+            global: '{{global.variable_name}} — org-wide settings',
+            crossFlow: '{{flow.slug.variable_name}} — from another flow',
+          },
+        }
+      },
+    }),
   }
+
+  const apiUrl = process.env.FS_WHATSAPP_API_URL
+
+  if (toolContext?.publishedFlowId && request.platform === 'whatsapp' && apiUrl && toolContext.authHeader) {
+    const { publishedFlowId, waAccountName, authHeader } = toolContext
+    return {
+      ...baseTools,
+      trigger_flow: tool({
+        description: 'Trigger a test run of the published flow by sending it to a phone number via WhatsApp. Only use when the user asks to test the flow or you have just finished a significant edit.',
+        inputSchema: z.object({
+          phone_number: z.string().describe('Phone number in E.164 format (e.g. "+919876543210")'),
+          variables: z.record(z.string()).optional().describe('Template parameter values if the flow starts with a template message'),
+        }),
+        execute: async ({ phone_number, variables }) => {
+          const body: Record<string, any> = { phone_number }
+          if (waAccountName) body.whatsapp_account = waAccountName
+          if (variables && Object.keys(variables).length > 0) body.variables = variables
+
+          try {
+            const response = await fetch(`${apiUrl}/api/chatbot/flows/${publishedFlowId}/send`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+              body: JSON.stringify(body),
+            })
+            const data = await response.json()
+
+            if (!response.ok) {
+              const msg = data?.message || data?.error || `HTTP ${response.status}`
+              if (msg.toLowerCase().includes('active session')) {
+                return { success: false, error: 'Cannot send: contact has an active session. The user needs to end it first or wait for it to expire.' }
+              }
+              return { success: false, error: msg }
+            }
+            console.log("[generate-flow] Tool trigger_flow: sent to", phone_number)
+            return { success: true, message: `Flow sent to ${phone_number}` }
+          } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Network error calling fs-whatsapp' }
+          }
+        },
+      }),
+    }
+  }
+
+  return baseTools
 }

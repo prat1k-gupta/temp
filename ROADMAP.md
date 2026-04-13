@@ -383,6 +383,32 @@ Upgrading the flow assistant into a multi-agent platform: 4 subagents, 6 direct 
 - Progress notifications for subagent tools
 - `magic-flow/mcp-server/`
 
+**Pre-D cleanup — unify quickReply/list field name to `choices` (keep both node types):**
+
+Right now `whatsappQuickReply.data.buttons` and `whatsappInteractiveList.data.options` are two different field names for the same concept: a list of user choices. The split leaks WhatsApp's wire format (`interactive.type: "button"` vs `"list"`) into the builder, AI prompts, validator, and converter, and has already caused multiple bugs (hybrid state, the `mixed_button_option_fields` validator rule, `contentToNodeData` having to branch on both, etc. — see `820b71b`).
+
+**Scope:** narrower than a type collapse. Keep both `whatsappQuickReply` and `whatsappInteractiveList` as distinct node types with distinct palette items (users legitimately want to pick between "inline buttons UX" and "list drawer UX" manually — list has extra features like `listTitle`, section headers, descriptions, longer labels). Only unify the *field name*.
+
+- Rename `whatsappQuickReply.data.buttons` → `whatsappQuickReply.data.choices`
+- Rename `whatsappInteractiveList.data.options` → `whatsappInteractiveList.data.choices`
+- Both components read from `data.choices`; the two visual components stay distinct and WYSIWYG
+- Auto-convert (quickReply → interactiveList when count > 3) changes `node.type` only, leaving `data.choices` untouched — no more `convertButtonsToOptions` helper, no more ID prefix flips
+- Converter forward/reverse reads `data.choices` from either type
+- Forward-only migration on load: map `data.buttons` → `data.choices` for quickReply, `data.options` → `data.choices` for interactiveList
+
+**What this kills:**
+- `buttons`-vs-`options` confusion in the AI prompt (3 lines of CRITICAL rules collapse to one)
+- The `mixed_button_option_fields` validator rule
+- `transformAiNodeData` options→buttons coercion branch
+- The hybrid-state bug class entirely (there's only one field to get wrong)
+- `convertButtonsToOptions` helper + the ID-prefix flip logic
+
+**Touches:** `whatsapp-quick-reply-node.tsx`, `whatsapp-list-node.tsx`, `whatsapp-converter.ts` forward+reverse, `flow-plan-builder.ts` (`contentToNodeData`, nodeUpdate processing, auto-convert path), `ai-data-transform.ts` (`transformAiNodeData`), `flow-plan.ts` schema (`nodeContentSchema` — unify `buttons`/`options` into `choices`), `node-factory.ts` defaults, node templates, `node-documentation.ts`, `inferNodeType`, AI prompts (delete the CRITICAL rules), validator (drop `mixed_button_option_fields` and the `convertButtonsToOptions` call site), storage load migration, tests.
+
+Estimated ~0.5–0.75 day. Mostly renames + a small migration pass. Removes code and prompt rules rather than adding them.
+
+**Why before Phase D:** external MCP agents (Claude Code, Cursor) should see one clean `choices` field, not two platform-leaky fields gated by auto-convert coercion. Make the cleanup land before the external-facing schema is frozen.
+
 ### 3.8 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
 
 WhatsApp supports several message types beyond text and buttons that we don't have nodes for yet. Need to research which ones are available and add support.

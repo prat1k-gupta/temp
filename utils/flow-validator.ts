@@ -12,10 +12,15 @@ export interface FlowIssue {
     | "button_limit_exceeded"
     | "empty_content"
     | "unconnected_handle"
+    | "unconnected_button"
+    | "mixed_button_option_fields"
     | "converter_error"
   nodeId?: string
   nodeLabel?: string
+  /** Short user-facing problem description. No node label prefix, no remediation. */
   detail: string
+  /** Optional AI-only remediation hint. The UI does not display this. */
+  hint?: string
 }
 
 export interface FlowValidationResult {
@@ -48,7 +53,8 @@ export function validateGeneratedFlow(
         type: "orphaned_node",
         nodeId: node.id,
         nodeLabel: (node.data as any)?.label || node.type || "",
-        detail: `Node "${(node.data as any)?.label || node.id}" has no incoming connections — it will never be reached.`,
+        detail: "No incoming connection — this node will never be reached.",
+        hint: "Add an edge from an upstream node or remove the orphan.",
       })
     }
   }
@@ -71,7 +77,8 @@ export function validateGeneratedFlow(
             type: "unconnected_handle",
             nodeId: node.id,
             nodeLabel: (node.data as any)?.label || nodeType,
-            detail: `Node "${(node.data as any)?.label || node.id}" (${nodeType}) has no connection from its "${handle}" handle.`,
+            detail: `"${handle}" handle has no outgoing connection.`,
+            hint: `Add an edge from the "${handle}" handle of this ${nodeType} node.`,
           })
         }
       }
@@ -81,11 +88,13 @@ export function validateGeneratedFlow(
   // 3. Variable consistency
   const varErrors = validateFlowVariables(nodes)
   for (const err of varErrors) {
+    const vars = err.unknownVars.map((v) => `{{${v}}}`).join(", ")
     issues.push({
       type: "undefined_variable",
       nodeId: err.nodeId,
       nodeLabel: err.nodeLabel,
-      detail: `Node "${err.nodeLabel}" references undefined variables: ${err.unknownVars.map((v) => `{{${v}}}`).join(", ")}. Either add a prior step that stores this variable, or fix the reference.`,
+      detail: `References undefined ${err.unknownVars.length > 1 ? "variables" : "variable"}: ${vars}.`,
+      hint: "Add a prior step that stores the variable, or fix the reference.",
     })
   }
 
@@ -100,7 +109,8 @@ export function validateGeneratedFlow(
           type: "button_limit_exceeded",
           nodeId: node.id,
           nodeLabel: data.label || node.type || "",
-          detail: `Node "${data.label || node.id}" has ${data.buttons.length} buttons but ${platform} allows max ${buttonLimit}. Either reduce to ${buttonLimit} buttons or use an interactiveList node instead.`,
+          detail: `${data.buttons.length} buttons exceeds the ${platform} limit of ${buttonLimit}.`,
+          hint: `Reduce to ${buttonLimit} buttons or convert to an interactiveList (up to 10).`,
         })
       }
     }
@@ -111,7 +121,67 @@ export function validateGeneratedFlow(
           type: "button_limit_exceeded",
           nodeId: node.id,
           nodeLabel: data.label || node.type || "",
-          detail: `Node "${data.label || node.id}" has ${data.options.length} list options but max allowed is ${optionLimit}. Reduce the number of options.`,
+          detail: `${data.options.length} list options exceeds the limit of ${optionLimit}.`,
+          hint: `Reduce to ${optionLimit} options.`,
+        })
+      }
+    }
+  }
+
+  // 4a. A quickReply/list node must not carry BOTH buttons and options
+  //     simultaneously — that's an invalid hybrid state that usually comes
+  //     from the AI using the wrong field name in a nodeUpdate. The canvas
+  //     renders whichever field the component expects and silently drops
+  //     the other, so this is the only way the user would notice.
+  for (const node of contentNodes) {
+    const baseType = getBaseNodeType(node.type || "")
+    if (baseType !== "quickReply" && baseType !== "list") continue
+    const data = node.data as Record<string, any>
+    const hasButtons = Array.isArray(data.buttons) && data.buttons.length > 0
+    const hasOptions = Array.isArray(data.options) && data.options.length > 0
+    if (hasButtons && hasOptions) {
+      issues.push({
+        type: "mixed_button_option_fields",
+        nodeId: node.id,
+        nodeLabel: data.label || node.type || "",
+        detail: `Both buttons (${data.buttons.length}) and options (${data.options.length}) are set — invalid hybrid state.`,
+        hint: "Use only content.buttons for quickReply or only content.options for interactiveList, never both.",
+      })
+    }
+  }
+
+  // 4b. Every button/option on a quickReply/list must have an outgoing edge
+  //     from its own handle. Catches dangling buttons (e.g. AI added a new
+  //     button but used the wrong handle ID in addEdges, leaving the new one
+  //     without any onward connection).
+  for (const node of contentNodes) {
+    const baseType = getBaseNodeType(node.type || "")
+    if (baseType !== "quickReply" && baseType !== "list") continue
+    const data = node.data as Record<string, any>
+    const choices: Array<{ id?: string; text?: string; label?: string }> =
+      (data.buttons as any[]) || (data.options as any[]) || []
+    if (choices.length === 0) continue
+    const outgoingHandles = new Set(
+      edges
+        .filter((e) => e.source === node.id && e.sourceHandle)
+        .map((e) => e.sourceHandle as string)
+    )
+    for (let i = 0; i < choices.length; i++) {
+      const c = choices[i]
+      const handleId = c?.id
+      if (!handleId) {
+        // No id yet — plan-builder will assign one; skip.
+        continue
+      }
+      if (!outgoingHandles.has(handleId)) {
+        const labelText = c?.text || c?.label || `choice ${i + 1}`
+        const choiceKind = baseType === "list" ? "option" : "button"
+        issues.push({
+          type: "unconnected_button",
+          nodeId: node.id,
+          nodeLabel: data.label || node.type || "",
+          detail: `${choiceKind.charAt(0).toUpperCase() + choiceKind.slice(1)} "${labelText}" has no outgoing connection.`,
+          hint: `Add an edge with sourceButtonIndex: ${i} (or chain with attachHandle: "button-${i}") to route it onward.`,
         })
       }
     }
@@ -127,7 +197,8 @@ export function validateGeneratedFlow(
         type: "empty_content",
         nodeId: node.id,
         nodeLabel: data.label || data.templateName || "flowTemplate",
-        detail: `Node "${data.label || node.id}" is a flowTemplate with no internal nodes. Use a specific type instead (name, email, dob, address) or reference an existing template by ID.`,
+        detail: "flowTemplate has no internal nodes.",
+        hint: "Use a specific type instead (name, email, dob, address) or reference an existing template by ID.",
       })
     }
   }
@@ -152,7 +223,8 @@ export function validateGeneratedFlow(
         type: "empty_content",
         nodeId: node.id,
         nodeLabel: data.label || node.type || "",
-        detail: `Node "${data.label || node.id}" has no message content. Add a question or text.`,
+        detail: "No message content.",
+        hint: "Add a question or text.",
       })
     }
   }
@@ -166,14 +238,15 @@ export function validateGeneratedFlow(
       if (converted.steps.length === 0 && contentNodes.length > 0) {
         issues.push({
           type: "converter_error",
-          detail:
-            "Converter produced 0 steps from a non-empty flow. Nodes may be disconnected from the start node.",
+          detail: "Converter produced 0 steps from a non-empty flow.",
+          hint: "Nodes may be disconnected from the start node.",
         })
       }
     } catch (err) {
       issues.push({
         type: "converter_error",
-        detail: `Converter failed: ${err instanceof Error ? err.message : "Unknown error"}. The flow structure may be invalid.`,
+        detail: `Converter failed: ${err instanceof Error ? err.message : "Unknown error"}.`,
+        hint: "The flow structure may be invalid.",
       })
     }
   }
@@ -181,7 +254,13 @@ export function validateGeneratedFlow(
   const summary =
     issues.length === 0
       ? ""
-      : `Found ${issues.length} issue(s) in the generated flow:\n${issues.map((i, idx) => `${idx + 1}. [${i.type}] ${i.detail}`).join("\n")}`
+      : `Found ${issues.length} issue(s) in the generated flow:\n${issues
+          .map((i, idx) => {
+            const labelPrefix = i.nodeLabel ? `"${i.nodeLabel}" — ` : ""
+            const hintSuffix = i.hint ? ` ${i.hint}` : ""
+            return `${idx + 1}. [${i.type}] ${labelPrefix}${i.detail}${hintSuffix}`
+          })
+          .join("\n")}`
 
   return { isValid: issues.length === 0, issues, summary }
 }

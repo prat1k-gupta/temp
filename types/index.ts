@@ -219,6 +219,8 @@ export interface FlowChange {
   userId?: string
   userEmail?: string
   userName?: string
+  /** Who originated this change — user action or an AI edit. Defaults to 'user' when unset (backward compat with historical changes that have no source field). */
+  source?: 'user' | 'ai'
 }
 
 export interface EditModeState {

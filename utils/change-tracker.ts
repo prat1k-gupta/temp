@@ -12,6 +12,7 @@ export class ChangeTracker {
   private changes: FlowChange[] = []
   private isTracking: boolean = false
   private hasDirtyChanges: boolean = false // true only when user added new changes this session
+  private currentSource: 'user' | 'ai' = 'user'
   private initialState: {
     nodes: any[]
     edges: any[]
@@ -19,7 +20,7 @@ export class ChangeTracker {
   } | null = null
   private flowId: string | null = null
   // Debounce node updates: pending updates per nodeId, flushed after 500ms of inactivity
-  private pendingNodeUpdates: Map<string, { timer: ReturnType<typeof setTimeout>; firstOldData: any; latestNewData: any; oldType?: string; newType?: string }> = new Map()
+  private pendingNodeUpdates: Map<string, { timer: ReturnType<typeof setTimeout>; firstOldData: any; latestNewData: any; oldType?: string; newType?: string; source?: 'user' | 'ai' }> = new Map()
 
   constructor(flowId?: string) {
     if (flowId) {
@@ -75,6 +76,23 @@ export class ChangeTracker {
   }
 
   /**
+   * Set the source that subsequent changes will be attributed to. Callers
+   * that originate changes from the AI edit path should wrap their work
+   * with `setSource('ai')` / `setSource('user')` so FlowChange.source gets
+   * stamped on each resulting change. Default is 'user'.
+   */
+  setSource(source: 'user' | 'ai'): void {
+    this.currentSource = source
+  }
+
+  /**
+   * Read the currently-active source. Mostly for debugging and tests.
+   */
+  getSource(): 'user' | 'ai' {
+    return this.currentSource
+  }
+
+  /**
    * Load changes from an external source (e.g. server draft)
    */
   loadChanges(changes: FlowChange[]): void {
@@ -96,13 +114,15 @@ export class ChangeTracker {
   private addChange(
     type: FlowChange['type'],
     data: any,
-    description: string
+    description: string,
+    sourceOverride?: 'user' | 'ai',
   ): void {
     console.log('[Change Tracker] addChange called:', {
       type,
       description,
       isTracking: this.isTracking,
-      currentChangesCount: this.changes.length
+      currentChangesCount: this.changes.length,
+      source: sourceOverride ?? this.currentSource,
     })
     
     if (!this.isTracking) {
@@ -120,6 +140,7 @@ export class ChangeTracker {
       userId: user?.id,
       userEmail: user?.email,
       userName: user?.full_name,
+      source: sourceOverride ?? this.currentSource,
     }
 
     this.changes.push(change)
@@ -171,11 +192,23 @@ export class ChangeTracker {
       pending.newType = newType
     }
 
-    const entry = pending || { firstOldData: oldData, latestNewData: newData, oldType, newType, timer: undefined as any }
+    // Capture the source at call-time so a debounced flush attributes the
+    // change to whoever triggered it, not whoever happens to be the current
+    // source when the 500ms timer fires. If we're extending an existing
+    // debounce window, keep the original source (typing session stays
+    // attributed to the same origin).
+    const entry = pending || {
+      firstOldData: oldData,
+      latestNewData: newData,
+      oldType,
+      newType,
+      source: this.currentSource,
+      timer: undefined as any,
+    }
 
     entry.timer = setTimeout(() => {
       this.pendingNodeUpdates.delete(nodeId)
-      this.flushNodeUpdate(nodeId, entry.firstOldData, entry.latestNewData, entry.oldType, entry.newType)
+      this.flushNodeUpdate(nodeId, entry.firstOldData, entry.latestNewData, entry.oldType, entry.newType, entry.source)
     }, 500)
 
     this.pendingNodeUpdates.set(nodeId, entry)
@@ -184,19 +217,26 @@ export class ChangeTracker {
   /**
    * Flush a debounced node update — called after 500ms of inactivity.
    */
-  private flushNodeUpdate(nodeId: string, oldData: any, newData: any, oldType?: string, newType?: string): void {
+  private flushNodeUpdate(
+    nodeId: string,
+    oldData: any,
+    newData: any,
+    oldType?: string,
+    newType?: string,
+    sourceOverride?: 'user' | 'ai',
+  ): void {
     const changes = this.detectNodeChanges(oldData, newData)
 
     if (changes.length > 0) {
       // Use smart change description
       const changeDescription = this.formatNodeChangeDescription(changes, nodeId)
       console.log('[Change Tracker] Smart change description:', changeDescription)
-      this.addChange('node_update', { 
-        nodeId, 
-        oldData, 
-        newData, 
-        changes 
-      }, changeDescription)
+      this.addChange('node_update', {
+        nodeId,
+        oldData,
+        newData,
+        changes,
+      }, changeDescription, sourceOverride)
     } else {
       // If no meaningful changes detected, don't track anything
       console.log('[Change Tracker] No meaningful changes detected - not tracking update')

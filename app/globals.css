@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -406,3 +407,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Streamdown in prose — make list-item paragraphs render inline with the
+   marker. Streamdown emits `[&>p]:inline` on each <li>, but that arbitrary
+   variant lives in node_modules which Tailwind's content scan does not cover,
+   so the class is dead. Apply the equivalent rule directly. */
+[data-streamdown="list-item"] > p {
+  display: inline;
+  margin: 0;
+}
+[data-streamdown="list-item"] > ul,
+[data-streamdown="list-item"] > ol {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+

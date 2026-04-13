@@ -13,6 +13,7 @@ function isInsideGuardedElement(element: Element | null): boolean {
     element.closest("[contenteditable]") ||
     element.closest("[role='dialog']") ||
     element.closest("[data-panel='properties']") ||
+    element.closest("[data-panel='ai-chat']") ||
     element.closest("[role='listbox']") ||
     element.closest("[role='menu']")
   )
@@ -44,6 +45,7 @@ interface UseClipboardParams {
   undoResumeTracking?: () => void
   undo?: () => void
   redo?: () => void
+  onToggleAIChat?: () => void
 }
 
 export function useClipboard({
@@ -64,6 +66,7 @@ export function useClipboard({
   undoResumeTracking,
   undo,
   redo,
+  onToggleAIChat,
 }: UseClipboardParams) {
   const [clipboard, _setClipboard] = useState<{ nodes: Node[]; edges: Edge[] } | null>(() => {
     try {
@@ -225,6 +228,13 @@ export function useClipboard({
         return
       }
 
+      // Toggle AI chat panel: Cmd+I (not guarded — still fires inside inputs)
+      if (isCtrlOrCmd && event.key.toLowerCase() === "i" && !guarded) {
+        event.preventDefault()
+        onToggleAIChat?.()
+        return
+      }
+
       if (guarded) return
 
       // Delete key - delete selected nodes and/or edges
@@ -326,6 +336,7 @@ export function useClipboard({
     redo,
     undoSnapshot,
     undoResumeTracking,
+    onToggleAIChat,
   ])
 
   return {

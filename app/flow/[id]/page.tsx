@@ -19,7 +19,8 @@ import "@xyflow/react/dist/style.css"
 
 import type { Platform } from "@/types"
 import { NodeSidebar } from "@/components/node-sidebar"
-import { AISuggestionsPanel, AIAssistant } from "@/components/ai"
+import { AISuggestionsPanel } from "@/components/ai"
+import { AIChatPanelWrapper } from "@/components/ai/ai-chat-panel-wrapper"
 import { ConnectionMenu } from "@/components/connection-menu"
 import { ExportModal } from "@/components/export-modal"
 import { ScreenshotModal } from "@/components/screenshot-modal"
@@ -89,6 +90,26 @@ function MagicFlowInner() {
   const [isChangesModalOpen, setIsChangesModalOpen] = useState(false)
   const [isFlowGraphPanelOpen, setIsFlowGraphPanelOpen] = useState(false)
   const [templateEditorNodeId, setTemplateEditorNodeId] = useState<string | null>(null)
+  const [isAIChatOpen, setIsAIChatOpen] = useState<boolean>(false)
+  const aiChatHydrated = useRef(false)
+  // Hydrate open state from localStorage after mount (avoids SSR mismatch).
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("magic-flow-ai-chat-open") === "true") {
+        setIsAIChatOpen(true)
+      }
+    } catch { /* ignore */ }
+    aiChatHydrated.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!aiChatHydrated.current) return
+    try {
+      localStorage.setItem("magic-flow-ai-chat-open", String(isAIChatOpen))
+    } catch { /* quota */ }
+  }, [isAIChatOpen])
+
+  const toggleAIChat = useCallback(() => setIsAIChatOpen((prev) => !prev), [])
 
   // WhatsApp Flow builder modal state (page-level so both node + properties panel can open it)
   const [flowBuilderOpen, setFlowBuilderOpen] = useState(false)
@@ -215,6 +236,7 @@ function MagicFlowInner() {
     undoResumeTracking,
     undo,
     redo,
+    onToggleAIChat: toggleAIChat,
   })
 
   const flowAI = useFlowAI({
@@ -432,6 +454,8 @@ function MagicFlowInner() {
           setShowDeleteDialog={persistence.setShowDeleteDialog}
           isFlowGraphPanelOpen={isFlowGraphPanelOpen}
           onToggleFlowGraph={() => setIsFlowGraphPanelOpen((prev) => !prev)}
+          isAIChatOpen={isAIChatOpen}
+          onToggleAIChat={toggleAIChat}
           isSaving={isSaving}
           flowName={persistence.currentFlow?.name}
           flowDescription={persistence.currentFlow?.description}
@@ -762,20 +786,6 @@ function MagicFlowInner() {
             />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--border))" />
 
-            <Panel position="bottom-center" className="mb-4">
-              <AIAssistant
-                flowId={flowId}
-                platform={platform}
-                flowContext={persistence.currentFlow?.description}
-                existingFlow={{ nodes, edges }}
-                selectedNode={nodeOps.selectedNode}
-                onApplyFlow={flowAI.handleApplyFlow}
-                onUpdateFlow={flowAI.handleUpdateFlow}
-                publishedFlowId={persistence.currentFlow?.publishedFlowId}
-                waAccountId={persistence.currentFlow?.waAccountId}
-                /* onUndo removed — shared undo (Cmd+Z) handles AI undo now */
-              />
-            </Panel>
           </ReactFlow>
         </div>
           {isFlowGraphPanelOpen && (
@@ -823,6 +833,20 @@ function MagicFlowInner() {
           />
         )}
       </div>
+
+      <AIChatPanelWrapper
+        isOpen={isAIChatOpen}
+        onClose={() => setIsAIChatOpen(false)}
+        flowId={flowId}
+        platform={platform}
+        flowContext={persistence.currentFlow?.description}
+        existingFlow={{ nodes, edges }}
+        selectedNode={nodeOps.selectedNode}
+        onApplyFlow={flowAI.handleApplyFlow}
+        onUpdateFlow={flowAI.handleUpdateFlow}
+        publishedFlowId={persistence.currentFlow?.publishedFlowId}
+        waAccountId={persistence.currentFlow?.waAccountId}
+      />
 
       {/* AI Suggestions Panel */}
       <div

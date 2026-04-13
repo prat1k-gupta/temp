@@ -1,23 +1,62 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { flushSync } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Card } from "@/components/ui/card"
-import { Send, ChevronDown, Sparkles, Loader2, RotateCcw, Check } from "lucide-react"
+import { Send, Loader2, RotateCcw, Check } from "lucide-react"
 import { getAllTemplates, getFlow } from "@/utils/flow-storage"
 import { getAccessToken } from "@/lib/auth"
 import { useAccounts } from "@/hooks/queries"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
-import { toast } from "sonner"
 import type { TemplateAIMetadata } from "@/types"
 import type { StreamEvent } from "@/lib/ai/tools/generate-flow"
+import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation"
+import { Message as ChatMessage, MessageContent, MessageResponse } from "@/components/ai-elements/message"
+import { Shimmer } from "@/components/ai-elements/shimmer"
+import {
+  Task,
+  TaskContent,
+  TaskItem,
+  TaskItemFile,
+  TaskTrigger,
+} from "@/components/ai-elements/task"
+import { AIEmptyState } from "@/components/ai/ai-empty-state"
+
+type ToolStepDetails =
+  | {
+      kind: 'edit'
+      added: Array<{ type: string; label?: string; preview?: string }>
+      removed: Array<{ type: string; label?: string; preview?: string }>
+      updated: Array<{ type: string; label?: string; fields: string[] }>
+      edgesAdded: number
+      edgesRemoved: number
+    }
+  | {
+      kind: 'validate'
+      valid: boolean
+      issues: Array<{ type?: string; nodeLabel?: string; detail: string }>
+    }
+
+type MessagePart =
+  | { type: 'text'; value: string }
+  | {
+      type: 'tool'
+      tool: string
+      status: 'running' | 'done'
+      summary?: string
+      details?: ToolStepDetails
+    }
 
 interface Message {
   id: string
   role: "user" | "assistant"
   content: string
   timestamp: Date
+  // Chronological stream of text + tool blocks as they arrived. Populated on
+  // streaming assistant messages; undefined on user messages and legacy
+  // messages restored from localStorage before this field existed.
+  parts?: MessagePart[]
   flowData?: { nodes: any[]; edges: any[]; nodeOrder?: string[] }
   updates?: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }
   isAutoApplied?: boolean
@@ -44,38 +83,11 @@ interface AIAssistantProps {
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   publishedFlowId?: string
   waAccountId?: string
+  isPanelOpen?: boolean
 }
 
 const CHAT_STORAGE_PREFIX = "magic-flow-chat-"
-const GREETING_MESSAGE: Message = {
-  id: "1",
-  role: "assistant",
-  content: "Hi! I'm your Freestand AI Assistant. I can help you create or edit flows. What would you like to do?",
-  timestamp: new Date(),
-}
 
-function renderNodePreview(
-  nodes: any[] | undefined,
-  edges: any[] | undefined,
-  nodeLabel: string,
-  edgeLabel: string
-) {
-  if (!nodes?.length && !edges?.length) return null
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-      {nodes && nodes.length > 0 && (
-        <span>
-          <span className="font-medium text-foreground/70">{nodes.length}</span> {nodeLabel.toLowerCase()}
-        </span>
-      )}
-      {edges && edges.length > 0 && (
-        <span>
-          <span className="font-medium text-foreground/70">{edges.length}</span> {edgeLabel.toLowerCase()}
-        </span>
-      )}
-    </div>
-  )
-}
 
 function formatToolStep(step: { tool: string; status: 'running' | 'done'; summary?: string }): string {
   if (step.status === 'done' && step.summary) return step.summary
@@ -94,6 +106,21 @@ function formatToolStep(step: { tool: string; status: 'running' | 'done'; summar
   }
 }
 
+function formatToolRunning(tool: string): string {
+  switch (tool) {
+    case 'get_node_details': return 'Inspecting node…'
+    case 'get_node_connections': return 'Checking connections…'
+    case 'apply_edit': return 'Applying changes…'
+    case 'validate_result': return 'Validating flow…'
+    case 'save_as_template': return 'Saving as template…'
+    case 'trigger_flow': return 'Sending test message…'
+    case 'list_variables': return 'Listing variables…'
+    case 'undo_last': return 'Reverting changes…'
+    case 'build_and_validate': return 'Building and validating…'
+    default: return `Taking action: ${tool.replace(/_/g, ' ')}…`
+  }
+}
+
 export function AIAssistant({
   flowId,
   platform,
@@ -104,6 +131,7 @@ export function AIAssistant({
   onUpdateFlow,
   publishedFlowId,
   waAccountId,
+  isPanelOpen,
 }: AIAssistantProps) {
   // Resolve waAccountId → account name for trigger_flow (backend expects name, not UUID)
   const { data: accounts = [] } = useAccounts()
@@ -138,33 +166,30 @@ export function AIAssistant({
     }).catch(() => {})
   }, [])
 
-  const [isFocused, setIsFocused] = useState(false)
-  const [messages, setMessages] = useState<Message[]>(() => {
-    if (flowId && typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem(`${CHAT_STORAGE_PREFIX}${flowId}`)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp), isStreaming: false }))
-        }
-      } catch { /* ignore corrupted storage */ }
-    }
-    return [GREETING_MESSAGE]
-  })
+  const [messages, setMessages] = useState<Message[]>([])
+  // Hydrate from localStorage after mount — keeping this in useEffect (not useState initializer)
+  // avoids server/client hydration mismatch when persisted messages exist.
+  useEffect(() => {
+    if (!flowId) return
+    try {
+      const stored = localStorage.getItem(`${CHAT_STORAGE_PREFIX}${flowId}`)
+      if (!stored) return
+      const parsed = JSON.parse(stored)
+      if (!Array.isArray(parsed)) return
+      const restored = parsed
+        .map((m: any) => ({ ...m, timestamp: new Date(m.timestamp), isStreaming: false }))
+        .filter((m: any) => !(m.role === "assistant" && m.id === "1" && m.content?.startsWith("Hi! I'm your Freestand AI")))
+      if (restored.length > 0) setMessages(restored)
+    } catch { /* ignore corrupted storage */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowId])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set())
-  const [seenMessageIds, setSeenMessageIds] = useState<Set<string>>(new Set())
   const lastFailedInputRef = useRef<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const chatContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const inputBarRef = useRef<HTMLDivElement>(null)
   const streamingMessageIdRef = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const scrollThrottleRef = useRef<number | null>(null)
-  const [containerWidth, setContainerWidth] = useState<number | null>(null)
 
   const updateStreamingMessage = useCallback((updater: (msg: Message) => Message) => {
     // Capture the id synchronously — the ref may be cleared before React flushes the setMessages callback
@@ -186,29 +211,6 @@ export function AIAssistant({
     } catch { /* storage full — ignore */ }
   }, [messages, flowId])
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
-    }
-  }, [])
-
-  // Auto-scroll on new messages or loading state change (throttled to rAF)
-  useEffect(() => {
-    if (scrollThrottleRef.current) return
-    scrollThrottleRef.current = requestAnimationFrame(() => {
-      scrollToBottom()
-      scrollThrottleRef.current = null
-    })
-  }, [messages, isLoading, scrollToBottom])
-
-  useEffect(() => {
-    return () => {
-      if (scrollThrottleRef.current) {
-        cancelAnimationFrame(scrollThrottleRef.current)
-      }
-    }
-  }, [])
-
   // Auto-resize textarea
   useEffect(() => {
     if (inputRef.current) {
@@ -217,95 +219,24 @@ export function AIAssistant({
     }
   }, [input])
 
-  // Auto-focus input when chat expands
+  // Auto-focus textarea when panel opens (after display:none → display:flex)
   useEffect(() => {
-    if (isFocused) {
-      setTimeout(() => inputRef.current?.focus(), 100)
+    if (isPanelOpen) {
+      const timer = setTimeout(() => inputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
     }
-  }, [isFocused])
+  }, [isPanelOpen])
 
-  // Measure and lock width of container
+  // Abort in-flight stream on unmount (safety net)
   useEffect(() => {
-    if (chatContainerRef.current && !containerWidth) {
-      const width = chatContainerRef.current.offsetWidth
-      if (width > 0) setContainerWidth(width)
-    }
-  }, [containerWidth])
-
-  // Update width on window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (chatContainerRef.current) {
-        const width = chatContainerRef.current.offsetWidth
-        if (width > 0) setContainerWidth(width)
-      }
-    }
-
-    const timeoutId = setTimeout(handleResize, 100)
-    window.addEventListener("resize", handleResize)
     return () => {
-      clearTimeout(timeoutId)
-      window.removeEventListener("resize", handleResize)
+      abortControllerRef.current?.abort()
     }
   }, [])
-
-  // Auto-expand for new messages with non-auto-applied flow data
-  useEffect(() => {
-    const lastMessage = messages[messages.length - 1]
-    if (
-      lastMessage &&
-      lastMessage.role === "assistant" &&
-      lastMessage.flowData &&
-      !lastMessage.isAutoApplied &&
-      !seenMessageIds.has(lastMessage.id) &&
-      !isFocused
-    ) {
-      setIsFocused(true)
-      setSeenMessageIds((prev) => new Set([...prev, lastMessage.id]))
-    }
-  }, [messages, isFocused, seenMessageIds])
-
-  // Click outside to collapse
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-
-      if (chatContainerRef.current && chatContainerRef.current.contains(target)) return
-
-      const isReactFlowElement =
-        target.closest(".react-flow") ||
-        target.closest(".react-flow__pane") ||
-        target.closest(".react-flow__viewport") ||
-        target.closest("[data-id]")
-
-      const isUIElement =
-        target.closest('[role="dialog"]') ||
-        target.closest('[role="menu"]') ||
-        target.closest('[role="tooltip"]')
-
-      if (isReactFlowElement && !isUIElement) {
-        setIsFocused(false)
-      } else if (!isUIElement && !target.closest("button") && !target.closest("input") && !target.closest("textarea")) {
-        setIsFocused(false)
-      }
-    }
-
-    if (isFocused) {
-      setTimeout(() => {
-        document.addEventListener("mousedown", handleClickOutside, true)
-      }, 0)
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside, true)
-    }
-  }, [isFocused])
 
   const handleSend = async (overrideInput?: string) => {
     const text = overrideInput ?? input
     if (!text.trim() || isLoading) return
-
-    if (!isFocused) setIsFocused(true)
 
     // Abort any in-progress stream
     abortControllerRef.current?.abort()
@@ -317,7 +248,21 @@ export function AIAssistant({
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    // Eagerly create the assistant placeholder so the pending shimmer shows
+    // immediately, and so the first stream event has a message to mutate.
+    const msgId = (Date.now() + 1).toString()
+    streamingMessageIdRef.current = msgId
+    const placeholder: Message = {
+      id: msgId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      parts: [],
+      toolSteps: [],
+      isStreaming: true,
+    }
+
+    setMessages((prev) => [...prev, userMessage, placeholder])
     setInput("")
     setIsLoading(true)
     lastFailedInputRef.current = null
@@ -358,28 +303,13 @@ export function AIAssistant({
         throw new Error(errorData.error || `Request failed (${response.status})`)
       }
 
-      // Read NDJSON stream
-      // Placeholder is created lazily on first streaming event (tool_step or text_delta).
-      // If the first event is `result` (create mode), the final message is added directly.
+      // Read NDJSON stream. Placeholder already exists from handleSend above.
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      const msgId = (Date.now() + 1).toString()
-
-      // Ensure the streaming placeholder exists (creates it on first call)
-      const ensurePlaceholder = () => {
-        if (streamingMessageIdRef.current) return // already created
-        streamingMessageIdRef.current = msgId
-        setMessages(prev => [...prev, {
-          id: msgId,
-          role: "assistant" as const,
-          content: "",
-          timestamp: new Date(),
-          toolSteps: [],
-          isStreaming: true,
-        }])
-        setIsLoading(false) // remove thinking dots
-      }
+      // Whether we've already applied the flow to the canvas via flow_ready.
+      // Guards the final result event from double-applying.
+      let flowAlreadyApplied = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -401,26 +331,91 @@ export function AIAssistant({
 
           switch (event.type) {
             case 'tool_step':
-              ensurePlaceholder()
-              updateStreamingMessage(msg => ({
-                ...msg,
-                toolSteps: event.status === 'running'
-                  ? [...(msg.toolSteps || []), { tool: event.tool, status: 'running' as const }]
-                  : (msg.toolSteps || []).map(s =>
-                      s.tool === event.tool && s.status === 'running'
-                        ? { ...s, status: 'done' as const, summary: event.summary }
-                        : s
-                    ),
-              }))
+              if (event.status === 'running') {
+                // flushSync commits the React state synchronously, but the
+                // browser does not paint until this task yields. If the done
+                // event for the same tool arrives in the same chunk (pure
+                // local CPU tools like build_and_validate and apply_edit),
+                // we would overwrite running → done before paint, so the
+                // user never sees the spinner. Yield after the flush so the
+                // paint happens before we process the next line.
+                flushSync(() => {
+                  updateStreamingMessage(msg => ({
+                    ...msg,
+                    parts: [
+                      ...(msg.parts || []),
+                      { type: 'tool' as const, tool: event.tool, status: 'running' as const },
+                    ],
+                    toolSteps: [...(msg.toolSteps || []), { tool: event.tool, status: 'running' as const }],
+                  }))
+                })
+                await new Promise((resolve) => setTimeout(resolve, 350))
+              } else {
+                // event.details is part of the StreamEvent schema
+                const incomingDetails = event.details as ToolStepDetails | undefined
+                updateStreamingMessage(msg => ({
+                  ...msg,
+                  parts: (msg.parts || []).map((p) =>
+                    p.type === 'tool' && p.tool === event.tool && p.status === 'running'
+                      ? {
+                          ...p,
+                          status: 'done' as const,
+                          summary: event.summary,
+                          details: incomingDetails,
+                        }
+                      : p
+                  ),
+                  toolSteps: (msg.toolSteps || []).map(s =>
+                    s.tool === event.tool && s.status === 'running'
+                      ? { ...s, status: 'done' as const, summary: event.summary }
+                      : s
+                  ),
+                }))
+              }
               break
 
             case 'text_delta':
-              ensurePlaceholder()
-              updateStreamingMessage(msg => ({
-                ...msg,
-                content: msg.content + event.delta,
-              }))
+              updateStreamingMessage(msg => {
+                // Append to the last text part if there is one, otherwise
+                // push a new text part so tool → text → tool → text ordering
+                // is preserved.
+                const parts = msg.parts ? [...msg.parts] : []
+                const last = parts[parts.length - 1]
+                if (last && last.type === 'text') {
+                  parts[parts.length - 1] = { ...last, value: last.value + event.delta }
+                } else {
+                  parts.push({ type: 'text' as const, value: event.delta })
+                }
+                return {
+                  ...msg,
+                  parts,
+                  content: msg.content + event.delta,
+                }
+              })
               break
+
+            case 'flow_ready': {
+              // Apply to canvas immediately — do not wait for the text stream
+              // to finish. The final 'result' event will skip re-applying.
+              const meta = {
+                warnings: event.warnings,
+                debugData: event.debugData,
+                userPrompt: userMessage.content,
+              }
+              if (event.action === 'create' && event.flowData && onApplyFlow) {
+                onApplyFlow(event.flowData, meta)
+                flowAlreadyApplied = true
+              } else if (event.action === 'edit' && event.updates && onUpdateFlow) {
+                onUpdateFlow(event.updates, meta)
+                flowAlreadyApplied = true
+              }
+              // Mark the placeholder as auto-applied so Apply Flow button
+              // does not render on the final message.
+              if (flowAlreadyApplied) {
+                updateStreamingMessage(msg => ({ ...msg, isAutoApplied: true }))
+              }
+              break
+            }
 
             case 'result': {
               const data = event.data
@@ -428,68 +423,37 @@ export function AIAssistant({
               const isAutoApplyCreate = data.action === 'create' && data.flowData && onApplyFlow
               const isAutoApplyEdit = data.updates && onUpdateFlow
 
-              if (streamingMessageIdRef.current) {
-                // Edit mode: placeholder exists with streamed content — finalize it
-                updateStreamingMessage(msg => ({
-                  ...msg,
-                  content: msg.content || data.message || "Done.",
-                  flowData: data.flowData,
-                  updates: data.updates,
-                  isStreaming: false,
-                  isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
-                  warnings: data.warnings,
-                  debugData: data.debugData,
-                  templateMetadata: data.templateMetadata,
-                }))
-              } else {
-                // Create mode: no placeholder — add final message directly (old behavior)
-                setIsLoading(false)
-                const finalMessage: Message = {
-                  id: msgId,
-                  role: "assistant",
-                  content: data.message || "I've processed your request.",
-                  timestamp: new Date(),
-                  flowData: data.flowData,
-                  updates: data.updates,
-                  isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
-                  warnings: data.warnings,
-                  debugData: data.debugData,
-                  templateMetadata: data.templateMetadata,
-                }
-                setMessages(prev => [...prev, finalMessage])
-              }
+              updateStreamingMessage(msg => ({
+                ...msg,
+                content: msg.content || data.message || "Done.",
+                flowData: data.flowData,
+                updates: data.updates,
+                isStreaming: false,
+                isAutoApplied: flowAlreadyApplied || !!(isAutoApplyCreate || isAutoApplyEdit),
+                warnings: data.warnings,
+                debugData: data.debugData,
+                templateMetadata: data.templateMetadata,
+              }))
               streamingMessageIdRef.current = null
 
-              // Apply to canvas
-              if (isAutoApplyCreate) {
-                setIsFocused(false)
-                onApplyFlow!(data.flowData!, meta)
-              } else if (isAutoApplyEdit) {
-                onUpdateFlow!(data.updates!, meta)
-              } else if (data.flowData) {
-                setIsFocused(true)
+              // Apply to canvas only if flow_ready didn't already handle it
+              if (!flowAlreadyApplied) {
+                if (isAutoApplyCreate) {
+                  onApplyFlow!(data.flowData!, meta)
+                } else if (isAutoApplyEdit) {
+                  onUpdateFlow!(data.updates!, meta)
+                }
               }
               break
             }
 
             case 'error':
-              if (streamingMessageIdRef.current) {
-                updateStreamingMessage(msg => ({
-                  ...msg,
-                  content: msg.content || event.message || "Sorry, something went wrong.",
-                  isStreaming: false,
-                  isError: true,
-                }))
-              } else {
-                setIsLoading(false)
-                setMessages(prev => [...prev, {
-                  id: msgId,
-                  role: "assistant" as const,
-                  content: event.message || "Sorry, something went wrong.",
-                  timestamp: new Date(),
-                  isError: true,
-                }])
-              }
+              updateStreamingMessage(msg => ({
+                ...msg,
+                content: msg.content || event.message || "Sorry, something went wrong.",
+                isStreaming: false,
+                isError: true,
+              }))
               lastFailedInputRef.current = userMessage.content
               streamingMessageIdRef.current = null
               break
@@ -565,235 +529,281 @@ export function AIAssistant({
     }
   }
 
-  const handleApplyClick = (messageId: string, fn: () => void) => {
-    if (appliedMessageIds.has(messageId) || isLoading) return
-    setAppliedMessageIds((prev) => new Set([...prev, messageId]))
-    fn()
-  }
-
   return (
-    <div ref={chatContainerRef} className="flex flex-col w-full max-w-3xl">
-      {/* Chat window */}
-      {isFocused && (
-        <Card
-          className="mb-2 flex flex-col rounded-2xl border border-border/50 bg-card/95 backdrop-blur-xl shadow-2xl min-w-0 shrink-0"
-          style={containerWidth ? { width: `${containerWidth}px` } : undefined}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-border/50 px-4 py-3 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-sm text-card-foreground">Freestand AI</h3>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setIsFocused(false)
-                setSeenMessageIds(new Set(messages.map((m) => m.id)))
-              }}
-              className="h-8 w-8 p-0"
-              aria-label="Collapse chat"
-            >
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Messages Area */}
-          <div
-            ref={scrollContainerRef}
-            className="flex-1 space-y-3 overflow-y-auto px-4 py-3 max-h-[50vh] min-h-[200px]"
-            role="log"
-            aria-live="polite"
-          >
-            {messages.map((message) => {
-              const isApplied = appliedMessageIds.has(message.id)
-              const msgIdx = messages.indexOf(message)
-              const precedingUserMsg = messages.slice(0, msgIdx).reverse().find((m) => m.role === "user")
-              const buttonMeta = { warnings: message.warnings, debugData: message.debugData, userPrompt: precedingUserMsg?.content }
-              const hasActions = message.role === "assistant" && (
-                (message.flowData && onApplyFlow && !message.isAutoApplied) ||
-                (message.isError && lastFailedInputRef.current)
-              )
+    <div className="flex flex-col h-full">
+      <Conversation className="flex-1">
+        <ConversationContent className="gap-4">
+          {messages.length === 0 ? (
+            <AIEmptyState
+              hasRealNodes={(existingFlow?.nodes || []).some((n: any) => n.type !== "start")}
+              onSelectSuggestion={(text) => handleSend(text)}
+            />
+          ) : (
+            messages.map((msg) => {
+              // Prefer chronological parts[] when present (new messages). Fall
+              // back to synthesizing parts from legacy toolSteps + content so
+              // previously-saved messages still render.
+              const parts: MessagePart[] =
+                msg.parts && msg.parts.length > 0
+                  ? msg.parts
+                  : [
+                      ...(msg.toolSteps || []).map((s) => ({
+                        type: 'tool' as const,
+                        tool: s.tool,
+                        status: s.status,
+                        summary: s.summary,
+                      })),
+                      ...(msg.content ? [{ type: 'text' as const, value: msg.content }] : []),
+                    ]
+              const isPendingAssistant =
+                msg.role === "assistant" && !!msg.isStreaming && parts.length === 0
+              const showActions =
+                (msg.isError && !!lastFailedInputRef.current) ||
+                (!!msg.flowData && !msg.isAutoApplied && !appliedMessageIds.has(msg.id) && !!onApplyFlow)
 
               return (
-                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 overflow-hidden ${
-                      message.role === "user"
-                        ? "bg-primary text-white shadow-md"
-                        : message.isError
-                          ? "bg-destructive/10 text-foreground border border-destructive/20"
-                          : "bg-muted/70 text-foreground"
-                    }`}
-                  >
-                    {/* Tool step indicators */}
-                    {message.toolSteps && message.toolSteps.length > 0 && (
-                      <div className="space-y-0.5 mb-1.5">
-                        {message.toolSteps.map((step, i) => (
-                          <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-                            {step.status === 'running'
-                              ? <Loader2 className="w-2.5 h-2.5 animate-spin flex-shrink-0" />
-                              : <Check className="w-2.5 h-2.5 text-success flex-shrink-0" />
+                <Fragment key={msg.id}>
+                  {/* Pending assistant — no part yet */}
+                  {isPendingAssistant && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <Shimmer>Thinking…</Shimmer>
+                    </div>
+                  )}
+
+                  {/* Chronological parts — text and tool blocks in the order
+                      they arrived from the stream */}
+                  {parts.map((part, i) => {
+                    if (part.type === 'text') {
+                      return (
+                        <ChatMessage key={`${msg.id}-p${i}`} from={msg.role}>
+                          <MessageContent
+                            className={
+                              msg.role === "assistant"
+                                ? "bg-transparent p-0 w-full max-w-none"
+                                : undefined
                             }
-                            <span>{formatToolStep(step)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {(message.content || !message.isStreaming) && (
-                      <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                        {message.content}
-                        {message.isStreaming && message.content && (
-                          <span className="inline-block w-1.5 h-3.5 bg-foreground/50 ml-0.5 animate-pulse rounded-sm" />
-                        )}
-                      </p>
-                    )}
-
-                    {/* Compact preview of changes */}
-                    {message.role === "assistant" && (message.flowData || message.updates) && (
-                      <div className="mt-2 pt-2 border-t border-border/30">
-                        {message.flowData && renderNodePreview(message.flowData.nodes, message.flowData.edges, "Nodes", "Connections")}
-                        {message.updates && renderNodePreview(message.updates.nodes, message.updates.edges, "New/Updated Nodes", "New Connections")}
-                      </div>
-                    )}
-
-                    {/* Action buttons */}
-                    {hasActions && (
-                      <div className="mt-2.5 flex items-center gap-2">
-                        {/* Manual Apply Flow button (only for non-auto-applied creates) */}
-                        {message.flowData && onApplyFlow && !message.isAutoApplied && (
-                          <Button
-                            onClick={() => handleApplyClick(message.id, () => onApplyFlow(message.flowData!, buttonMeta))}
-                            disabled={isApplied || isLoading}
-                            className={`h-7 text-xs px-3 rounded-lg transition-all ${
-                              isApplied
-                                ? "bg-green-600/90 hover:bg-green-600/90 text-white cursor-default"
-                                : "bg-primary hover:bg-primary/90 text-white shadow-sm hover:shadow-md"
-                            }`}
-                            size="sm"
                           >
-                            {isApplied ? (
-                              <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Applied</span>
+                            {msg.role === "assistant" ? (
+                              <MessageResponse className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1 prose-p:my-2 prose-li:my-0 prose-ul:my-1 prose-ol:my-1 prose-pre:my-2 prose-code:before:hidden prose-code:after:hidden">
+                                {part.value}
+                              </MessageResponse>
                             ) : (
-                              "Apply Flow"
+                              <div className="whitespace-pre-wrap break-words text-sm">{part.value}</div>
                             )}
-                          </Button>
-                        )}
-
-                        {message.isError && lastFailedInputRef.current && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs px-3 rounded-lg"
-                            onClick={handleRetry}
-                            disabled={isLoading}
-                          >
-                            <RotateCcw className="w-3 h-3 mr-1" /> Retry
-                          </Button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Save as Template buttons */}
-                    {message.templateMetadata && !message.isTemplateSaved && (
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          size="sm"
-                          className="cursor-pointer"
-                          onClick={async () => {
-                            try {
-                              const meta = message.templateMetadata!
-                              const { createTemplate } = await import("@/utils/flow-storage")
-                              await createTemplate(
-                                meta.suggestedName,
-                                meta.description,
-                                platform,
-                                existingFlow?.nodes ?? [],
-                                existingFlow?.edges ?? [],
-                                meta.aiMetadata,
-                              )
-                              toast.success("Template created successfully")
-                              setMessages(prev => prev.map(m =>
-                                m.id === message.id ? { ...m, isTemplateSaved: true } : m
-                              ))
-                            } catch {
-                              toast.error("Failed to create template")
-                            }
-                          }}
+                          </MessageContent>
+                        </ChatMessage>
+                      )
+                    }
+                    // Tool part — running state shows a simple spinner row;
+                    // done state uses Task for details (added/removed/issues)
+                    // or a plain check row if there are no details to show.
+                    if (part.status === 'running') {
+                      return (
+                        <div
+                          key={`${msg.id}-p${i}`}
+                          className="flex items-center gap-2 text-sm text-muted-foreground"
                         >
-                          Save as Template
-                        </Button>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+                          <Shimmer>{formatToolRunning(part.tool)}</Shimmer>
+                        </div>
+                      )
+                    }
+
+                    const headline = formatToolStep(part)
+                    const hasDetails =
+                      part.details &&
+                      ((part.details.kind === 'edit' &&
+                        (part.details.added.length > 0 ||
+                          part.details.removed.length > 0 ||
+                          part.details.updated.length > 0 ||
+                          part.details.edgesAdded > 0 ||
+                          part.details.edgesRemoved > 0)) ||
+                        (part.details.kind === 'validate' &&
+                          !part.details.valid &&
+                          part.details.issues.length > 0))
+
+                    if (!hasDetails) {
+                      return (
+                        <div
+                          key={`${msg.id}-p${i}`}
+                          className="flex items-center gap-2 text-sm text-muted-foreground"
+                        >
+                          <Check className="w-3.5 h-3.5 text-success flex-shrink-0" />
+                          <span className="break-words">{headline}</span>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <Task key={`${msg.id}-p${i}`} defaultOpen>
+                        <TaskTrigger title={headline} />
+                        <TaskContent className="mt-1.5">
+                          {part.details!.kind === 'edit' && (
+                            <>
+                              {part.details!.added.map((n, idx) => (
+                                <TaskItem
+                                  key={`a${idx}`}
+                                  className="flex flex-wrap items-center gap-1.5"
+                                >
+                                  <span className="text-success">+</span>
+                                  <span>Added</span>
+                                  <TaskItemFile>{n.type}</TaskItemFile>
+                                  {n.preview ? (
+                                    <span className="text-foreground">
+                                      &ldquo;{n.preview}&rdquo;
+                                    </span>
+                                  ) : n.label ? (
+                                    <span className="text-foreground">{n.label}</span>
+                                  ) : null}
+                                </TaskItem>
+                              ))}
+                              {part.details!.removed.map((n, idx) => (
+                                <TaskItem
+                                  key={`r${idx}`}
+                                  className="flex flex-wrap items-center gap-1.5"
+                                >
+                                  <span className="text-destructive">−</span>
+                                  <span>Removed</span>
+                                  <TaskItemFile>{n.type}</TaskItemFile>
+                                  {n.preview ? (
+                                    <span className="text-foreground">
+                                      &ldquo;{n.preview}&rdquo;
+                                    </span>
+                                  ) : n.label ? (
+                                    <span className="text-foreground">{n.label}</span>
+                                  ) : null}
+                                </TaskItem>
+                              ))}
+                              {part.details!.updated.map((n, idx) => (
+                                <TaskItem
+                                  key={`u${idx}`}
+                                  className="flex flex-wrap items-center gap-1.5"
+                                >
+                                  <span className="text-info">~</span>
+                                  <span>Updated</span>
+                                  <TaskItemFile>{n.type}</TaskItemFile>
+                                  {n.label ? (
+                                    <span className="text-foreground">{n.label}</span>
+                                  ) : null}
+                                  {n.fields.length > 0 ? (
+                                    <span className="text-muted-foreground">
+                                      ({n.fields.join(", ")})
+                                    </span>
+                                  ) : null}
+                                </TaskItem>
+                              ))}
+                              {(part.details!.edgesAdded > 0 || part.details!.edgesRemoved > 0) && (
+                                <TaskItem className="text-muted-foreground">
+                                  {part.details!.edgesAdded > 0 && (
+                                    <>
+                                      ↳ {part.details!.edgesAdded} edge
+                                      {part.details!.edgesAdded > 1 ? "s" : ""} wired
+                                    </>
+                                  )}
+                                  {part.details!.edgesAdded > 0 && part.details!.edgesRemoved > 0 && ", "}
+                                  {part.details!.edgesRemoved > 0 && (
+                                    <>
+                                      {part.details!.edgesRemoved} edge
+                                      {part.details!.edgesRemoved > 1 ? "s" : ""} removed
+                                    </>
+                                  )}
+                                </TaskItem>
+                              )}
+                            </>
+                          )}
+                          {part.details!.kind === 'validate' &&
+                            part.details!.issues.map((issue, idx) => (
+                              <TaskItem
+                                key={`i${idx}`}
+                                className="flex flex-wrap items-start gap-1.5 text-destructive"
+                              >
+                                <span className="mt-0.5">•</span>
+                                <span className="flex-1">
+                                  {issue.nodeLabel ? (
+                                    <>
+                                      <span className="font-medium">
+                                        &ldquo;{issue.nodeLabel}&rdquo;
+                                      </span>
+                                      {" — "}
+                                    </>
+                                  ) : null}
+                                  {issue.detail}
+                                </span>
+                              </TaskItem>
+                            ))}
+                        </TaskContent>
+                      </Task>
+                    )
+                  })}
+
+                  {/* Inline actions row — retry / apply */}
+                  {showActions && (
+                    <div className="flex items-center gap-2">
+                      {msg.isError && lastFailedInputRef.current && (
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={handleRetry}
                           className="cursor-pointer"
-                          onClick={() => setInput("Change the template name to ")}
                         >
-                          Edit Details
+                          <RotateCcw className="w-3 h-3 mr-1" />
+                          Retry
                         </Button>
-                      </div>
-                    )}
-
-                    <p className={`text-[10px] mt-1.5 ${message.role === "user" ? "text-white/40" : "text-muted-foreground/50"}`}>
-                      {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                </div>
+                      )}
+                      {msg.flowData && !msg.isAutoApplied && !appliedMessageIds.has(msg.id) && onApplyFlow && (
+                        <Button
+                          size="sm"
+                          className="cursor-pointer"
+                          onClick={() => {
+                            onApplyFlow(msg.flowData!, { warnings: msg.warnings })
+                            setAppliedMessageIds((prev) => new Set(prev).add(msg.id))
+                          }}
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Apply flow
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </Fragment>
               )
-            })}
+            })
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-muted/70 rounded-2xl px-3.5 py-2 flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Thinking</span>
-                  <span className="flex gap-0.5">
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-                  </span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </Card>
-      )}
-
-      {/* Input Bar */}
-      <div
-        ref={inputBarRef}
-        onClick={() => { if (!isFocused) setIsFocused(true) }}
-        className="flex items-center gap-2 rounded-full border border-border/50 bg-card/95 backdrop-blur-xl px-4 py-2 shadow-xl min-w-0 cursor-text"
-        style={containerWidth ? { width: `${containerWidth}px` } : { width: "100%" }}
-      >
-        <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
-        <Textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => { if (!isLoading) setInput(e.target.value) }}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setIsFocused(true)}
-          placeholder={isLoading ? "AI is thinking..." : "Ask AI to create or edit your flow..."}
-          className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
-          readOnly={isLoading}
-          rows={1}
-          onInput={(e) => {
-            const target = e.target as HTMLTextAreaElement
-            target.style.height = "auto"
-            target.style.height = `${Math.min(target.scrollHeight, 120)}px`
-          }}
-        />
-        <Button
-          onClick={() => handleSend()}
-          size="sm"
-          disabled={!input.trim() || isLoading}
-          className="h-8 w-8 p-0 bg-primary hover:bg-primary/90 flex-shrink-0 rounded-md shadow-md hover:shadow-lg transition-all"
-          aria-label="Send message"
-        >
-          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </Button>
+      {/* Input bar */}
+      <div className="p-3 border-t border-border flex-shrink-0">
+        <div className="relative">
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => {
+              if (!isLoading) setInput(e.target.value)
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={isLoading ? "AI is thinking..." : "Ask AI to create or edit your flow..."}
+            className="pr-10 resize-none min-h-[40px] max-h-[120px] overflow-y-auto"
+            readOnly={isLoading}
+            rows={1}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement
+              target.style.height = "auto"
+              target.style.height = `${Math.min(target.scrollHeight, 120)}px`
+            }}
+          />
+          <Button
+            onClick={() => handleSend()}
+            size="sm"
+            disabled={!input.trim() || isLoading}
+            className="absolute right-2 bottom-2 h-7 w-7 p-0 cursor-pointer"
+            aria-label="Send message"
+          >
+            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+          </Button>
+        </div>
       </div>
     </div>
   )

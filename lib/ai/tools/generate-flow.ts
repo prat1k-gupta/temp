@@ -54,39 +54,151 @@ export interface GenerateFlowResponse {
   debugData?: Record<string, unknown>
 }
 
+/**
+ * Structured details for a completed tool step. Rendered by the chat UI as
+ * an expandable activity log underneath the tool step's headline.
+ */
+export type ToolStepDetails =
+  | {
+      kind: 'edit'
+      added: NodeBrief[]
+      removed: NodeBrief[]
+      updated: UpdateBrief[]
+      edgesAdded: number
+      edgesRemoved: number
+    }
+  | {
+      kind: 'validate'
+      valid: boolean
+      issues: Array<{ type?: string; nodeLabel?: string; detail: string }>
+    }
+
+export interface NodeBrief {
+  type: string
+  label?: string
+  preview?: string
+}
+
+export interface UpdateBrief {
+  type: string
+  label?: string
+  fields: string[]
+}
+
 export type StreamEvent =
-  | { type: 'tool_step'; tool: string; status: 'running' | 'done'; summary?: string }
+  | {
+      type: 'tool_step'
+      tool: string
+      status: 'running' | 'done'
+      summary?: string
+      details?: ToolStepDetails
+    }
   | { type: 'text_delta'; delta: string }
+  | {
+      type: 'flow_ready'
+      flowData?: GenerateFlowResponse['flowData']
+      updates?: GenerateFlowResponse['updates']
+      action: 'create' | 'edit'
+      warnings?: string[]
+      debugData?: Record<string, unknown>
+    }
   | { type: 'result'; data: GenerateFlowResponse }
   | { type: 'error'; message: string }
 
-export function buildToolSummary(toolName: string, result: unknown): string | undefined {
+/** Short preview string from a node's content fields, truncated for display. */
+function previewFromData(data: Record<string, any> | undefined): string | undefined {
+  if (!data) return undefined
+  const text = data.question || data.text || data.message
+  if (typeof text !== 'string' || !text.trim()) return undefined
+  const trimmed = text.trim().replace(/\s+/g, ' ')
+  return trimmed.length > 60 ? trimmed.slice(0, 57) + '…' : trimmed
+}
+
+/** Friendly short label for a node type (e.g., "whatsappQuickReply" → "Quick Reply"). */
+function friendlyNodeType(type: string | undefined): string {
+  if (!type) return 'node'
+  const base = type
+    .replace(/^whatsapp|^instagram|^web|^line/i, '')
+    .replace(/([A-Z])/g, ' $1')
+    .trim()
+  return base.charAt(0).toUpperCase() + base.slice(1) || type
+}
+
+/**
+ * Derive a headline + structured details from a tool execution result. Tools
+ * that want rich rendering in the chat UI include a `details` field directly
+ * on their return value (see apply_edit / validate_result); this function
+ * pulls it through and picks the right summary line.
+ */
+export function buildToolStepPayload(
+  toolName: string,
+  result: unknown,
+): { summary?: string; details?: ToolStepDetails } {
   const r = result as Record<string, any> | null
-  if (!r) return undefined
+  if (!r) return {}
+  const details = r.details as ToolStepDetails | undefined
   switch (toolName) {
-    case 'apply_edit':
-      if (r.summary) {
-        const parts: string[] = []
-        if (r.summary.newNodes > 0) parts.push(`${r.summary.newNodes} new nodes`)
-        if (r.summary.nodeUpdates > 0) parts.push(`${r.summary.nodeUpdates} updates`)
-        if (r.summary.removedNodes > 0) parts.push(`${r.summary.removedNodes} removals`)
-        if (r.summary.newEdges > 0) parts.push(`${r.summary.newEdges} new edges`)
-        if (r.summary.removedEdges > 0) parts.push(`${r.summary.removedEdges} edge removals`)
-        return parts.join(', ') || undefined
+    case 'apply_edit': {
+      if (!r.summary) {
+        return { summary: r.error ? `Error: ${r.error}` : undefined, details }
       }
-      return r.error ? `Error: ${r.error}` : undefined
-    case 'validate_result':
-      if (r.valid) return 'No issues found'
-      return r.issueCount ? `Found ${r.issueCount} issue${r.issueCount > 1 ? 's' : ''}` : undefined
+      const totalChanges =
+        (r.summary.newNodes || 0) +
+        (r.summary.nodeUpdates || 0) +
+        (r.summary.removedNodes || 0)
+      const summary =
+        totalChanges > 0
+          ? 'Applied edit'
+          : r.summary.newEdges > 0
+          ? `Rewired ${r.summary.newEdges} edge${r.summary.newEdges > 1 ? 's' : ''}`
+          : 'No changes applied'
+      return { summary, details }
+    }
+    case 'validate_result': {
+      const issueCount = Array.isArray(r.issues) ? r.issues.length : r.issueCount || 0
+      const summary = r.valid
+        ? 'No issues found'
+        : `Found ${issueCount} issue${issueCount > 1 ? 's' : ''}`
+      return { summary, details }
+    }
     case 'get_node_details':
-      return r.type ? `Inspected ${r.type} node` : undefined
+      return { summary: r.type ? `Inspected ${friendlyNodeType(r.type)} node` : undefined, details }
     case 'get_node_connections':
-      return r.nodeId ? `Checked connections for ${r.nodeId}` : undefined
+      return { summary: r.nodeId ? `Checked connections for ${r.nodeId}` : undefined, details }
     case 'build_and_validate':
-      if (r.success) return r.summary ? `Built ${r.summary.nodes} nodes, ${r.summary.edges} edges — valid` : 'Flow validated'
-      return r.issueCount ? `Found ${r.issueCount} issue${r.issueCount > 1 ? 's' : ''} — fixing...` : r.error ? `Error: ${r.error}` : undefined
+      if (r.success) {
+        return {
+          summary: r.summary
+            ? `Built ${r.summary.nodes} nodes, ${r.summary.edges} edges — valid`
+            : 'Flow validated',
+          details,
+        }
+      }
+      return {
+        summary: r.issueCount
+          ? `Found ${r.issueCount} issue${r.issueCount > 1 ? 's' : ''} — fixing...`
+          : r.error
+          ? `Error: ${r.error}`
+          : undefined,
+        details,
+      }
     default:
-      return undefined
+      return { details }
+  }
+}
+
+/** Back-compat shim for callers that only need the string summary. */
+export function buildToolSummary(toolName: string, result: unknown): string | undefined {
+  return buildToolStepPayload(toolName, result).summary
+}
+
+/** Build a NodeBrief from a raw node (for tool return details). */
+export function nodeBrief(node: { type?: string; data?: any } | null | undefined): NodeBrief | null {
+  if (!node) return null
+  return {
+    type: friendlyNodeType(node.type),
+    label: (node.data as any)?.label,
+    preview: previewFromData(node.data),
   }
 }
 

@@ -8,7 +8,7 @@ import { validateGeneratedFlow } from "@/utils/flow-validator"
 import type { Platform, TemplateResolver } from "@/types"
 import type { GenerateFlowRequest, GenerateFlowResponse } from "./generate-flow"
 import type { StreamEvent } from "./generate-flow"
-import { buildToolSummary } from "./generate-flow"
+import { buildToolStepPayload } from "./generate-flow"
 
 /**
  * Streaming create mode: uses streamText() with a build_and_validate tool.
@@ -51,6 +51,17 @@ export async function executeCreateModeStreaming(
               finalWarnings = build.warnings
               finalDebugData = { rawPlan: flowPlan, validationPassed: true }
 
+              // Emit flow_ready immediately so the canvas can apply the flow
+              // in parallel with the rest of the text streaming, instead of
+              // waiting for the final 'result' event at end of stream.
+              emit({
+                type: 'flow_ready',
+                flowData: finalFlowData,
+                action: 'create',
+                warnings: finalWarnings.length > 0 ? finalWarnings : undefined,
+                debugData: finalDebugData,
+              })
+
               return {
                 success: true,
                 summary: {
@@ -90,8 +101,14 @@ export async function executeCreateModeStreaming(
     },
     experimental_onToolCallFinish: ({ toolCall, ...rest }) => {
       const output = 'output' in rest && rest.success ? rest.output : undefined
-      const summary = buildToolSummary(toolCall.toolName, output)
-      emit({ type: 'tool_step', tool: toolCall.toolName, status: 'done', summary })
+      const payload = buildToolStepPayload(toolCall.toolName, output)
+      emit({
+        type: 'tool_step',
+        tool: toolCall.toolName,
+        status: 'done',
+        summary: payload.summary,
+        details: payload.details,
+      })
     },
 
     onChunk: ({ chunk }) => {

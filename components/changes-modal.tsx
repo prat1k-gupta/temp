@@ -24,7 +24,8 @@ import {
   Trash2,
   Copy,
   Layers,
-  List
+  List,
+  Sparkles,
 } from "lucide-react"
 import type { FlowChange } from "@/types"
 
@@ -261,6 +262,15 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
                               >
                                 {getChangeTypeLabel(change.type)}
                               </Badge>
+                              {change.source === "ai" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs border-primary/40 bg-primary/10 text-primary gap-1"
+                                >
+                                  <Sparkles className="h-3 w-3" />
+                                  AI
+                                </Badge>
+                              )}
                               <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
                                 {formatTimestamp(change.timestamp)}
                               </span>
@@ -359,6 +369,15 @@ export function ChangesModal({ changes, children, open: controlledOpen, onOpenCh
                             >
                               {getChangeTypeLabel(change.type)}
                             </Badge>
+                            {change.source === "ai" && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 h-[18px] border-primary/40 bg-primary/10 text-primary gap-1"
+                              >
+                                <Sparkles className="h-2.5 w-2.5" />
+                                AI
+                              </Badge>
+                            )}
                             <span className="text-[11px] text-muted-foreground/50">
                               {formatTimestamp(change.timestamp)}
                             </span>

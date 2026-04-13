@@ -52,6 +52,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Sparkles,
 } from "lucide-react"
 import { toast } from "sonner"
 import { logout } from "@/lib/auth"
@@ -143,6 +144,8 @@ interface FlowHeaderProps {
   isFlowGraphPanelOpen?: boolean
   onToggleFlowGraph?: () => void
   isSaving?: boolean
+  isAIChatOpen?: boolean
+  onToggleAIChat?: () => void
 }
 
 export function FlowHeader({
@@ -196,6 +199,8 @@ export function FlowHeader({
   isFlowGraphPanelOpen,
   onToggleFlowGraph,
   isSaving,
+  isAIChatOpen,
+  onToggleAIChat,
 }: FlowHeaderProps) {
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false)
@@ -324,6 +329,21 @@ export function FlowHeader({
           </ToggleGroup>
 
           <div className="h-5 w-px bg-border mx-1" />
+
+          {/* AI Toggle Button */}
+          {onToggleAIChat && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleAIChat}
+              className={cn("gap-1.5 cursor-pointer", isAIChatOpen && "bg-primary/10 text-primary")}
+              aria-label="Toggle AI chat panel"
+              aria-pressed={isAIChatOpen}
+            >
+              <Sparkles className="w-4 h-4" />
+              AI
+            </Button>
+          )}
 
           {/* Publish Button */}
           <PublishModal

@@ -153,7 +153,40 @@ export function buildEditFlowFromPlan(
       }
 
       const baseType = existingNode.type || ""
+      const baseNodeType = getBaseNodeType(baseType)
       const data = contentToNodeData(update.content, baseType)
+
+      // Normalize choice field to match the existing node type:
+      //   - quickReply/list node should never end up with both buttons + options
+      //   - if AI sent `content.options` for a quickReply (wrong field), move to buttons
+      //   - if AI sent `content.buttons` for a list, move to options
+      // createButtonData/createOptionData produce different ID prefixes but preserving
+      // IDs by index below handles the migration cleanly.
+      if (baseNodeType === "quickReply" && data.options && !data.buttons) {
+        const options = data.options as Array<{ text?: string; label?: string; id?: string }>
+        data.buttons = options.map((opt, i): ButtonData => ({
+          text: opt.text || opt.label || `Option ${i + 1}`,
+          id: opt.id || `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        }))
+        delete data.options
+        warnings.push(`nodeUpdate "${update.nodeId}": AI used options field for quickReply — coerced to buttons`)
+      } else if (baseNodeType === "list" && data.buttons && !data.options) {
+        const buttons = data.buttons as Array<{ text?: string; label?: string; id?: string }>
+        data.options = buttons.map((btn, i): OptionData => ({
+          text: btn.text || btn.label || `Option ${i + 1}`,
+          id: btn.id || `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        }))
+        delete data.buttons
+        warnings.push(`nodeUpdate "${update.nodeId}": AI used buttons field for interactiveList — coerced to options`)
+      } else if (data.buttons && data.options) {
+        // Both set — pick the canonical field for the node type and drop the other
+        if (baseNodeType === "quickReply") {
+          delete data.options
+        } else if (baseNodeType === "list") {
+          delete data.buttons
+        }
+        warnings.push(`nodeUpdate "${update.nodeId}": AI sent both buttons and options — kept the canonical field for ${baseNodeType}`)
+      }
 
       // Preserve existing button IDs where possible (match by index position)
       if (data.buttons && existingNode.data.buttons) {
@@ -177,7 +210,6 @@ export function buildEditFlowFromPlan(
       }
 
       // Auto-convert quickReply → interactiveList if nodeUpdate pushes buttons over the limit
-      const baseNodeType = getBaseNodeType(baseType)
       if (baseNodeType === "quickReply" && data.buttons) {
         const buttons = data.buttons as ButtonData[]
         const conversion = shouldConvertToList(buttons.length, platform)
@@ -461,11 +493,23 @@ export function buildEditFlowFromPlan(
       const sourceExists = allNodes.some(n => n.id === newEdge.source)
       const targetExists = allNodes.some(n => n.id === newEdge.target)
       if (!sourceExists || !targetExists) {
-        console.warn(`[buildEditFlow] Skipping addEdge: source "${newEdge.source}" or target "${newEdge.target}" not found`)
+        const missing: string[] = []
+        if (!sourceExists) missing.push(`source "${newEdge.source}"`)
+        if (!targetExists) missing.push(`target "${newEdge.target}"`)
+        console.warn(`[buildEditFlow] Skipping addEdge: ${missing.join(" and ")} not found`)
+        warnings.push(
+          `addEdge ${newEdge.source} → ${newEdge.target} skipped: ${missing.join(" and ")} not found. ` +
+          `IDs assigned to newly-created nodes (from chains) are NOT derived from removed node IDs — ` +
+          `they are generated fresh. To fan-in multiple existing nodes to a new node you CANNOT reference ` +
+          `the new node by ID in addEdges until it exists. Use either (a) one chain per fan-in source with ` +
+          `attachTo set and connectTo pointing at the shared target, or (b) nodeUpdates with newType to ` +
+          `change an existing node in place so its ID and incoming edges are preserved.`
+        )
         continue
       }
       if (newEdge.source === newEdge.target) {
         console.warn(`[buildEditFlow] Skipping self-loop addEdge: ${newEdge.source} → ${newEdge.target}`)
+        warnings.push(`addEdge ${newEdge.source} → ${newEdge.target} skipped: self-loops are not allowed.`)
         continue
       }
 

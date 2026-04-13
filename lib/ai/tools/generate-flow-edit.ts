@@ -9,8 +9,15 @@ import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { collectFlowVariablesRich } from "@/utils/flow-variables"
 import type { Node, Edge } from "@xyflow/react"
 import type { TemplateAIMetadata, TemplateResolver } from "@/types"
-import type { GenerateFlowRequest, GenerateFlowResponse, StreamEvent } from "./generate-flow"
-import { buildToolSummary } from "./generate-flow"
+import type {
+  GenerateFlowRequest,
+  GenerateFlowResponse,
+  NodeBrief,
+  StreamEvent,
+  ToolStepDetails,
+  UpdateBrief,
+} from "./generate-flow"
+import { buildToolStepPayload, nodeBrief } from "./generate-flow"
 
 /**
  * Convert nodeUpdates (partial updates) to full Node objects by merging with existing nodes.
@@ -132,7 +139,20 @@ export async function executeEditModeStreaming(
 ): Promise<void> {
   const existingNodes = request.existingFlow?.nodes || []
   const existingEdges = request.existingFlow?.edges || []
+  // `finalEditResult` is whatever the latest apply_edit produced (may be
+  // invalid — it gets rejected later by validate_result). `validatedEditResult`
+  // is only set when validate_result confirms the current finalEditResult
+  // passes validation. The end-of-stream `result` event MUST gate on
+  // validatedEditResult, not finalEditResult — otherwise an apply → validate
+  // fail → give up sequence would ship the unvalidated state to the canvas.
   let finalEditResult: BuildEditFlowResult | null = null as BuildEditFlowResult | null
+  let validatedEditResult: BuildEditFlowResult | null = null as BuildEditFlowResult | null
+  // Tracks whether the current validatedEditResult has already been shipped
+  // to the client via flow_ready. Reset on every apply_edit so a fresh edit
+  // can re-emit; guards against the AI calling validate_result twice in a
+  // row with the same successful state (which would otherwise re-apply the
+  // edit to the canvas and double-track every change).
+  let flowReadyEmittedForResult: BuildEditFlowResult | null = null
   let finalTemplateMetadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata } | null = null
 
   const result = streamText({
@@ -140,10 +160,19 @@ export async function executeEditModeStreaming(
     system: systemPrompt,
     prompt: userPrompt,
     tools: createEditTools(existingNodes, existingEdges, request, templateResolver, {
-      setEditResult: (r) => { finalEditResult = r },
+      setEditResult: (r) => {
+        finalEditResult = r
+        // New apply_edit invalidates any prior validation and clears the
+        // flow_ready dedupe key.
+        validatedEditResult = null
+        flowReadyEmittedForResult = null
+      },
+      setValidatedEditResult: (r) => { validatedEditResult = r },
+      markFlowReadyEmitted: (r) => { flowReadyEmittedForResult = r },
+      hasFlowReadyBeenEmittedFor: (r) => flowReadyEmittedForResult === r,
       setTemplateMetadata: (m) => { finalTemplateMetadata = m },
       getEditResult: () => finalEditResult,
-    }, request.toolContext),
+    }, request.toolContext, emit),
     stopWhen: stepCountIs(12),
     temperature: 0.3,
     experimental_onToolCallStart: ({ toolCall }) => {
@@ -151,8 +180,14 @@ export async function executeEditModeStreaming(
     },
     experimental_onToolCallFinish: ({ toolCall, ...rest }) => {
       const output = 'output' in rest && rest.success ? rest.output : undefined
-      const summary = buildToolSummary(toolCall.toolName, output)
-      emit({ type: 'tool_step', tool: toolCall.toolName, status: 'done', summary })
+      const payload = buildToolStepPayload(toolCall.toolName, output)
+      emit({
+        type: 'tool_step',
+        tool: toolCall.toolName,
+        status: 'done',
+        summary: payload.summary,
+        details: payload.details,
+      })
     },
     onChunk: ({ chunk }) => {
       if (chunk.type === 'text-delta') {
@@ -193,7 +228,14 @@ export async function executeEditModeStreaming(
     return
   }
 
-  if (!finalEditResult) {
+  // Gate the final result event on VALIDATED state, not merely applied state.
+  // If the AI ran apply_edit and then gave up without a passing validate_result
+  // (or hit the step budget mid-fix), we must NOT ship that unvalidated editResult
+  // to the canvas. validatedEditResult is only set inside validate_result's
+  // execute on success, so its presence means "the AI's latest state is known
+  // good". If it's null, send a message-only result — the AI's explanatory
+  // text still reaches the user, but the canvas stays untouched.
+  if (!validatedEditResult) {
     emit({
       type: 'result',
       data: {
@@ -204,27 +246,33 @@ export async function executeEditModeStreaming(
     return
   }
 
-  const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes)
+  const updatedNodes = applyNodeUpdates(validatedEditResult.nodeUpdates, existingNodes)
 
   emit({
     type: 'result',
     data: {
       message: aiMessage,
       updates: {
-        nodes: [...updatedNodes, ...finalEditResult.newNodes],
-        edges: finalEditResult.newEdges,
-        removeNodeIds: finalEditResult.removeNodeIds.length > 0 ? finalEditResult.removeNodeIds : undefined,
-        removeEdges: finalEditResult.removeEdges.length > 0 ? finalEditResult.removeEdges : undefined,
-        positionShifts: finalEditResult.positionShifts.length > 0 ? finalEditResult.positionShifts : undefined,
+        nodes: [...updatedNodes, ...validatedEditResult.newNodes],
+        edges: validatedEditResult.newEdges,
+        removeNodeIds: validatedEditResult.removeNodeIds.length > 0 ? validatedEditResult.removeNodeIds : undefined,
+        removeEdges: validatedEditResult.removeEdges.length > 0 ? validatedEditResult.removeEdges : undefined,
+        positionShifts: validatedEditResult.positionShifts.length > 0 ? validatedEditResult.positionShifts : undefined,
       },
       action: "edit",
-      warnings: finalEditResult.warnings.length > 0 ? finalEditResult.warnings : undefined,
+      warnings: validatedEditResult.warnings.length > 0 ? validatedEditResult.warnings : undefined,
     },
   })
 }
 
 interface EditToolCallbacks {
   setEditResult: (result: BuildEditFlowResult | null) => void
+  /** Called from validate_result only when validation passes. Gates the final result event. */
+  setValidatedEditResult?: (result: BuildEditFlowResult | null) => void
+  /** Record that flow_ready has been emitted for a specific editResult — dedupes repeat validate_result calls. */
+  markFlowReadyEmitted?: (result: BuildEditFlowResult) => void
+  /** Check whether flow_ready already fired for this editResult. */
+  hasFlowReadyBeenEmittedFor?: (result: BuildEditFlowResult) => boolean
   setTemplateMetadata: (metadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata }) => void
   getEditResult: () => BuildEditFlowResult | null
 }
@@ -274,6 +322,7 @@ function createEditTools(
   templateResolver: TemplateResolver | undefined,
   callbacks: EditToolCallbacks,
   toolContext?: GenerateFlowRequest['toolContext'],
+  emit?: (event: StreamEvent) => void,
 ) {
   const baseTools = {
     get_node_details: tool({
@@ -347,7 +396,6 @@ function createEditTools(
             existingEdges,
             templateResolver
           )
-          callbacks.setEditResult(editResult)
 
           console.log("[generate-flow] Tool apply_edit result:", {
             newNodes: editResult.newNodes.length,
@@ -358,6 +406,55 @@ function createEditTools(
             warnings: editResult.warnings,
           })
 
+          // If the builder had to skip any addEdge (unresolved source/target,
+          // self-loop, etc.), fail the whole apply_edit so the AI sees the
+          // specific reason and retries with a correct plan. This prevents
+          // a half-applied edit from reaching validate_result / the canvas.
+          const skipWarnings = editResult.warnings.filter(w => w.startsWith("addEdge "))
+          if (skipWarnings.length > 0) {
+            // Roll back: don't store this editResult as the canonical one.
+            // Since callbacks.setEditResult replaces the stored result, we
+            // simply don't store it — the previous (possibly null) state
+            // remains the canonical editResult.
+            console.warn("[generate-flow] Tool apply_edit has skipped edges, failing:", skipWarnings)
+            return {
+              success: false,
+              error: `apply_edit plan was malformed — ${skipWarnings.length} edge(s) could not be applied`,
+              skippedEdges: skipWarnings,
+              suggestion: "Fix the plan and call apply_edit again. Common causes: (1) referencing a newly-created node by a made-up ID in addEdges (new node IDs are generated by the builder, not derived from removed node IDs); (2) referencing a node that was removed in the same plan; (3) self-referencing edges. To change a node's type while preserving its incoming edges, consider updating content in place via nodeUpdates rather than remove + chain.",
+            }
+          }
+
+          callbacks.setEditResult(editResult)
+
+          // NOTE: Do not emit flow_ready here. The canvas should only commit
+          // after validate_result has confirmed the edit has no structural
+          // issues — otherwise a broken intermediate state paints first and
+          // the AI's follow-up fix paints over it. validate_result is the
+          // one that emits flow_ready on success.
+
+          // Build chat-UI rendering details — who was added/removed/updated,
+          // with short previews — so the tool step card shows concrete changes
+          // instead of just counts.
+          const addedBriefs = editResult.newNodes
+            .map(n => nodeBrief(n))
+            .filter(Boolean) as NodeBrief[]
+          const removedBriefs = editResult.removeNodeIds
+            .map(id => existingNodes.find(n => n.id === id))
+            .map(n => nodeBrief(n))
+            .filter(Boolean) as NodeBrief[]
+          const updatedBriefs: UpdateBrief[] = editResult.nodeUpdates.map(u => {
+            const existing = existingNodes.find(n => n.id === u.nodeId)
+            return {
+              type: (u.newType || existing?.type || 'node')
+                .replace(/^whatsapp|^instagram|^web|^line/i, '')
+                .replace(/([A-Z])/g, ' $1')
+                .trim() || 'node',
+              label: (existing?.data as any)?.label,
+              fields: Object.keys(u.data || {}),
+            }
+          })
+
           return {
             success: true,
             summary: {
@@ -366,6 +463,14 @@ function createEditTools(
               nodeUpdates: editResult.nodeUpdates.length,
               removedNodes: editResult.removeNodeIds.length,
               removedEdges: editResult.removeEdges.length,
+            },
+            details: {
+              kind: 'edit' as const,
+              added: addedBriefs,
+              removed: removedBriefs,
+              updated: updatedBriefs,
+              edgesAdded: editResult.newEdges.length,
+              edgesRemoved: editResult.removeEdges.length,
             },
             warnings: editResult.warnings.length > 0 ? editResult.warnings : undefined,
           }
@@ -380,7 +485,7 @@ function createEditTools(
     }),
 
     validate_result: tool({
-      description: 'Validate the current state of the flow after applying edits. Call this after apply_edit to check for issues like orphaned nodes, missing connections, undefined variables, or button limit violations. If issues are found, call apply_edit again to fix them.',
+      description: 'Validate the current state of the flow after applying edits. Call this after apply_edit to check for issues like orphaned nodes, missing connections, undefined variables, or button limit violations. If issues are found, call apply_edit again to fix them. On success, the canvas is committed with the validated edit.',
       inputSchema: z.object({}),
       execute: async () => {
         const finalEditResult = callbacks.getEditResult()
@@ -400,15 +505,67 @@ function createEditTools(
         console.log("[generate-flow] Tool validate_result:", {
           valid: validation.isValid,
           issueCount: validation.issues.length,
-          issues: validation.issues.map(i => i.type),
+          issues: validation.issues.map(i => ({ type: i.type, nodeId: i.nodeId, detail: i.detail })),
         })
+
+        // On success, mark the editResult as validated (gates the final
+        // result event) and emit flow_ready so the canvas commits in
+        // parallel with the rest of the text streaming. If validation
+        // failed, do NOT mark validated and do NOT emit — the broken
+        // state must not reach the canvas; the AI will call apply_edit
+        // again to fix the issues.
+        //
+        // Dedupe: if the AI calls validate_result twice in a row with
+        // the same successful editResult, emit flow_ready only once —
+        // otherwise handleUpdateFlow re-tracks every change and the
+        // stagger animation plays twice.
+        if (validation.isValid) {
+          callbacks.setValidatedEditResult?.(finalEditResult)
+          const alreadyEmitted = callbacks.hasFlowReadyBeenEmittedFor?.(finalEditResult) ?? false
+          if (emit && !alreadyEmitted) {
+            const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes)
+            emit({
+              type: 'flow_ready',
+              updates: {
+                nodes: [...updatedNodes, ...finalEditResult.newNodes],
+                edges: finalEditResult.newEdges,
+                removeNodeIds: finalEditResult.removeNodeIds.length > 0 ? finalEditResult.removeNodeIds : undefined,
+                removeEdges: finalEditResult.removeEdges.length > 0 ? finalEditResult.removeEdges : undefined,
+                positionShifts: finalEditResult.positionShifts.length > 0 ? finalEditResult.positionShifts : undefined,
+              },
+              action: 'edit',
+              warnings: finalEditResult.warnings.length > 0 ? finalEditResult.warnings : undefined,
+            })
+            callbacks.markFlowReadyEmitted?.(finalEditResult)
+          }
+        }
+
+        // Issues sent back to the LLM: include the hint so the AI knows
+        // how to fix. Issues for UI details: short detail only, no hint,
+        // no remediation noise.
+        const issuesForAI = validation.issues.map(i => ({
+          type: i.type,
+          nodeId: i.nodeId,
+          nodeLabel: i.nodeLabel,
+          detail: i.hint ? `${i.detail} ${i.hint}` : i.detail,
+        }))
+        const issuesForUI = validation.issues.map(i => ({
+          type: i.type,
+          nodeLabel: i.nodeLabel,
+          detail: i.detail,
+        }))
         return {
           valid: validation.isValid,
           issueCount: validation.issues.length,
-          issues: validation.issues.map(i => ({ type: i.type, nodeId: i.nodeId, detail: i.detail })),
+          issues: issuesForAI,
           suggestion: validation.isValid
             ? "Flow looks good — no issues found."
             : "Issues found. Call apply_edit to fix them, then validate_result again.",
+          details: {
+            kind: 'validate' as const,
+            valid: validation.isValid,
+            issues: issuesForUI,
+          } satisfies ToolStepDetails,
         }
       },
     }),

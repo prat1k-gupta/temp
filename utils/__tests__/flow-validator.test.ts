@@ -249,7 +249,7 @@ describe("validateGeneratedFlow", () => {
     const edges = [makeEdge("1", "ft1")]
     const result = validateGeneratedFlow(nodes, edges, "whatsapp")
     expect(result.issues.some(i => i.type === "empty_content" && i.nodeId === "ft1")).toBe(true)
-    expect(result.issues.some(i => i.detail.includes("Use a specific type instead"))).toBe(true)
+    expect(result.issues.some(i => (i.hint || "").includes("Use a specific type instead"))).toBe(true)
   })
 
   it("accepts flowTemplate with internalNodes", () => {

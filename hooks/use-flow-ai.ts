@@ -214,6 +214,9 @@ export function useFlowAI({
 
         withEditTracking()
 
+        // Create-mode apply is AI-originated — stamp subsequent changes.
+        changeTracker.setSource('ai')
+
         const existingStartNode = nodes.find((n) => n.id === "1" && n.type === "start")
         const processedNodes = processAiNodes(flowData.nodes, platform, existingStartNode)
         const nodeIds = new Set(processedNodes.map((n) => n.id))
@@ -301,6 +304,8 @@ export function useFlowAI({
         undoResumeTracking?.()
         console.error("[handleApplyFlow] Error:", error)
         toast.error("Failed to apply AI-generated flow. Please try again.")
+      } finally {
+        changeTracker.setSource('user')
       }
     },
     [nodes, edges, platform, setNodes, setEdges, withEditTracking, updateDraftChanges, undoSnapshot, undoResumeTracking, abortAIStaggerRef]
@@ -322,6 +327,12 @@ export function useFlowAI({
 
         withEditTracking()
 
+        // Mark every change produced from here as AI-originated so the
+        // changes modal (and anything else reading FlowChange.source) can
+        // attribute it correctly. Reset in the finally so a runtime error
+        // doesn't leak the AI source into subsequent user actions.
+        changeTracker.setSource('ai')
+
         console.log("[handleUpdateFlow] Applying updates:", {
           removeNodeIds: updates.removeNodeIds?.length || 0,
           removeEdges: updates.removeEdges?.length || 0,
@@ -333,18 +344,50 @@ export function useFlowAI({
         const idsToRemove = new Set(updates.removeNodeIds || [])
         if (idsToRemove.size > 0) {
           console.log("[handleUpdateFlow] Removing nodes:", [...idsToRemove])
+          // Track each removed node BEFORE setNodes filters it out
+          for (const id of idsToRemove) {
+            const doomed = nodes.find((n) => n.id === id)
+            if (doomed) {
+              changeTracker.trackNodeDelete(
+                id,
+                doomed.type,
+                (doomed.data as any)?.label as string | undefined,
+              )
+            }
+          }
           setNodes((nds) => nds.filter((n) => !idsToRemove.has(n.id)))
         }
 
         if (idsToRemove.size > 0 || (updates.removeEdges && updates.removeEdges.length > 0)) {
           console.log("[handleUpdateFlow] Removing edges:", updates.removeEdges || [])
+          // Track every edge that will be removed — either cascaded from a
+          // removed node or explicitly listed in updates.removeEdges — so the
+          // publish flow sees the deletion. Uses the live `edges` snapshot
+          // from closure (before setEdges drops them).
+          const normalizeHandle = (h: string | undefined | null) =>
+            !h || h === "default" ? undefined : h
+          for (const e of edges) {
+            const cascaded = idsToRemove.has(e.source) || idsToRemove.has(e.target)
+            const explicit =
+              updates.removeEdges?.some((re) => {
+                const reHandle = normalizeHandle(re.sourceHandle)
+                const eHandle = normalizeHandle(e.sourceHandle)
+                return (
+                  re.source === e.source &&
+                  re.target === e.target &&
+                  (!reHandle || reHandle === eHandle)
+                )
+              }) || false
+            if (cascaded || explicit) {
+              changeTracker.trackEdgeDelete(e.id, e.source, e.target)
+            }
+          }
           setEdges((eds) => {
             let filtered = eds
             if (idsToRemove.size > 0) {
               filtered = filtered.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target))
             }
             if (updates.removeEdges && updates.removeEdges.length > 0) {
-              const normalizeHandle = (h: string | undefined | null) => (!h || h === "default") ? undefined : h
               filtered = filtered.filter((e) =>
                 !updates.removeEdges!.some(
                   (re) => {
@@ -388,6 +431,8 @@ export function useFlowAI({
             const baseType = getBaseNodeType(aiNode.type)
 
             if (existingNode) {
+              const oldData = existingNode.data
+              const oldType = existingNode.type
               const transformedAiData = transformAiNodeData(aiNode.data || {}, baseType)
               const updatedData = { ...existingNode.data, ...transformedAiData }
 
@@ -409,6 +454,16 @@ export function useFlowAI({
               }
 
               updatedExisting.push({ ...existingNode, ...aiNode, type: effectiveType, data: updatedData })
+              // Track the update so publish flow sees it. trackNodeUpdate
+              // short-circuits internally if JSON(oldData) === JSON(newData),
+              // so no-op updates don't produce empty entries.
+              changeTracker.trackNodeUpdate(
+                existingNode.id,
+                oldData,
+                updatedData,
+                oldType,
+                effectiveType,
+              )
             } else {
               try {
                 const nodePlatform = (aiNode.data?.platform as Platform) || platform
@@ -689,6 +744,10 @@ export function useFlowAI({
         undoResumeTracking?.()
         console.error("[handleUpdateFlow] Error:", error)
         toast.error("Failed to apply updates. Please try again.")
+      } finally {
+        // Always reset — otherwise a thrown error would leave the tracker
+        // stuck in 'ai' mode and attribute subsequent user actions wrongly.
+        changeTracker.setSource('user')
       }
     },
     [nodes, edges, platform, flowId, setNodes, setEdges, withEditTracking, updateDraftChanges, setCurrentFlow, undoSnapshot, undoResumeTracking, abortAIStaggerRef]

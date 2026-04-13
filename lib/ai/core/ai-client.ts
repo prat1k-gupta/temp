@@ -174,17 +174,6 @@ Respond with raw JSON only.`
     }
   }
 
-  /**
-   * Stream text generation (for future use)
-   */
-  async *generateStream(params: {
-    systemPrompt: string
-    userPrompt: string
-  }): AsyncGenerator<string> {
-    // TODO: Implement streaming when needed
-    const response = await this.generate(params)
-    yield response.text
-  }
 }
 
 // Singleton instance

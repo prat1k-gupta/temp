@@ -11,6 +11,7 @@ import { useAccounts } from "@/hooks/queries"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { toast } from "sonner"
 import type { TemplateAIMetadata } from "@/types"
+import type { StreamEvent } from "@/lib/ai/tools/generate-flow"
 
 interface Message {
   id: string
@@ -29,6 +30,8 @@ interface Message {
     description: string
     aiMetadata: TemplateAIMetadata
   }
+  toolSteps?: Array<{ tool: string; status: 'running' | 'done'; summary?: string }>
+  isStreaming?: boolean
 }
 
 interface AIAssistantProps {
@@ -72,6 +75,23 @@ function renderNodePreview(
       )}
     </div>
   )
+}
+
+function formatToolStep(step: { tool: string; status: 'running' | 'done'; summary?: string }): string {
+  if (step.status === 'done' && step.summary) return step.summary
+
+  switch (step.tool) {
+    case 'get_node_details': return 'Inspecting node...'
+    case 'get_node_connections': return 'Checking connections...'
+    case 'apply_edit': return step.status === 'done' ? 'Changes applied' : 'Applying changes...'
+    case 'validate_result': return step.status === 'done' ? 'Validation complete' : 'Validating flow...'
+    case 'save_as_template': return step.status === 'done' ? 'Template saved' : 'Saving as template...'
+    case 'trigger_flow': return step.status === 'done' ? 'Test sent' : 'Sending test message...'
+    case 'list_variables': return step.status === 'done' ? 'Variables listed' : 'Listing variables...'
+    case 'undo_last': return step.status === 'done' ? 'Changes reverted' : 'Reverting changes...'
+    case 'build_and_validate': return step.status === 'done' ? 'Flow validated' : 'Building and validating flow...'
+    default: return step.tool.replace(/_/g, ' ')
+  }
 }
 
 export function AIAssistant({
@@ -125,7 +145,7 @@ export function AIAssistant({
         const stored = localStorage.getItem(`${CHAT_STORAGE_PREFIX}${flowId}`)
         if (stored) {
           const parsed = JSON.parse(stored)
-          return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+          return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp), isStreaming: false }))
         }
       } catch { /* ignore corrupted storage */ }
     }
@@ -141,16 +161,29 @@ export function AIAssistant({
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const inputBarRef = useRef<HTMLDivElement>(null)
+  const streamingMessageIdRef = useRef<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const scrollThrottleRef = useRef<number | null>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
+
+  const updateStreamingMessage = useCallback((updater: (msg: Message) => Message) => {
+    // Capture the id synchronously — the ref may be cleared before React flushes the setMessages callback
+    const targetId = streamingMessageIdRef.current
+    if (!targetId) return
+    setMessages(prev => prev.map(m =>
+      m.id === targetId ? updater(m) : m
+    ))
+  }, [])
 
   // Persist messages to localStorage (strip large data fields)
   useEffect(() => {
-    if (flowId && typeof window !== "undefined" && messages.length > 1) {
-      const toStore = messages.map(({ flowData, updates, debugData, ...rest }) => rest)
-      try {
-        localStorage.setItem(`${CHAT_STORAGE_PREFIX}${flowId}`, JSON.stringify(toStore))
-      } catch { /* storage full — ignore */ }
-    }
+    if (!flowId || typeof window === "undefined" || messages.length <= 1) return
+    // Don't persist during streaming — too many updates
+    if (messages.some(m => m.isStreaming)) return
+    const toStore = messages.map(({ flowData, updates, debugData, ...rest }) => rest)
+    try {
+      localStorage.setItem(`${CHAT_STORAGE_PREFIX}${flowId}`, JSON.stringify(toStore))
+    } catch { /* storage full — ignore */ }
   }, [messages, flowId])
 
   const scrollToBottom = useCallback(() => {
@@ -159,10 +192,22 @@ export function AIAssistant({
     }
   }, [])
 
-  // Auto-scroll on new messages or loading state change
+  // Auto-scroll on new messages or loading state change (throttled to rAF)
   useEffect(() => {
-    scrollToBottom()
+    if (scrollThrottleRef.current) return
+    scrollThrottleRef.current = requestAnimationFrame(() => {
+      scrollToBottom()
+      scrollThrottleRef.current = null
+    })
   }, [messages, isLoading, scrollToBottom])
+
+  useEffect(() => {
+    return () => {
+      if (scrollThrottleRef.current) {
+        cancelAnimationFrame(scrollThrottleRef.current)
+      }
+    }
+  }, [])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -262,6 +307,9 @@ export function AIAssistant({
 
     if (!isFocused) setIsFocused(true)
 
+    // Abort any in-progress stream
+    abortControllerRef.current?.abort()
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -275,6 +323,8 @@ export function AIAssistant({
     lastFailedInputRef.current = null
 
     try {
+      abortControllerRef.current = new AbortController()
+
       const token = getAccessToken()
       const response = await fetch("/api/ai/flow-assistant", {
         method: "POST",
@@ -282,6 +332,7 @@ export function AIAssistant({
           "Content-Type": "application/json",
           ...(token ? { "Authorization": `Bearer ${token}` } : {}),
         },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           message: userMessage.content,
           platform,
@@ -301,54 +352,200 @@ export function AIAssistant({
         }),
       })
 
+      // Pre-stream errors return JSON (not NDJSON)
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || `Request failed (${response.status})`)
       }
 
-      const data = await response.json()
-      const meta = { warnings: data.warnings, debugData: data.debugData, userPrompt: userMessage.content }
-      const isAutoApplyCreate = data.action === "create" && data.flowData && onApplyFlow
-      const isAutoApplyEdit = data.updates && onUpdateFlow
+      // Read NDJSON stream
+      // Placeholder is created lazily on first streaming event (tool_step or text_delta).
+      // If the first event is `result` (create mode), the final message is added directly.
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const msgId = (Date.now() + 1).toString()
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.message || "I've processed your request.",
-        timestamp: new Date(),
-        flowData: data.flowData,
-        updates: data.updates,
-        isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
-        warnings: data.warnings,
-        debugData: data.debugData,
-        templateMetadata: data.templateMetadata,
+      // Ensure the streaming placeholder exists (creates it on first call)
+      const ensurePlaceholder = () => {
+        if (streamingMessageIdRef.current) return // already created
+        streamingMessageIdRef.current = msgId
+        setMessages(prev => [...prev, {
+          id: msgId,
+          role: "assistant" as const,
+          content: "",
+          timestamp: new Date(),
+          toolSteps: [],
+          isStreaming: true,
+        }])
+        setIsLoading(false) // remove thinking dots
       }
 
-      setMessages((prev) => [...prev, assistantMessage])
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      if (isAutoApplyCreate) {
-        setIsFocused(false)
-        onApplyFlow(data.flowData, meta)
-      } else if (isAutoApplyEdit) {
-        onUpdateFlow(data.updates, meta)
-      } else if (data.flowData) {
-        setIsFocused(true)
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          let event: StreamEvent
+          try {
+            event = JSON.parse(line)
+          } catch {
+            console.warn("[AI Assistant] Failed to parse stream event:", line)
+            continue
+          }
+
+          switch (event.type) {
+            case 'tool_step':
+              ensurePlaceholder()
+              updateStreamingMessage(msg => ({
+                ...msg,
+                toolSteps: event.status === 'running'
+                  ? [...(msg.toolSteps || []), { tool: event.tool, status: 'running' as const }]
+                  : (msg.toolSteps || []).map(s =>
+                      s.tool === event.tool && s.status === 'running'
+                        ? { ...s, status: 'done' as const, summary: event.summary }
+                        : s
+                    ),
+              }))
+              break
+
+            case 'text_delta':
+              ensurePlaceholder()
+              updateStreamingMessage(msg => ({
+                ...msg,
+                content: msg.content + event.delta,
+              }))
+              break
+
+            case 'result': {
+              const data = event.data
+              const meta = { warnings: data.warnings, debugData: data.debugData, userPrompt: userMessage.content }
+              const isAutoApplyCreate = data.action === 'create' && data.flowData && onApplyFlow
+              const isAutoApplyEdit = data.updates && onUpdateFlow
+
+              if (streamingMessageIdRef.current) {
+                // Edit mode: placeholder exists with streamed content — finalize it
+                updateStreamingMessage(msg => ({
+                  ...msg,
+                  content: msg.content || data.message || "Done.",
+                  flowData: data.flowData,
+                  updates: data.updates,
+                  isStreaming: false,
+                  isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
+                  warnings: data.warnings,
+                  debugData: data.debugData,
+                  templateMetadata: data.templateMetadata,
+                }))
+              } else {
+                // Create mode: no placeholder — add final message directly (old behavior)
+                setIsLoading(false)
+                const finalMessage: Message = {
+                  id: msgId,
+                  role: "assistant",
+                  content: data.message || "I've processed your request.",
+                  timestamp: new Date(),
+                  flowData: data.flowData,
+                  updates: data.updates,
+                  isAutoApplied: !!(isAutoApplyCreate || isAutoApplyEdit),
+                  warnings: data.warnings,
+                  debugData: data.debugData,
+                  templateMetadata: data.templateMetadata,
+                }
+                setMessages(prev => [...prev, finalMessage])
+              }
+              streamingMessageIdRef.current = null
+
+              // Apply to canvas
+              if (isAutoApplyCreate) {
+                setIsFocused(false)
+                onApplyFlow!(data.flowData!, meta)
+              } else if (isAutoApplyEdit) {
+                onUpdateFlow!(data.updates!, meta)
+              } else if (data.flowData) {
+                setIsFocused(true)
+              }
+              break
+            }
+
+            case 'error':
+              if (streamingMessageIdRef.current) {
+                updateStreamingMessage(msg => ({
+                  ...msg,
+                  content: msg.content || event.message || "Sorry, something went wrong.",
+                  isStreaming: false,
+                  isError: true,
+                }))
+              } else {
+                setIsLoading(false)
+                setMessages(prev => [...prev, {
+                  id: msgId,
+                  role: "assistant" as const,
+                  content: event.message || "Sorry, something went wrong.",
+                  timestamp: new Date(),
+                  isError: true,
+                }])
+              }
+              lastFailedInputRef.current = userMessage.content
+              streamingMessageIdRef.current = null
+              break
+          }
+        }
       }
+
+      streamingMessageIdRef.current = null
     } catch (error) {
+      // Handle abort (user cancelled or component unmounted)
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        updateStreamingMessage(msg => ({
+          ...msg,
+          content: msg.content || "Request cancelled.",
+          isStreaming: false,
+        }))
+        streamingMessageIdRef.current = null
+        setIsLoading(false)
+        return
+      }
+
       console.error("[AI Assistant] Error:", error)
       lastFailedInputRef.current = userMessage.content
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: error instanceof Error && error.message !== "Request failed (500)"
-          ? `Something went wrong: ${error.message}`
-          : "Sorry, I encountered an error. Please try again.",
-        timestamp: new Date(),
-        isError: true,
+
+      // If we already created a streaming message, update it with the error
+      if (streamingMessageIdRef.current) {
+        updateStreamingMessage(msg => ({
+          ...msg,
+          content: error instanceof Error && error.message !== "Request failed (500)"
+            ? `Something went wrong: ${error.message}`
+            : "Sorry, I encountered an error. Please try again.",
+          isStreaming: false,
+          isError: true,
+        }))
+        streamingMessageIdRef.current = null
+      } else {
+        // Error happened before streaming started (during fetch)
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: error instanceof Error && error.message !== "Request failed (500)"
+            ? `Something went wrong: ${error.message}`
+            : "Sorry, I encountered an error. Please try again.",
+          timestamp: new Date(),
+          isError: true,
+        }
+        setMessages((prev) => [...prev, errorMessage])
       }
-      setMessages((prev) => [...prev, errorMessage])
     } finally {
       setIsLoading(false)
+      abortControllerRef.current = null
+      // Safety net: ensure no message stays stuck in streaming state
+      if (streamingMessageIdRef.current) {
+        updateStreamingMessage(msg => msg.isStreaming ? { ...msg, isStreaming: false } : msg)
+        streamingMessageIdRef.current = null
+      }
     }
   }
 
@@ -430,7 +627,28 @@ export function AIAssistant({
                           : "bg-muted/70 text-foreground"
                     }`}
                   >
-                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
+                    {/* Tool step indicators */}
+                    {message.toolSteps && message.toolSteps.length > 0 && (
+                      <div className="space-y-0.5 mb-1.5">
+                        {message.toolSteps.map((step, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+                            {step.status === 'running'
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin flex-shrink-0" />
+                              : <Check className="w-2.5 h-2.5 text-success flex-shrink-0" />
+                            }
+                            <span>{formatToolStep(step)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(message.content || !message.isStreaming) && (
+                      <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                        {message.content}
+                        {message.isStreaming && message.content && (
+                          <span className="inline-block w-1.5 h-3.5 bg-foreground/50 ml-0.5 animate-pulse rounded-sm" />
+                        )}
+                      </p>
+                    )}
 
                     {/* Compact preview of changes */}
                     {message.role === "assistant" && (message.flowData || message.updates) && (

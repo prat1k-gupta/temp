@@ -6,8 +6,9 @@ import { editFlowPlanSchema, flowPlanSchema } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { buildSystemPrompt, buildUserPrompt } from "./flow-prompts"
-import { executeEditMode, applyNodeUpdates } from "./generate-flow-edit"
+import { executeEditMode, executeEditModeStreaming, applyNodeUpdates } from "./generate-flow-edit"
 import { executeCreateMode } from "./generate-flow-create"
+import { executeCreateModeStreaming } from "./generate-flow-create-streaming"
 
 export interface GenerateFlowRequest {
   prompt: string
@@ -51,6 +52,42 @@ export interface GenerateFlowResponse {
   }
   warnings?: string[]
   debugData?: Record<string, unknown>
+}
+
+export type StreamEvent =
+  | { type: 'tool_step'; tool: string; status: 'running' | 'done'; summary?: string }
+  | { type: 'text_delta'; delta: string }
+  | { type: 'result'; data: GenerateFlowResponse }
+  | { type: 'error'; message: string }
+
+export function buildToolSummary(toolName: string, result: unknown): string | undefined {
+  const r = result as Record<string, any> | null
+  if (!r) return undefined
+  switch (toolName) {
+    case 'apply_edit':
+      if (r.summary) {
+        const parts: string[] = []
+        if (r.summary.newNodes > 0) parts.push(`${r.summary.newNodes} new nodes`)
+        if (r.summary.nodeUpdates > 0) parts.push(`${r.summary.nodeUpdates} updates`)
+        if (r.summary.removedNodes > 0) parts.push(`${r.summary.removedNodes} removals`)
+        if (r.summary.newEdges > 0) parts.push(`${r.summary.newEdges} new edges`)
+        if (r.summary.removedEdges > 0) parts.push(`${r.summary.removedEdges} edge removals`)
+        return parts.join(', ') || undefined
+      }
+      return r.error ? `Error: ${r.error}` : undefined
+    case 'validate_result':
+      if (r.valid) return 'No issues found'
+      return r.issueCount ? `Found ${r.issueCount} issue${r.issueCount > 1 ? 's' : ''}` : undefined
+    case 'get_node_details':
+      return r.type ? `Inspected ${r.type} node` : undefined
+    case 'get_node_connections':
+      return r.nodeId ? `Checked connections for ${r.nodeId}` : undefined
+    case 'build_and_validate':
+      if (r.success) return r.summary ? `Built ${r.summary.nodes} nodes, ${r.summary.edges} edges — valid` : 'Flow validated'
+      return r.issueCount ? `Found ${r.issueCount} issue${r.issueCount > 1 ? 's' : ''} — fixing...` : r.error ? `Error: ${r.error}` : undefined
+    default:
+      return undefined
+  }
 }
 
 /**
@@ -195,5 +232,56 @@ async function handleFallback(
   return {
     message: content || "I've processed your request. Please review the flow.",
     action: isEditRequest ? "edit" as const : "suggest" as const,
+  }
+}
+
+/**
+ * Streaming variant of generateFlow.
+ * Edit mode streams tool steps + text deltas via emit callback.
+ * Create mode runs blocking then emits a single result event.
+ */
+export async function generateFlowStreaming(
+  request: GenerateFlowRequest,
+  emit: (event: StreamEvent) => void,
+): Promise<void> {
+  try {
+    const aiClient = getAIClient()
+    const platformGuidelines = getPlatformGuidelines(request.platform)
+
+    const hasRealNodes = request.existingFlow &&
+      request.existingFlow.nodes.some(n => n.type !== "start")
+    const hasEdges = request.existingFlow &&
+      request.existingFlow.edges.length > 0
+    const isEditRequest = Boolean(hasRealNodes || hasEdges)
+
+    const templateResolver: TemplateResolver | undefined = request.userTemplateData
+      ? (id: string) => {
+          const tpl = request.userTemplateData!.find(t => t.id === id)
+          return tpl ? { nodes: tpl.nodes, edges: tpl.edges } : null
+        }
+      : undefined
+
+    const systemPrompt = buildSystemPrompt(request, platformGuidelines, isEditRequest)
+    const userPrompt = buildUserPrompt(request, isEditRequest)
+
+    try {
+      if (isEditRequest) {
+        await executeEditModeStreaming(request, systemPrompt, userPrompt, templateResolver, emit)
+      } else {
+        await executeCreateModeStreaming(request, systemPrompt, userPrompt, templateResolver, emit)
+      }
+    } catch (error) {
+      console.warn("[generate-flow] Streaming failed, falling back:", error)
+      const fallback = await handleFallback(aiClient, request, systemPrompt, userPrompt, isEditRequest, templateResolver)
+      if (fallback) {
+        emit({ type: 'result', data: fallback })
+      } else {
+        emit({ type: 'error', message: 'Flow generation failed after fallback' })
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error("[generate-flow] Streaming error:", error)
+    emit({ type: 'error', message })
   }
 }

@@ -1,4 +1,13 @@
 import { getSimplifiedNodeDocumentation, getNodeSelectionRules, getNodeDependencies, getUserTemplateDocumentation } from "../core/node-documentation"
+
+/**
+ * Strip broken Unicode surrogates that cause Anthropic API "no low surrogate" errors.
+ * High surrogates (0xD800-0xDBFF) without a following low surrogate (0xDC00-0xDFFF) are removed.
+ */
+function sanitizeUnicode(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+}
 import { buildFlowGraphString } from "./flow-graph-string"
 import { collectFlowVariables } from "@/utils/flow-variables"
 import type { GenerateFlowRequest } from "./generate-flow"
@@ -37,7 +46,7 @@ ${isEdit ? getEditInstructions() : getCreateInstructions()}
 **${isEdit ? "apply_edit Tool Input Format (examples)" : "Response Format (JSON)"}:**
 ${isEdit ? getEditResponseFormat() : getCreateResponseFormat()}`
 
-  return prompt
+  return sanitizeUnicode(prompt)
 }
 
 export function buildUserPrompt(request: GenerateFlowRequest, isEdit: boolean): string {
@@ -95,7 +104,7 @@ Platform: ${request.platform}`
     })
   }
 
-  return prompt
+  return sanitizeUnicode(prompt)
 }
 
 function getCreateInstructions(): string {

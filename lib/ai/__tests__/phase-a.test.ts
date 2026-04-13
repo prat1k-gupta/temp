@@ -113,7 +113,7 @@ describe('Phase A: AI Platform', () => {
       expect(src).toContain("request.headers.get('Authorization')")
       expect(src).toContain('toolContext:')
       expect(src).toContain('publishedFlowId,')
-      expect(src).toContain('waAccountId,')
+      expect(src).toContain('waAccountName,')
       expect(src).toContain('authHeader,')
     })
 

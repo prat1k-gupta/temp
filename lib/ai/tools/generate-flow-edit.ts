@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { generateText, tool, stepCountIs } from "ai"
+import { generateText, streamText, tool, stepCountIs } from "ai"
 import { getModel } from "../core/models"
 import { editFlowPlanSchema } from "@/types/flow-plan"
 import type { EditFlowPlan } from "@/types/flow-plan"
@@ -9,7 +9,8 @@ import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { collectFlowVariablesRich } from "@/utils/flow-variables"
 import type { Node, Edge } from "@xyflow/react"
 import type { TemplateAIMetadata, TemplateResolver } from "@/types"
-import type { GenerateFlowRequest, GenerateFlowResponse } from "./generate-flow"
+import type { GenerateFlowRequest, GenerateFlowResponse, StreamEvent } from "./generate-flow"
+import { buildToolSummary } from "./generate-flow"
 
 /**
  * Convert nodeUpdates (partial updates) to full Node objects by merging with existing nodes.
@@ -116,6 +117,110 @@ export async function executeEditMode(
       })),
     },
   }
+}
+
+/**
+ * Streaming variant of executeEditMode.
+ * Uses streamText() and emits StreamEvents for tool steps, text deltas, and the final result.
+ */
+export async function executeEditModeStreaming(
+  request: GenerateFlowRequest,
+  systemPrompt: string,
+  userPrompt: string,
+  templateResolver: TemplateResolver | undefined,
+  emit: (event: StreamEvent) => void,
+): Promise<void> {
+  const existingNodes = request.existingFlow?.nodes || []
+  const existingEdges = request.existingFlow?.edges || []
+  let finalEditResult: BuildEditFlowResult | null = null as BuildEditFlowResult | null
+  let finalTemplateMetadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata } | null = null
+
+  const result = streamText({
+    model: getModel('claude-sonnet'),
+    system: systemPrompt,
+    prompt: userPrompt,
+    tools: createEditTools(existingNodes, existingEdges, request, templateResolver, {
+      setEditResult: (r) => { finalEditResult = r },
+      setTemplateMetadata: (m) => { finalTemplateMetadata = m },
+      getEditResult: () => finalEditResult,
+    }, request.toolContext),
+    stopWhen: stepCountIs(12),
+    temperature: 0.3,
+    experimental_onToolCallStart: ({ toolCall }) => {
+      emit({ type: 'tool_step', tool: toolCall.toolName, status: 'running' })
+    },
+    experimental_onToolCallFinish: ({ toolCall, ...rest }) => {
+      const output = 'output' in rest && rest.success ? rest.output : undefined
+      const summary = buildToolSummary(toolCall.toolName, output)
+      emit({ type: 'tool_step', tool: toolCall.toolName, status: 'done', summary })
+    },
+    onChunk: ({ chunk }) => {
+      if (chunk.type === 'text-delta') {
+        emit({ type: 'text_delta', delta: chunk.text })
+      }
+    },
+    onStepFinish: (step) => {
+      const calls = step.toolCalls?.map((tc: any) => ({
+        tool: tc.toolName,
+        input: tc.toolName === 'apply_edit'
+          ? { chains: tc.args?.chains?.length, nodeUpdates: tc.args?.nodeUpdates?.length, removeNodeIds: tc.args?.removeNodeIds?.length, addEdges: tc.args?.addEdges?.length }
+          : tc.args,
+      }))
+      const results = step.toolResults?.map((tr: any) => ({
+        tool: tr.toolName,
+        result: tr.result,
+      }))
+      console.log(`[generate-flow] Streaming step (${step.finishReason}):`, JSON.stringify({ calls, results }, null, 2))
+    },
+  })
+
+  const aiMessage = await result.text || 'Flow updated successfully'
+
+  console.log("[generate-flow] Streaming tool-use edit completed:", {
+    hasEditResult: !!finalEditResult,
+    message: aiMessage.substring(0, 100),
+  })
+
+  if (finalTemplateMetadata) {
+    emit({
+      type: 'result',
+      data: {
+        message: aiMessage,
+        action: "save_as_template",
+        templateMetadata: finalTemplateMetadata,
+      },
+    })
+    return
+  }
+
+  if (!finalEditResult) {
+    emit({
+      type: 'result',
+      data: {
+        message: aiMessage,
+        action: "edit",
+      },
+    })
+    return
+  }
+
+  const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes)
+
+  emit({
+    type: 'result',
+    data: {
+      message: aiMessage,
+      updates: {
+        nodes: [...updatedNodes, ...finalEditResult.newNodes],
+        edges: finalEditResult.newEdges,
+        removeNodeIds: finalEditResult.removeNodeIds.length > 0 ? finalEditResult.removeNodeIds : undefined,
+        removeEdges: finalEditResult.removeEdges.length > 0 ? finalEditResult.removeEdges : undefined,
+        positionShifts: finalEditResult.positionShifts.length > 0 ? finalEditResult.positionShifts : undefined,
+      },
+      action: "edit",
+      warnings: finalEditResult.warnings.length > 0 ? finalEditResult.warnings : undefined,
+    },
+  })
 }
 
 interface EditToolCallbacks {

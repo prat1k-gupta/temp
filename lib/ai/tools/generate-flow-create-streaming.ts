@@ -1,14 +1,15 @@
 import { z } from "zod"
-import { streamText, tool, stepCountIs } from "ai"
+import { streamText, smoothStream, tool, stepCountIs } from "ai"
+import type { Node } from "@xyflow/react"
 import { getModel } from "../core/models"
 import { flowPlanSchema } from "@/types/flow-plan"
 import type { FlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import type { Platform, TemplateResolver } from "@/types"
-import type { GenerateFlowRequest, GenerateFlowResponse } from "./generate-flow"
+import type { GenerateFlowRequest, GenerateFlowResponse, NodeBrief } from "./generate-flow"
 import type { StreamEvent } from "./generate-flow"
-import { buildToolStepPayload } from "./generate-flow"
+import { buildToolStepPayload, nodeBrief } from "./generate-flow"
 
 /**
  * Streaming create mode: uses streamText() with a build_and_validate tool.
@@ -62,11 +63,29 @@ export async function executeCreateModeStreaming(
                 debugData: finalDebugData,
               })
 
+              // Build per-node briefs so the chat UI can render the same
+              // granular chip list the EDIT path (apply_edit) emits. Without
+              // `details` the UI collapses to a one-line summary, which made
+              // the CREATE path feel less transparent than EDIT for the same
+              // kind of work.
+              const addedBriefs = build.nodes
+                .filter((n: Node) => n.type !== 'start')
+                .map((n: Node) => nodeBrief(n))
+                .filter(Boolean) as NodeBrief[]
+
               return {
                 success: true,
                 summary: {
                   nodes: build.nodes.length,
                   edges: build.edges.length,
+                },
+                details: {
+                  kind: 'edit' as const,
+                  added: addedBriefs,
+                  removed: [],
+                  updated: [],
+                  edgesAdded: build.edges.length,
+                  edgesRemoved: 0,
                 },
                 message: 'Flow built and validated successfully. No issues found.',
               }
@@ -95,6 +114,11 @@ export async function executeCreateModeStreaming(
     },
     stopWhen: stepCountIs(8),
     temperature: 0.7,
+    // Character-level smoothing — see generate-flow-edit.ts for rationale.
+    experimental_transform: smoothStream({
+      delayInMs: 8,
+      chunking: (buffer: string) => buffer[0] ?? null,
+    }),
 
     experimental_onToolCallStart: ({ toolCall }) => {
       emit({ type: 'tool_step', tool: toolCall.toolName, status: 'running' })

@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { deduplicateEdges } from "../generate-flow"
 import { buildCorrectionPrompt } from "../generate-flow-create"
-import type { Edge } from "@xyflow/react"
+import { recoverUnvalidatedEdit, EDIT_STEP_BUDGET } from "../generate-flow-edit"
+import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
+import type { Edge, Node } from "@xyflow/react"
 import type { FlowIssue } from "@/utils/flow-validator"
 
 function edge(
@@ -144,3 +146,95 @@ describe("buildCorrectionPrompt", () => {
 
 // save-as-template intent detection is now handled by the AI via the save_as_template tool
 // in EDIT mode (no regex needed). The AI naturally understands user intent and calls the tool.
+
+describe("recoverUnvalidatedEdit", () => {
+  const startNode: Node = {
+    id: "start-1",
+    type: "start",
+    position: { x: 0, y: 0 },
+    data: { label: "Start" },
+  }
+
+  function makeEditResult(overrides: Partial<BuildEditFlowResult> = {}): BuildEditFlowResult {
+    return {
+      newNodes: [],
+      newEdges: [],
+      nodeOrder: [],
+      nodeUpdates: [],
+      removeNodeIds: [],
+      removeEdges: [],
+      positionShifts: [],
+      warnings: [],
+      ...overrides,
+    }
+  }
+
+  it("returns null when there's nothing to recover", () => {
+    expect(recoverUnvalidatedEdit(null, [startNode], [], "whatsapp")).toBeNull()
+  })
+
+  it("recovers a valid edit that wired a message node off the start", () => {
+    const newMsg: Node = {
+      id: "msg-1",
+      type: "whatsappMessage",
+      position: { x: 200, y: 0 },
+      data: { label: "Welcome", text: "Hi there" },
+    }
+    const newEdge: Edge = { id: "e-start-msg", source: "start-1", target: "msg-1" }
+    const editResult = makeEditResult({ newNodes: [newMsg], newEdges: [newEdge] })
+
+    const recovered = recoverUnvalidatedEdit(editResult, [startNode], [], "whatsapp")
+    expect(recovered).toBe(editResult)
+  })
+
+  it("refuses to recover an edit that leaves the new node orphaned", () => {
+    // New node added but no edge connecting it — validator flags orphaned_node.
+    const orphanMsg: Node = {
+      id: "msg-orphan",
+      type: "whatsappMessage",
+      position: { x: 200, y: 0 },
+      data: { label: "Orphan", text: "Nobody points at me" },
+    }
+    const editResult = makeEditResult({ newNodes: [orphanMsg] })
+
+    const recovered = recoverUnvalidatedEdit(editResult, [startNode], [], "whatsapp")
+    expect(recovered).toBeNull()
+  })
+
+  it("applies nodeUpdates to existing nodes before validating", () => {
+    // An existing message node with a label is updated via nodeUpdates.
+    // Recovery must merge the update into the current state before asking
+    // the validator, otherwise a valid post-update state could be rejected
+    // based on the pre-update data.
+    const existingMsg: Node = {
+      id: "msg-existing",
+      type: "whatsappMessage",
+      position: { x: 200, y: 0 },
+      data: { label: "Welcome", text: "Hi there" },
+    }
+    const existingEdge: Edge = { id: "e-start-msg", source: "start-1", target: "msg-existing" }
+    const editResult = makeEditResult({
+      nodeUpdates: [{ nodeId: "msg-existing", data: { text: "Updated greeting" } }],
+    })
+
+    const recovered = recoverUnvalidatedEdit(
+      editResult,
+      [startNode, existingMsg],
+      [existingEdge],
+      "whatsapp",
+    )
+    expect(recovered).toBe(editResult)
+  })
+})
+
+describe("EDIT_STEP_BUDGET", () => {
+  it("stays within the sanctioned range", () => {
+    // Floor: 20 is the minimum that covers observed failure traces where a
+    // complex flow hits apply_edit → validate → fix → apply_edit → ... and
+    // runs out of steps before the final validate_result (12 shipped the bug).
+    // Ceiling: 30 so nobody "fixes" a future model flake by bumping it to 50,
+    // which would give a misbehaving model room to loop and burn tokens.
+    expect(EDIT_STEP_BUDGET).toBeGreaterThanOrEqual(20)
+    expect(EDIT_STEP_BUDGET).toBeLessThanOrEqual(30)
+  })
+})

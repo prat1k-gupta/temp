@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { generateText, streamText, tool, stepCountIs } from "ai"
+import { generateText, streamText, smoothStream, tool, stepCountIs } from "ai"
 import { getModel } from "../core/models"
 import { editFlowPlanSchema } from "@/types/flow-plan"
 import type { EditFlowPlan } from "@/types/flow-plan"
@@ -8,7 +8,7 @@ import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { collectFlowVariablesRich } from "@/utils/flow-variables"
 import type { Node, Edge } from "@xyflow/react"
-import type { TemplateAIMetadata, TemplateResolver } from "@/types"
+import type { Platform, TemplateAIMetadata, TemplateResolver } from "@/types"
 import type {
   GenerateFlowRequest,
   GenerateFlowResponse,
@@ -18,6 +18,42 @@ import type {
   UpdateBrief,
 } from "./generate-flow"
 import { buildToolStepPayload, nodeBrief } from "./generate-flow"
+
+/**
+ * Max tool-use steps the edit-mode agent may take before the runtime forces
+ * a stop. Complex multi-branch edits often need one or two apply_edit retries
+ * plus a validate_result call — too-tight a budget silently drops the final
+ * apply_edit before it can be validated. See `recoverUnvalidatedEdit` for the
+ * fail-safe that catches that edge case.
+ */
+export const EDIT_STEP_BUDGET = 20
+
+/**
+ * Fail-safe for the streaming edit path when the AI ran apply_edit but never
+ * got to validate_result (usually because it exhausted the step budget mid-
+ * iteration). Runs the same validation validate_result would have run, and
+ * returns the editResult if it's actually valid. Returns null if there's
+ * nothing to recover or the unvalidated state doesn't pass — in which case
+ * the canvas correctly stays untouched.
+ *
+ * IMPORTANT: this MUST mirror what validate_result does exactly, otherwise
+ * recovered edits could ship with subtly different semantics than they
+ * would have through the normal path. We achieve that by calling the same
+ * buildCurrentNodes/buildCurrentEdges helpers validate_result uses.
+ */
+export function recoverUnvalidatedEdit(
+  finalEditResult: BuildEditFlowResult | null,
+  existingNodes: Node[],
+  existingEdges: Edge[],
+  platform: Platform,
+): BuildEditFlowResult | null {
+  if (!finalEditResult) return null
+
+  const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult)
+  const filteredEdges = buildCurrentEdges(existingEdges, finalEditResult)
+  const validation = validateGeneratedFlow(filteredNodes, filteredEdges, platform)
+  return validation.isValid ? finalEditResult : null
+}
 
 /**
  * Convert nodeUpdates (partial updates) to full Node objects by merging with existing nodes.
@@ -61,7 +97,7 @@ export async function executeEditMode(
       setTemplateMetadata: (m) => { finalTemplateMetadata = m },
       getEditResult: () => finalEditResult,
     }, request.toolContext),
-    stopWhen: stepCountIs(12),
+    stopWhen: stepCountIs(EDIT_STEP_BUDGET),
     temperature: 0.3,
     onStepFinish: (step) => {
       const calls = step.toolCalls?.map((tc: any) => ({
@@ -173,8 +209,19 @@ export async function executeEditModeStreaming(
       setTemplateMetadata: (m) => { finalTemplateMetadata = m },
       getEditResult: () => finalEditResult,
     }, request.toolContext, emit),
-    stopWhen: stepCountIs(12),
+    stopWhen: stepCountIs(EDIT_STEP_BUDGET),
     temperature: 0.3,
+    // Character-level smoothing. The model emits text in bursts (sometimes
+    // several words at once, sometimes a whole sentence); forwarding raw
+    // deltas makes the chat "pop" instead of flow. smoothStream buffers and
+    // drains one character at a time — feels like live typing. Delay tuned
+    // so natural model speed still dictates pacing: when the model is slow,
+    // the buffer is empty and the transform is a no-op; when the model
+    // bursts, we stretch the burst across ~8ms per char.
+    experimental_transform: smoothStream({
+      delayInMs: 8,
+      chunking: (buffer: string) => buffer[0] ?? null,
+    }),
     experimental_onToolCallStart: ({ toolCall }) => {
       emit({ type: 'tool_step', tool: toolCall.toolName, status: 'running' })
     },
@@ -233,8 +280,29 @@ export async function executeEditModeStreaming(
   // (or hit the step budget mid-fix), we must NOT ship that unvalidated editResult
   // to the canvas. validatedEditResult is only set inside validate_result's
   // execute on success, so its presence means "the AI's latest state is known
-  // good". If it's null, send a message-only result — the AI's explanatory
-  // text still reaches the user, but the canvas stays untouched.
+  // good".
+  //
+  // Fail-safe: if the AI exhausted its step budget with a successful
+  // apply_edit still sitting in finalEditResult (common cause: a complex flow
+  // that needed multiple apply_edit retries to reach a valid plan), run the
+  // same validation validate_result would have run and adopt the result if it
+  // passes. This keeps the canvas gate strict (broken intermediate states
+  // still never ship) while preventing silent data loss on truncation.
+  if (!validatedEditResult && finalEditResult) {
+    const recovered = recoverUnvalidatedEdit(
+      finalEditResult,
+      existingNodes,
+      existingEdges,
+      request.platform,
+    )
+    if (recovered) {
+      console.warn("[generate-flow] Recovered unvalidated apply_edit after step-budget exhaustion")
+      validatedEditResult = recovered
+    }
+  }
+
+  // If still nothing validated, send a message-only result — the AI's
+  // explanatory text still reaches the user, but the canvas stays untouched.
   if (!validatedEditResult) {
     emit({
       type: 'result',

@@ -861,6 +861,24 @@ export function AIAssistant({
                     )
                   })}
 
+                  {/* Trailing working indicator — keeps the chat alive while the
+                      AI is still streaming after at least one part has already
+                      rendered. Without this, a message that starts with a text
+                      chunk (narration) then pauses to call a tool sits silent
+                      for several seconds and feels hung. Suppressed when the
+                      last part is already a running tool (it has its own
+                      shimmer) or when streaming is done. */}
+                  {msg.role === 'assistant' && msg.isStreaming && parts.length > 0 && (() => {
+                    const last = parts[parts.length - 1]
+                    if (last.type === 'tool' && last.status === 'running') return null
+                    return (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <Shimmer>Working…</Shimmer>
+                      </div>
+                    )
+                  })()}
+
                   {/* Inline actions row — retry / apply */}
                   {showActions && (
                     <div className="flex items-center gap-2">

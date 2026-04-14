@@ -6,6 +6,27 @@ import { jwtVerify } from "jose"
 const PUBLIC_ROUTES = ["/login", "/register", "/api/auth"]
 const STATIC_PREFIXES = ["/_next", "/app/_next", "/favicon.ico"]
 
+// API routes get JSON 401 instead of an HTML redirect so client-side fetch
+// handlers can detect the failure, refresh the token, and retry. Without
+// this, a streaming endpoint like /api/ai/flow-assistant follows the 302
+// to /login, parses the HTML response as NDJSON garbage, and hangs the
+// chat UI on "Thinking…" forever.
+function rejectAuth(request: NextRequest, pathname: string): NextResponse {
+  if (pathname.startsWith("/api/")) {
+    const response = NextResponse.json(
+      { error: "Unauthorized", code: "TOKEN_EXPIRED" },
+      { status: 401 }
+    )
+    response.cookies.delete("mf_access_token")
+    return response
+  }
+  const loginUrl = new URL("/login", request.url)
+  loginUrl.searchParams.set("redirect", pathname)
+  const response = NextResponse.redirect(loginUrl)
+  response.cookies.delete("mf_access_token")
+  return response
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -21,9 +42,7 @@ export async function middleware(request: NextRequest) {
   // Check auth cookie
   const token = request.cookies.get("mf_access_token")?.value
   if (!token) {
-    const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("redirect", pathname)
-    return NextResponse.redirect(loginUrl)
+    return rejectAuth(request, pathname)
   }
 
   // Verify JWT signature
@@ -40,12 +59,7 @@ export async function middleware(request: NextRequest) {
       { issuer: "fschat" }
     )
   } catch {
-    // Invalid/expired JWT — clear cookie and redirect to login
-    const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("redirect", pathname)
-    const response = NextResponse.redirect(loginUrl)
-    response.cookies.delete("mf_access_token")
-    return response
+    return rejectAuth(request, pathname)
   }
 
   return NextResponse.next()

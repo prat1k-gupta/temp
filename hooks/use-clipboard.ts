@@ -228,7 +228,7 @@ export function useClipboard({
         return
       }
 
-      // Toggle AI chat panel: Cmd+I (not guarded — still fires inside inputs)
+      // Cmd+I toggles the AI chat panel — guarded so it doesn't self-close when focus is inside the panel itself.
       if (isCtrlOrCmd && event.key.toLowerCase() === "i" && !guarded) {
         event.preventDefault()
         onToggleAIChat?.()

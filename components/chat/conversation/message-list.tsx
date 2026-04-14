@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useMessages, useSendMessage, useReaction } from "@/hooks/queries/use-messages"
 import { messageKeys } from "@/hooks/queries/query-keys"
-import { getAccessToken } from "@/lib/auth"
+import { apiClient } from "@/lib/api-client"
 import { MessageBubble } from "./message-bubble"
 import { MessageActions } from "./message-actions"
 import type { Message, MessageType, MessagesResponse } from "@/types/chat"
@@ -40,21 +40,20 @@ export function MessageList({ contactId, isAtBottom, onAtBottomChange, onReply }
   // Flatten pages — API returns messages in chronological order (ASC)
   const messages: Message[] = data?.pages.flatMap((p) => p.messages) ?? []
 
-  // Fetch blob URLs for media messages
+  // Fetch blob URLs for media messages.
+  // apiClient.raw routes /api/media/* directly to fs-whatsapp (it's not
+  // in LOCAL_PREFIXES) and inherits 401 → refresh → retry, so media
+  // doesn't disappear from the chat panel after the access token expires.
   useEffect(() => {
-    const baseUrl = process.env.NEXT_PUBLIC_FS_WHATSAPP_URL || ""
-
     for (const msg of messages) {
       if (!MEDIA_TYPES.has(msg.message_type)) continue
       if (blobCacheRef.current.has(msg.id)) continue
       if (inFlightRef.current.has(msg.id)) continue
 
       inFlightRef.current.add(msg.id)
-      const token = getAccessToken()
 
-      fetch(`${baseUrl}/api/media/${msg.id}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      apiClient
+        .raw(`/api/media/${msg.id}`)
         .then((res) => {
           if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`)
           return res.blob()

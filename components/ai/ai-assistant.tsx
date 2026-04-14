@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, Loader2, RotateCcw, Check } from "lucide-react"
 import { getAllTemplates, getFlow } from "@/utils/flow-storage"
-import { getAccessToken } from "@/lib/auth"
+import { apiClient } from "@/lib/api-client"
 import { useAccounts } from "@/hooks/queries"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import type { TemplateAIMetadata } from "@/types"
@@ -46,7 +46,24 @@ type MessagePart =
       status: 'running' | 'done'
       summary?: string
       details?: ToolStepDetails
+      // Epoch ms when the tool entered running state. Used to enforce a
+      // minimum visible time on the running spinner so fast local CPU tools
+      // (apply_edit, validate_result) don't flip running → done before the
+      // browser paints.
+      runningAt?: number
+      // Synthetic per-invocation id — lets the done handler target the exact
+      // running call, not "the first running part that happens to have the
+      // same tool name." Matters when the AI calls the same tool twice in
+      // one turn (e.g. get_node_details on two nodes) and the done events
+      // are deferred past MIN_TOOL_VISIBLE_MS: without a callId match, the
+      // first applyDone flips every running row sharing the tool name.
+      callId?: number
     }
+
+// Minimum wall-clock time a running tool spinner should remain visible before
+// transitioning to done. Pure local tools can complete in <10ms so without
+// this the spinner never paints.
+const MIN_TOOL_VISIBLE_MS = 350
 
 interface Message {
   id: string
@@ -270,12 +287,16 @@ export function AIAssistant({
     try {
       abortControllerRef.current = new AbortController()
 
-      const token = getAccessToken()
-      const response = await fetch("/api/ai/flow-assistant", {
+      // apiClient.raw handles 401 by refreshing the token once and
+      // retrying transparently — same path as every other data fetch in
+      // the app. Without this, the 15-minute access token TTL would log
+      // users out of the chat the moment their session expired (every
+      // other feature stays logged in because they all go through
+      // apiClient and inherit the same refresh behavior).
+      const response = await apiClient.raw("/api/ai/flow-assistant", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
         },
         signal: abortControllerRef.current.signal,
         body: JSON.stringify({
@@ -310,6 +331,26 @@ export function AIAssistant({
       // Whether we've already applied the flow to the canvas via flow_ready.
       // Guards the final result event from double-applying.
       let flowAlreadyApplied = false
+      // Set true once a terminal 'result' or 'error' event is processed.
+      // If the reader exits via done: true with this still false, the
+      // server closed the stream without sending a terminal frame (route
+      // handler killed mid-execution, controller closed without emit, etc).
+      // We mark the placeholder errored so the UI doesn't sit on the
+      // "Thinking…" spinner forever — same symptom as the old auth bug,
+      // different cause.
+      let streamCompletedNormally = false
+      // Per-invocation callId counter so done events can match the exact
+      // running call they belong to. A FIFO queue per tool name tracks
+      // callId + startedAt for tools that are currently running; FIFO
+      // because running/done events are tightly paired per invocation.
+      let toolCallCounter = 0
+      const runningByTool = new Map<string, Array<{ callId: number; startedAt: number }>>()
+      // Capture the placeholder id once so deferred done callbacks don't
+      // depend on `streamingMessageIdRef.current` — the 'result' event
+      // nulls that ref before the MIN_TOOL_VISIBLE_MS delay elapses,
+      // which would silently drop the late done transition via
+      // `updateStreamingMessage`'s null-guard.
+      const targetMsgId = msgId
 
       while (true) {
         const { done, value } = await reader.read()
@@ -332,45 +373,103 @@ export function AIAssistant({
           switch (event.type) {
             case 'tool_step':
               if (event.status === 'running') {
-                // flushSync commits the React state synchronously, but the
-                // browser does not paint until this task yields. If the done
-                // event for the same tool arrives in the same chunk (pure
-                // local CPU tools like build_and_validate and apply_edit),
-                // we would overwrite running → done before paint, so the
-                // user never sees the spinner. Yield after the flush so the
-                // paint happens before we process the next line.
+                // flushSync commits the React state synchronously so the
+                // spinner is in state by the time the next event runs. A
+                // tiny task yield lets the browser paint the running state
+                // at least once — otherwise, for pure local CPU tools where
+                // running + done land in the same NDJSON chunk, the reader
+                // would flip running → done inside a single task and the
+                // spinner would never appear. The minimum visible time is
+                // enforced on the done side via MIN_TOOL_VISIBLE_MS, not
+                // via a blocking sleep here — that kept the reader pinned
+                // for hundreds of ms per tool call.
+                const startedAt = Date.now()
+                const callId = ++toolCallCounter
+                let queue = runningByTool.get(event.tool)
+                if (!queue) {
+                  queue = []
+                  runningByTool.set(event.tool, queue)
+                }
+                queue.push({ callId, startedAt })
                 flushSync(() => {
                   updateStreamingMessage(msg => ({
                     ...msg,
                     parts: [
                       ...(msg.parts || []),
-                      { type: 'tool' as const, tool: event.tool, status: 'running' as const },
+                      { type: 'tool' as const, tool: event.tool, status: 'running' as const, runningAt: startedAt, callId },
                     ],
                     toolSteps: [...(msg.toolSteps || []), { tool: event.tool, status: 'running' as const }],
                   }))
                 })
-                await new Promise((resolve) => setTimeout(resolve, 350))
+                await new Promise<void>((resolve) => setTimeout(resolve, 0))
               } else {
                 // event.details is part of the StreamEvent schema
                 const incomingDetails = event.details as ToolStepDetails | undefined
-                updateStreamingMessage(msg => ({
-                  ...msg,
-                  parts: (msg.parts || []).map((p) =>
-                    p.type === 'tool' && p.tool === event.tool && p.status === 'running'
-                      ? {
+                const toolName = event.tool
+                const doneSummary = event.summary
+                // FIFO-pop the oldest running call for this tool so
+                // running/done events pair up in order when the same tool
+                // is invoked multiple times in one turn.
+                const queue = runningByTool.get(toolName)
+                const record = queue?.shift()
+                if (queue && queue.length === 0) runningByTool.delete(toolName)
+                const startedAt = record?.startedAt ?? Date.now()
+                const matchedCallId = record?.callId
+                const elapsed = Date.now() - startedAt
+                const remaining = Math.max(0, MIN_TOOL_VISIBLE_MS - elapsed)
+                const applyDone = () => {
+                  // Target the message by captured id via setMessages
+                  // directly. updateStreamingMessage's null-guard would
+                  // drop this update if the 'result' event already nulled
+                  // streamingMessageIdRef.current.
+                  setMessages(prev => prev.map(m => {
+                    if (m.id !== targetMsgId) return m
+                    return {
+                      ...m,
+                      parts: (m.parts || []).map((p) => {
+                        if (p.type !== 'tool' || p.status !== 'running') return p
+                        // Match by callId when available; fall back to
+                        // tool-name match for safety (should never happen
+                        // because the running branch always records a
+                        // callId before any done arrives).
+                        if (matchedCallId != null) {
+                          if (p.callId !== matchedCallId) return p
+                        } else if (p.tool !== toolName) {
+                          return p
+                        }
+                        return {
                           ...p,
                           status: 'done' as const,
-                          summary: event.summary,
+                          summary: doneSummary,
                           details: incomingDetails,
                         }
-                      : p
-                  ),
-                  toolSteps: (msg.toolSteps || []).map(s =>
-                    s.tool === event.tool && s.status === 'running'
-                      ? { ...s, status: 'done' as const, summary: event.summary }
-                      : s
-                  ),
-                }))
+                      }),
+                      // toolSteps has no callId — match the first running
+                      // entry by tool name. Because running/done are
+                      // FIFO-paired per tool, this stays in lock-step with
+                      // the parts update above.
+                      toolSteps: (() => {
+                        let flipped = false
+                        return (m.toolSteps || []).map((s) => {
+                          if (flipped) return s
+                          if (s.tool === toolName && s.status === 'running') {
+                            flipped = true
+                            return { ...s, status: 'done' as const, summary: doneSummary }
+                          }
+                          return s
+                        })
+                      })(),
+                    }
+                  }))
+                }
+                if (remaining > 0) {
+                  // Defer the done transition off the reader loop so the
+                  // stream keeps processing events while the spinner stays
+                  // visible for the remaining delta.
+                  setTimeout(applyDone, remaining)
+                } else {
+                  applyDone()
+                }
               }
               break
 
@@ -435,6 +534,7 @@ export function AIAssistant({
                 templateMetadata: data.templateMetadata,
               }))
               streamingMessageIdRef.current = null
+              streamCompletedNormally = true
 
               // Apply to canvas only if flow_ready didn't already handle it
               if (!flowAlreadyApplied) {
@@ -456,9 +556,33 @@ export function AIAssistant({
               }))
               lastFailedInputRef.current = userMessage.content
               streamingMessageIdRef.current = null
+              streamCompletedNormally = true
               break
           }
         }
+      }
+
+      // Reader exited via done: true. If no terminal event was processed
+      // the stream closed without resolving the placeholder — mark it
+      // errored so the UI doesn't sit on the "Thinking…" spinner forever.
+      // Partial parts (text, tool steps) stay visible so the user can see
+      // what came through before the connection dropped.
+      if (!streamCompletedNormally) {
+        const targetMsgId = msgId
+        setMessages(prev => prev.map(m => {
+          if (m.id !== targetMsgId) return m
+          const hasContent = !!(m.content && m.content.length > 0)
+          const hasParts = !!(m.parts && m.parts.length > 0)
+          return {
+            ...m,
+            content: hasContent || hasParts
+              ? (m.content || "Connection closed before the response finished. Please try again.")
+              : "The response was cut off before it arrived. Please try again.",
+            isStreaming: false,
+            isError: true,
+          }
+        }))
+        lastFailedInputRef.current = userMessage.content
       }
 
       streamingMessageIdRef.current = null

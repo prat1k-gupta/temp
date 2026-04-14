@@ -760,6 +760,12 @@ export function useFlowAI({
         return
       }
 
+      // Belt-and-suspenders source attribution. handleUpdateFlow already sets
+      // source to 'ai' in its own try/finally, but wrapping the outer callback
+      // guarantees attribution even if a future refactor routes tracker calls
+      // outside handleUpdateFlow. Reset in finally so a thrown error cannot
+      // leave the tracker stuck in 'ai' mode.
+      changeTracker.setSource('ai')
       try {
         // Normalize to base node type
         let normalizedType = getBaseNodeType(suggestion.type)
@@ -861,6 +867,8 @@ export function useFlowAI({
       } catch (error) {
         console.error(`[onAcceptAISuggestion] Error creating suggested node ${suggestion.type}:`, error)
         toast.error(`Failed to add ${suggestion.type} node`)
+      } finally {
+        changeTracker.setSource('user')
       }
     },
     [selectedNode, platform, nodes, edges, handleUpdateFlow, clearSuggestions, setNodeToFocus]

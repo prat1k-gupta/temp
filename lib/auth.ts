@@ -1,3 +1,5 @@
+import { apiClient } from "./api-client"
+
 const ACCESS_TOKEN_KEY = "mf_access_token"
 const REFRESH_TOKEN_KEY = "mf_refresh_token"
 const USER_KEY = "mf_user"
@@ -91,24 +93,19 @@ export async function refreshAccessToken(): Promise<string> {
 /**
  * Fetch fresh user data from the backend.
  * Called on app load to ensure role and user data are current.
+ *
+ * Routes through apiClient.fetch so the request inherits 401 → refresh →
+ * retry. With raw fetch, an expired access token would silently return
+ * null and the caller couldn't tell "no session" from "expired session".
  */
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
-  const token = getAccessToken()
-  if (!token) return null
-
-  const fsWhatsappUrl = process.env.NEXT_PUBLIC_FS_WHATSAPP_URL
-  const baseUrl = fsWhatsappUrl || ""
+  if (!getAccessToken()) return null
 
   try {
-    const response = await fetch(`${baseUrl}/api/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!response.ok) return null
-    const json = await response.json()
-    // Unwrap fs-whatsapp envelope
-    const user = json?.data ?? json
+    const user = await apiClient.fetch<AuthUser>("/api/me")
+    if (!user) return null
     setUser(user)
-    return user as AuthUser
+    return user
   } catch {
     return null
   }

@@ -807,6 +807,44 @@ describe("buildEditFlowFromPlan — warnings", () => {
     const { warnings } = buildEditFlowFromPlan(editPlan, "web", [])
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings[0]).toContain("missing-node")
+    // The filter in generate-flow-edit.ts#apply_edit matches this exact
+    // prefix to trigger a rollback. Keep this assertion in sync with the
+    // filter; any rename here must update the filter, and vice versa.
+    expect(warnings[0].startsWith("nodeUpdate target ")).toBe(true)
+  })
+
+  it("emits nodeUpdate coercion warnings that do NOT match the skip-rollback prefix", () => {
+    // The builder coerces the AI's field shape (options↔buttons) for
+    // quickReply / interactiveList without failing the edit. These
+    // warnings are prefixed `nodeUpdate "<id>":` (with a colon), so the
+    // skip-rollback filter that matches `nodeUpdate target ` must NOT
+    // catch them. If this ever breaks, apply_edit would start rolling
+    // back perfectly-applied coercions and the AI loop would thrash.
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          question: "Pick one",
+          buttons: [{ text: "A", id: "btn-a" }],
+        },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Add two more buttons via the options field",
+      nodeUpdates: [
+        { nodeId: "qr-1", content: { options: ["A", "B", "C"] } },
+      ],
+    }
+    const { warnings } = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
+    const coercion = warnings.find((w) => w.includes("coerced to buttons"))
+    expect(coercion).toBeDefined()
+    expect(coercion!.startsWith("nodeUpdate target ")).toBe(false)
+    // Belt-and-suspenders: no coercion warning should ever start with
+    // the rollback prefix.
+    expect(warnings.every((w) => !w.startsWith("nodeUpdate target "))).toBe(true)
   })
 })
 

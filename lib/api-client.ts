@@ -4,6 +4,11 @@ import { getAccessToken, refreshAccessToken, clearAuth } from "./auth"
 const LOCAL_PREFIXES = ["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns", "/api/debug"]
 
 class ApiClient {
+  // Refresh dedup so a burst of parallel 401s only fires one refresh
+  // round-trip. Both `fetch<T>` (JSON path) and `raw` (streaming path)
+  // share the same primitive — without it, two consumers racing on an
+  // expired token would each call /api/auth/refresh and clobber each
+  // other's tokens.
   private isRefreshing = false
   private refreshPromise: Promise<string | null> | null = null
 
@@ -32,24 +37,41 @@ class ApiClient {
     return json
   }
 
-  async fetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+  /**
+   * Authenticated fetch returning the raw Response.
+   *
+   * Use this for streaming endpoints and other callers that need
+   * Response-level access (body as ReadableStream, custom content-type
+   * handling, etc.). The JSON path (`fetch<T>` / `get` / `post` / etc.)
+   * is built on top of this — both share the same auth + refresh + retry
+   * pipeline so there's a single source of truth for 401 handling.
+   *
+   * The retry on 401 is safe because the 401 status arrives in the
+   * response headers BEFORE any body is consumed — we discard the failed
+   * Response and start a fresh fetch with the new token. Callers never
+   * see the intermediate 401.
+   */
+  async raw(url: string, options: RequestInit = {}): Promise<Response> {
     const fullUrl = this.getFullUrl(url)
-    const response = await this.request(fullUrl, options)
+    let response = await this.request(fullUrl, options)
 
     if (response.status === 401) {
       const newToken = await this.handleTokenRefresh()
       if (!newToken) {
         clearAuth()
-        window.location.href = "/login"
+        if (typeof window !== "undefined") {
+          window.location.href = "/login"
+        }
         throw new Error("Session expired")
       }
-      const retryResponse = await this.request(fullUrl, options, newToken)
-      if (!retryResponse.ok) {
-        throw new Error(`Request failed: ${retryResponse.status}`)
-      }
-      const json = await retryResponse.json()
-      return this.unwrapEnvelope(json) as T
+      response = await this.request(fullUrl, options, newToken)
     }
+
+    return response
+  }
+
+  async fetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const response = await this.raw(url, options)
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))

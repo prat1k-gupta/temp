@@ -186,23 +186,48 @@ export class ChangeTracker {
 
     // Debounce property changes (typing, slider drags, etc.)
     const pending = this.pendingNodeUpdates.get(nodeId)
-    if (pending) {
+    const incomingSource = this.currentSource
+
+    // Source crossover guard: if the pending entry was started by a
+    // different source (e.g. user was typing, AI edit arrives), flush the
+    // pending entry attributed to its own captured source BEFORE starting
+    // a fresh debounce window for the incoming source. Without this, the
+    // incoming change extends the old debounce window and both are
+    // attributed to whichever source happened to win the race — a
+    // user-then-ai sequence gets tagged 'user', or vice versa.
+    if (pending && pending.source !== incomingSource) {
       clearTimeout(pending.timer)
-      pending.latestNewData = newData
-      pending.newType = newType
+      this.pendingNodeUpdates.delete(nodeId)
+      this.flushNodeUpdate(
+        nodeId,
+        pending.firstOldData,
+        pending.latestNewData,
+        pending.oldType,
+        pending.newType,
+        pending.source,
+      )
+    }
+
+    // Re-read after potential flush above — same-source extension keeps
+    // the existing entry, crossover clears it.
+    const existing = this.pendingNodeUpdates.get(nodeId)
+    if (existing) {
+      clearTimeout(existing.timer)
+      existing.latestNewData = newData
+      existing.newType = newType
     }
 
     // Capture the source at call-time so a debounced flush attributes the
     // change to whoever triggered it, not whoever happens to be the current
     // source when the 500ms timer fires. If we're extending an existing
-    // debounce window, keep the original source (typing session stays
-    // attributed to the same origin).
-    const entry = pending || {
+    // same-source debounce window, keep the original source (typing
+    // session stays attributed to the same origin).
+    const entry = existing || {
       firstOldData: oldData,
       latestNewData: newData,
       oldType,
       newType,
-      source: this.currentSource,
+      source: incomingSource,
       timer: undefined as any,
     }
 

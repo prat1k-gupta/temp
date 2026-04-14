@@ -125,12 +125,15 @@ describe('Phase A: AI Platform', () => {
       expect(src).toContain('active session')
     })
 
-    it('AIAssistant sends auth header and new props', () => {
+    it('AIAssistant sends auth via apiClient.raw and threads new props', () => {
       const src = readFileSync('./components/ai/ai-assistant.tsx', 'utf-8')
       expect(src).toContain('publishedFlowId?: string')
       expect(src).toContain('waAccountId?: string')
-      expect(src).toContain('getAccessToken')
-      expect(src).toContain('"Authorization"')
+      // Auth header now flows through apiClient.raw (which adds the
+      // Bearer token + handles 401 refresh + retry centrally). This
+      // assertion guards against a regression that drops back to raw
+      // fetch and loses the refresh path.
+      expect(src).toContain('apiClient.raw("/api/ai/flow-assistant"')
     })
 
     it('page.tsx passes publishedFlowId and waAccountId', () => {

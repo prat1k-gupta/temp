@@ -409,6 +409,31 @@ Estimated ~0.5–0.75 day. Mostly renames + a small migration pass. Removes code
 
 **Why before Phase D:** external MCP agents (Claude Code, Cursor) should see one clean `choices` field, not two platform-leaky fields gated by auto-convert coercion. Make the cleanup land before the external-facing schema is frozen.
 
+**Pre-D cleanup — `newType` on `nodeUpdate` schema:**
+
+Extend `NodeUpdate` with an optional `newType` field so the AI can change a node's type in place (e.g. question → quickReply) without doing a remove+chain dance. Remove+recreate is the root cause of the fan-in loss bug class: the AI can't reference the builder-generated replacement node ID in addEdges, so incoming edges silently vanish. In-place type change preserves the node ID and all incoming edges automatically.
+
+- Add optional `newType?: string` to `NodeUpdate` interface + `nodeUpdateSchema` in `types/flow-plan.ts`
+- `flow-plan-builder.ts` processes newType: apply content through the target type's `contentToNodeData`, set `newType` in the pushed nodeUpdate so `applyNodeUpdates` picks it up
+- `flow-prompts.ts`: delete the "CRITICAL — fan-in loss warning" rule that exists only because the AI currently has to do remove+chain; document the new in-place path
+- Tests for the new path
+
+~0.5 day. Enables a whole class of edits that currently don't work cleanly. Land after the `choices` rename so the surface area being modified is already stable.
+
+**Pre-D cleanup — PR #60 code review follow-ups:**
+
+Non-blocking debt from the Opus review before merging PR #60. Not in priority order, not all of equal weight, but should be cleaned up before Phase D freezes the external-facing schema. Full list with file paths and fix directions in `project_pr60_review_followups.md` (memory). Summary:
+
+- **N1 / N7**: Change-tracker debounce doesn't handle user-AI same-node edit crossover. Needs a "same source required to merge or flush and start new entry" rule + a unit test (file doesn't exist yet)
+- **N2**: 350ms sleep in the NDJSON reader loop compounds sequentially and back-pressures the fetch stream. Swap to timestamp-based minimum-visible-time check that doesn't block the reader
+- **N3**: Comment at `hooks/use-clipboard.ts:231` contradicts the code (says "not guarded" but the condition includes `!guarded`). One-line fix
+- **N4**: `onAcceptAISuggestion` source attribution is fragile — depends on `handleUpdateFlow` wrapping everything. Belt-and-suspenders `setSource('ai')` at the outer entry + unit test
+- **N5**: `applyNodeUpdates` silently drops updates targeting missing nodes while `addEdges` fail loud — inconsistent. Unify by having the missing-nodeUpdate warning use a distinctive prefix and extending apply_edit's skip-warning filter to catch it
+- **N6**: Possible `updateStreamingMessage` race on first event under React 18 batching. Flagged "worth checking" — fix only if a real repro shows up; preventive fix is `flushSync` on placeholder creation
+- **N8**: Legacy `parts[]` synthesis from pre-refactor localStorage messages loses the `details` field. Non-crashing cosmetic. Handle as part of Phase B.2 when localStorage goes away
+
+Suggested shape: one small cleanup PR bundling N2+N3+N4+N5+N1/N7. Land before the `data.choices` rename so the cleanup has a clean baseline. ~100 lines total, no schema changes.
+
 ### 3.8 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
 
 WhatsApp supports several message types beyond text and buttons that we don't have nodes for yet. Need to research which ones are available and add support.
@@ -557,7 +582,19 @@ Canvas-level undo/redo for the flow editor. Snapshot-based `useUndoRedo` hook wr
 ## Phase 4 — Full Platform Convergence
 
 ### 4.1 Contact Management
+
 ### 4.2 Campaigns / Broadcasting
+
+Port the broadcast feature from FS Chat (called "campaigns" there). Currently FS Chat's broadcast only sends WhatsApp templates — when porting to MagicFlow, extend it to also **send an entire flow** like ManyChat, not just a one-shot template.
+
+**What's needed:**
+- Port existing broadcast UI from FS Chat (template send, scheduling, history)
+- **New: Send flow as broadcast** — pick any published MagicFlow flow, trigger it for each contact in the audience (ManyChat-style). Each recipient enters the flow at the start node and runs through it independently.
+- **Audience filter** — reuse the contact filter already built in MagicFlow Chat (from 3.13). Same filter UI/logic drives Chat segmentation and broadcast targeting — one filter component, two consumers.
+- Backend: extend the broadcast runner in FS Chat to trigger flows per contact (not only template sends). Likely reuses the existing flow trigger endpoint per contact, wrapped in a batched/rate-limited job.
+- 24hr window handling: if sending a flow to contacts outside the 24hr window, the flow must start with a template message (or we gate audience selection to in-window contacts only).
+- Analytics per broadcast: sent, delivered, read, replied, flow completion rate.
+
 ### 4.3 Remaining Settings (keywords, AI contexts, canned responses, webhooks, SSO)
 
 ---

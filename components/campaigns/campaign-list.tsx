@@ -79,10 +79,10 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Type</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Progress</th>
-              <th className="text-right font-medium text-muted-foreground px-4 py-3">Recipients</th>
-              <th className="text-right font-medium text-muted-foreground px-4 py-3">Sent</th>
-              <th className="text-right font-medium text-muted-foreground px-4 py-3">Delivered</th>
-              <th className="text-right font-medium text-muted-foreground px-4 py-3">Failed</th>
+              <th className="text-right font-medium text-muted-foreground px-4 py-3">Flow recipients</th>
+              <th className="text-right font-medium text-muted-foreground px-4 py-3">Messages sent</th>
+              <th className="text-right font-medium text-muted-foreground px-4 py-3">Messages delivered</th>
+              <th className="text-right font-medium text-muted-foreground px-4 py-3">Messages failed</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Created</th>
               <th className="w-10" />
             </tr>

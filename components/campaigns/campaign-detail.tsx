@@ -115,11 +115,11 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
       <Progress value={progressPct} className="h-2" />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <Stat label="Recipients" value={campaign.total_recipients} />
-        <Stat label="Sent" value={campaign.sent_count} />
-        <Stat label="Delivered" value={campaign.delivered_count} />
-        <Stat label="Read" value={campaign.read_count} />
-        <Stat label="Failed" value={campaign.failed_count} highlight="destructive" />
+        <Stat label="Flow recipients" value={campaign.total_recipients} />
+        <Stat label="Messages sent" value={campaign.sent_count} />
+        <Stat label="Messages delivered" value={campaign.delivered_count} />
+        <Stat label="Messages read" value={campaign.read_count} />
+        <Stat label="Messages failed" value={campaign.failed_count} highlight="destructive" />
       </div>
 
       <Card>

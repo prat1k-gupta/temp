@@ -32,8 +32,10 @@ export function useContactVariables(flowSlug: string, search: string = "") {
 
 /**
  * Convert a ContactFilter tree to API format (camelCase → snake_case for flow_slug).
+ * Exported so callers outside this module (e.g. campaign create form) can send
+ * filter trees to any endpoint that reuses the same backend builder.
  */
-function toApiFilter(f: ContactFilter): Record<string, unknown> {
+export function toApiFilter(f: ContactFilter): Record<string, unknown> {
   if (f.logic && f.filters) {
     return { logic: f.logic, filters: f.filters.map(toApiFilter) }
   }

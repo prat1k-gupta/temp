@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress"
 import { PageHeader } from "@/components/page-header"
 import { CampaignStatusBadge } from "./campaign-status-badge"
 import { RecipientTable } from "./recipient-table"
+import { useCampaignStatsSubscription } from "./use-campaign-stats-subscription"
 import {
   useStartCampaign,
   usePauseCampaign,
@@ -15,6 +16,8 @@ import type { Campaign } from "@/types/campaigns"
 import { FileText, GitBranch } from "lucide-react"
 
 export function CampaignDetail({ campaign }: { campaign: Campaign }) {
+  useCampaignStatsSubscription(campaign.id)
+
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
   const { mutate: pauseCampaign, isPending: pausing } = usePauseCampaign()
   const { mutate: cancelCampaign, isPending: cancelling } = useCancelCampaign()

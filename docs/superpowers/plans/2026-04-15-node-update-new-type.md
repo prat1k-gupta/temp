@@ -1,5 +1,7 @@
 # PR #3: `newType` on nodeUpdate + smart edge topology handling
 
+> **Status: SHIPPED** — merged to main as PR #64 on 2026-04-15 (commit `bd7e7f71`). Includes post-merge additions: `localId` on chain NodeSteps, shared `mergeNodeUpdate` helper for validator parity, same-family choice preservation in the builder, `normalizeAiNodeType` bridge for the list→interactiveList factory name mismatch, and an E2E smoke script (`scripts/smoke-newtype.mjs`). 782 unit tests + 4/4 smoke scenarios green. See `project_pre_d_cleanup_shipped.md` memory for the full shipped summary.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans or superpowers:subagent-driven-development.
 
 **Goal:** Add `newType` to `nodeUpdate` so the AI can change a node's type in place, preserving node ID and incoming edges. Handle outgoing edges intelligently based on handle topology change. Teach the AI to pre-check and ask the user before ambiguous type changes.

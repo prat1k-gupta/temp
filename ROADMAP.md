@@ -383,56 +383,11 @@ Upgrading the flow assistant into a multi-agent platform: 4 subagents, 6 direct 
 - Progress notifications for subagent tools
 - `magic-flow/mcp-server/`
 
-**Pre-D cleanup — unify quickReply/list field name to `choices` (keep both node types):**
+**Pre-D cleanup (done)** — three sequential PRs landed on 2026-04-15 to stabilize the AI edit pipeline before Phase D freezes the external-facing schema:
 
-Right now `whatsappQuickReply.data.buttons` and `whatsappInteractiveList.data.options` are two different field names for the same concept: a list of user choices. The split leaks WhatsApp's wire format (`interactive.type: "button"` vs `"list"`) into the builder, AI prompts, validator, and converter, and has already caused multiple bugs (hybrid state, the `mixed_button_option_fields` validator rule, `contentToNodeData` having to branch on both, etc. — see `820b71b`).
-
-**Scope:** narrower than a type collapse. Keep both `whatsappQuickReply` and `whatsappInteractiveList` as distinct node types with distinct palette items (users legitimately want to pick between "inline buttons UX" and "list drawer UX" manually — list has extra features like `listTitle`, section headers, descriptions, longer labels). Only unify the *field name*.
-
-- Rename `whatsappQuickReply.data.buttons` → `whatsappQuickReply.data.choices`
-- Rename `whatsappInteractiveList.data.options` → `whatsappInteractiveList.data.choices`
-- Both components read from `data.choices`; the two visual components stay distinct and WYSIWYG
-- Auto-convert (quickReply → interactiveList when count > 3) changes `node.type` only, leaving `data.choices` untouched — no more `convertButtonsToOptions` helper, no more ID prefix flips
-- Converter forward/reverse reads `data.choices` from either type
-- Forward-only migration on load: map `data.buttons` → `data.choices` for quickReply, `data.options` → `data.choices` for interactiveList
-
-**What this kills:**
-- `buttons`-vs-`options` confusion in the AI prompt (3 lines of CRITICAL rules collapse to one)
-- The `mixed_button_option_fields` validator rule
-- `transformAiNodeData` options→buttons coercion branch
-- The hybrid-state bug class entirely (there's only one field to get wrong)
-- `convertButtonsToOptions` helper + the ID-prefix flip logic
-
-**Touches:** `whatsapp-quick-reply-node.tsx`, `whatsapp-list-node.tsx`, `whatsapp-converter.ts` forward+reverse, `flow-plan-builder.ts` (`contentToNodeData`, nodeUpdate processing, auto-convert path), `ai-data-transform.ts` (`transformAiNodeData`), `flow-plan.ts` schema (`nodeContentSchema` — unify `buttons`/`options` into `choices`), `node-factory.ts` defaults, node templates, `node-documentation.ts`, `inferNodeType`, AI prompts (delete the CRITICAL rules), validator (drop `mixed_button_option_fields` and the `convertButtonsToOptions` call site), storage load migration, tests.
-
-Estimated ~0.5–0.75 day. Mostly renames + a small migration pass. Removes code and prompt rules rather than adding them.
-
-**Why before Phase D:** external MCP agents (Claude Code, Cursor) should see one clean `choices` field, not two platform-leaky fields gated by auto-convert coercion. Make the cleanup land before the external-facing schema is frozen.
-
-**Pre-D cleanup — `newType` on `nodeUpdate` schema:**
-
-Extend `NodeUpdate` with an optional `newType` field so the AI can change a node's type in place (e.g. question → quickReply) without doing a remove+chain dance. Remove+recreate is the root cause of the fan-in loss bug class: the AI can't reference the builder-generated replacement node ID in addEdges, so incoming edges silently vanish. In-place type change preserves the node ID and all incoming edges automatically.
-
-- Add optional `newType?: string` to `NodeUpdate` interface + `nodeUpdateSchema` in `types/flow-plan.ts`
-- `flow-plan-builder.ts` processes newType: apply content through the target type's `contentToNodeData`, set `newType` in the pushed nodeUpdate so `applyNodeUpdates` picks it up
-- `flow-prompts.ts`: delete the "CRITICAL — fan-in loss warning" rule that exists only because the AI currently has to do remove+chain; document the new in-place path
-- Tests for the new path
-
-~0.5 day. Enables a whole class of edits that currently don't work cleanly. Land after the `choices` rename so the surface area being modified is already stable.
-
-**Pre-D cleanup — PR #60 code review follow-ups:**
-
-Non-blocking debt from the Opus review before merging PR #60. Not in priority order, not all of equal weight, but should be cleaned up before Phase D freezes the external-facing schema. Full list with file paths and fix directions in `project_pr60_review_followups.md` (memory). Summary:
-
-- **N1 / N7**: Change-tracker debounce doesn't handle user-AI same-node edit crossover. Needs a "same source required to merge or flush and start new entry" rule + a unit test (file doesn't exist yet)
-- **N2**: 350ms sleep in the NDJSON reader loop compounds sequentially and back-pressures the fetch stream. Swap to timestamp-based minimum-visible-time check that doesn't block the reader
-- **N3**: Comment at `hooks/use-clipboard.ts:231` contradicts the code (says "not guarded" but the condition includes `!guarded`). One-line fix
-- **N4**: `onAcceptAISuggestion` source attribution is fragile — depends on `handleUpdateFlow` wrapping everything. Belt-and-suspenders `setSource('ai')` at the outer entry + unit test
-- **N5**: `applyNodeUpdates` silently drops updates targeting missing nodes while `addEdges` fail loud — inconsistent. Unify by having the missing-nodeUpdate warning use a distinctive prefix and extending apply_edit's skip-warning filter to catch it
-- **N6**: Possible `updateStreamingMessage` race on first event under React 18 batching. Flagged "worth checking" — fix only if a real repro shows up; preventive fix is `flushSync` on placeholder creation
-- **N8**: Legacy `parts[]` synthesis from pre-refactor localStorage messages loses the `details` field. Non-crashing cosmetic. Handle as part of Phase B.2 when localStorage goes away
-
-Suggested shape: one small cleanup PR bundling N2+N3+N4+N5+N1/N7. Land before the `data.choices` rename so the cleanup has a clean baseline. ~100 lines total, no schema changes.
+- **PR #61 — `fix: PR #60 review follow-ups + AI chat auth + stream safety`** — bundles all 8 Opus review follow-ups (N1–N8) plus AI chat auth session refresh + NDJSON stream terminal-event safety net + fetchCurrentUser / media blob migration.
+- **PR #63 — `refactor: unify data.buttons/data.options → data.choices`** — collapses the split `buttons`/`options` fields into a single unified `data.choices` array across whatsapp/instagram/web. Distinct node types (quickReply vs interactiveList) stay separate, only the field name is unified. Deleted `convertButtonsToOptions`, the `mixed_button_option_fields` validator rule, and all backward-compat scaffolding (product is in development, no legacy data to preserve).
+- **PR #64 — `feat: newType on nodeUpdate + localId on chain steps (fan-in loss bug class fix)`** — closes the entire fan-in loss bug class. Adds `newType?: string` on `NodeUpdate` for in-place type changes (preserving node ID + incoming edges) and `localId?: string` on chain NodeSteps so the AI can reference a brand-new node from multiple addEdges in one plan. Includes an edge topology decision tree (preserve / fanout / collapse / ambiguous refuse), a shared `mergeNodeUpdate` helper that keeps the validator in sync with the applier, same-family choice preservation, and a regression-catching E2E smoke script at `scripts/smoke-newtype.mjs` that drives the real `/api/ai/flow-assistant` with 4 scenarios. 782 unit tests + 4/4 smoke scenarios green.
 
 ### 3.8 Media Message Nodes (Image, Video, Document, Audio, Location, Sticker) [#15](https://github.com/freestandtech/magic-flow/issues/15)
 

@@ -36,7 +36,13 @@ export function useCampaign(id: string | undefined) {
     queryKey: campaignKeys.detail(id ?? ""),
     queryFn: () => apiClient.get<Campaign>(`/api/campaigns/${id}`),
     enabled: Boolean(id),
-    staleTime: 10 * 1000,
+    // Always refetch on mount — stale data is confusing for in-progress
+    // campaigns where counters change by the second. WebSocket updates are
+    // the primary refresh mechanism; this is a fallback when the page first
+    // loads or the tab is refocused.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -51,6 +57,10 @@ export function useCampaignRecipients(campaignId: string | undefined) {
     enabled: Boolean(campaignId),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => (lastPage.recipients.length === 50 ? allPages.length + 1 : undefined),
+    // Match useCampaign so recipient statuses refresh alongside counters.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -65,14 +75,23 @@ export function useCreateCampaign() {
   })
 }
 
+// Shared invalidation: Start/Pause/Cancel all change both the campaign row
+// (status, timestamps) AND recipient rows (status transitions from pending →
+// sent/failed). Invalidate both queries so the UI reflects the truth after
+// any mutation. Note: `campaignKeys.recipients(id)` is a descendant of
+// `campaignKeys.detail(id)` so technically one invalidate would suffice,
+// but being explicit avoids future drift if the key shape changes.
+function invalidateCampaignQueries(qc: ReturnType<typeof useQueryClient>, id: string) {
+  qc.invalidateQueries({ queryKey: campaignKeys.detail(id) })
+  qc.invalidateQueries({ queryKey: campaignKeys.recipients(id) })
+  qc.invalidateQueries({ queryKey: campaignKeys.lists() })
+}
+
 export function useStartCampaign() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.post(`/api/campaigns/${id}/start`, {}),
-    onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: campaignKeys.detail(id) })
-      qc.invalidateQueries({ queryKey: campaignKeys.lists() })
-    },
+    onSuccess: (_data, id) => invalidateCampaignQueries(qc, id),
   })
 }
 
@@ -80,9 +99,7 @@ export function usePauseCampaign() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.post(`/api/campaigns/${id}/pause`, {}),
-    onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: campaignKeys.detail(id) })
-    },
+    onSuccess: (_data, id) => invalidateCampaignQueries(qc, id),
   })
 }
 
@@ -90,10 +107,7 @@ export function useCancelCampaign() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.post(`/api/campaigns/${id}/cancel`, {}),
-    onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: campaignKeys.detail(id) })
-      qc.invalidateQueries({ queryKey: campaignKeys.lists() })
-    },
+    onSuccess: (_data, id) => invalidateCampaignQueries(qc, id),
   })
 }
 

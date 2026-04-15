@@ -264,7 +264,14 @@ export function CampaignCreateForm() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending} className="cursor-pointer px-6">
+            <Button
+              type="submit"
+              // Block submission while an audience preview request is still
+              // in flight — we don't know the match count yet, so the user
+              // could create a campaign with zero recipients without realizing.
+              disabled={isPending || previewAudience.isPending}
+              className="cursor-pointer px-6"
+            >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Draft
             </Button>

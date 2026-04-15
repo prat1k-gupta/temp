@@ -1,7 +1,12 @@
 import { getAccessToken, refreshAccessToken, clearAuth } from "./auth"
 
 // Paths that stay on the Next.js server (have server-side secrets or special needs)
-const LOCAL_PREFIXES = ["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns", "/api/debug"]
+// Keep /api/campaigns/create local because the Next.js handler at
+// app/api/campaigns/create/route.ts does flow-publishing transformation
+// before calling fs-whatsapp. All OTHER /api/campaigns/* routes should
+// go directly to fs-whatsapp — they're pure CRUD and have no server-side
+// secrets.
+const LOCAL_PREFIXES = ["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns/create", "/api/debug"]
 
 class ApiClient {
   // Refresh dedup so a burst of parallel 401s only fires one refresh

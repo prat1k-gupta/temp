@@ -538,17 +538,36 @@ Canvas-level undo/redo for the flow editor. Snapshot-based `useUndoRedo` hook wr
 
 ### 4.1 Contact Management
 
-### 4.2 Campaigns / Broadcasting
+### 4.2 Campaigns / Broadcasting ✅ (v1)
 
-Port the broadcast feature from FS Chat (called "campaigns" there). Currently FS Chat's broadcast only sends WhatsApp templates — when porting to MagicFlow, extend it to also **send an entire flow** like ManyChat, not just a one-shot template.
+Ported the FS Chat Vue campaigns feature to MagicFlow React and extended it with flow broadcasts + external audience sources.
 
-**What's needed:**
-- Port existing broadcast UI from FS Chat (template send, scheduling, history)
-- **New: Send flow as broadcast** — pick any published MagicFlow flow, trigger it for each contact in the audience (ManyChat-style). Each recipient enters the flow at the start node and runs through it independently.
-- **Audience filter** — reuse the contact filter already built in MagicFlow Chat (from 3.13). Same filter UI/logic drives Chat segmentation and broadcast targeting — one filter component, two consumers.
-- Backend: extend the broadcast runner in FS Chat to trigger flows per contact (not only template sends). Likely reuses the existing flow trigger endpoint per contact, wrapped in a batched/rate-limited job.
-- 24hr window handling: if sending a flow to contacts outside the 24hr window, the flow must start with a template message (or we gate audience selection to in-window contacts only).
-- Analytics per broadcast: sent, delivered, read, replied, flow completion rate.
+**Shipped:**
+- List / new / detail pages ported from FS Chat Vue
+- Template campaigns: unchanged — templated header media, scheduling, progress
+- **Flow campaigns**: broadcast a published flow to a list of contacts. Worker dispatches via an injected `FlowTrigger` callback; outgoing messages carry `metadata.campaign_id` so the existing stats pipeline reconciles per-message outcomes back to recipient rows (`reconcileCampaignRecipientAfterSend`)
+- Three audience sources on campaign create:
+  - **Contacts** — reuses `useContactFilterUI` from chat sidebar. Auto-preview with debounced `POST /api/campaigns/preview-audience`
+  - **Sampling Central** — new `pkg/samplingcentral` HTTP client, materializes contacts on create
+  - **CSV** — existing import path, find-or-create contacts for flow campaigns
+- Per-message stat semantics: "Messages sent / delivered / read / failed" (relabeled from per-recipient)
+- Per-recipient progress field `recipients_completed` (computed, not stored) drives progress bar — caps at 100% regardless of how many messages per recipient
+- Recipient table `delivered_at` / `read_at` stamped from webhook status updates (was never written to before)
+- `chatbot_settings.is_enabled` GORM default flipped false → true so fresh orgs can run flows out of the box
+- Card-based two-column create form with pinned header actions + back button on detail
+
+> Shipped: fs-chat #31, magic-flow #68
+
+**Deferred — pick up as follow-ups:**
+- **Action-only flow recipient completion** — flows with zero message nodes leave recipients stuck in `pending` forever because `reconcileCampaignRecipientAfterSend` only fires from the message send path. Needs a session-end hook (`reconcileCampaignRecipientAfterFlow`) called from `completeFlow` / `exitFlow` that flips pending rows when a broadcast session reaches a terminal state without sending. ~30 lines.
+- **Per-org SC credentials** — currently read from env vars (`SAMPLING_CENTRAL_BASE_URL` / `SAMPLING_CENTRAL_API_KEY`) via `samplingCentralCredentialsFromEnv()`. Blocks multi-tenant deployments that need different SC instances. Revisit when the Freestand integrations settings section ships: encrypted `Organization` columns + `PATCH /api/organizations/integrations/sampling-central` endpoint + admin UI.
+- **CSV upload UI** in the create form — currently a "Coming soon" placeholder. The 2-step backend path (create draft → import recipients) works for the API; the upload UI + column mapping is the missing piece.
+- **Standalone worker mode for flow campaigns** — today the worker requires running inside the server process so it can hold the `FlowTrigger` callback. Fix needs a shared flow-runtime package or shared App construction in the worker subcommand.
+- **Template variable mapping strict validation** at create time — error if the mapping doesn't cover every `{{var}}` placeholder in the template.
+- **Column mapping validation** for non-SC audience sources.
+- **Pause / resume / delete confirmation dialogs** — some actions use AlertDialog, others fire direct. Normalize per CLAUDE.md UI rules.
+- **SC audience ID dropdown** — right now the user types the UUID; a searchable dropdown needs a new `GET /audiences` list endpoint on the SC side (out of scope here).
+- **Component unit tests** (vitest) for `campaign-list`, `campaign-detail`, create form — currently only integration-level coverage via the backend handlers tests.
 
 ### 4.3 Remaining Settings (keywords, AI contexts, canned responses, webhooks, SSO)
 

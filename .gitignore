@@ -26,3 +26,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.tsdocs/superpowers/.DS_Store
+
+# Git worktrees
+.worktrees/

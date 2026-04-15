@@ -1,0 +1,106 @@
+import { FS_WHATSAPP_URL } from "./constants"
+import { AgentError } from "./errors"
+import type { AgentContext } from "./types"
+
+/**
+ * Public flow shape returned by our agent API. Purposefully narrower than
+ * fs-whatsapp's MagicFlowProjectResponse — we omit org-internal fields.
+ */
+export interface PublicFlow {
+  flow_id: string
+  name: string
+  trigger_keyword: string | undefined
+  node_count: number
+  current_version: number
+  magic_flow_url: string
+  test_url: string | undefined
+  created_at: string
+  updated_at: string
+}
+
+export interface ListFlowsResult {
+  flows: PublicFlow[]
+  total: number
+}
+
+/** Shape fs-whatsapp returns from GET /api/magic-flow/projects */
+interface FsProjectsResponse {
+  projects: Array<{
+    id: string
+    name: string
+    created_at: string
+    updated_at: string
+    trigger_keywords?: string[]
+    node_count?: number
+    latest_version?: number
+  }>
+  total: number
+  page?: number
+  limit?: number
+}
+
+/**
+ * Call fs-whatsapp's magic-flow projects list, forwarding the agent's API key.
+ * Normalizes each project into our public flow shape with computed URLs.
+ */
+export async function listFlows(ctx: AgentContext, limit: number): Promise<ListFlowsResult> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects?limit=${encodeURIComponent(String(limit))}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when listing projects`)
+  }
+
+  let body: FsProjectsResponse
+  try {
+    body = (await res.json()) as FsProjectsResponse
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable projects response")
+  }
+
+  const flows: PublicFlow[] = (body.projects ?? []).map((p) => {
+    const firstKeyword = (p.trigger_keywords ?? [])[0]
+    return {
+      flow_id: p.id,
+      name: p.name,
+      trigger_keyword: firstKeyword,
+      node_count: p.node_count ?? 0,
+      current_version: p.latest_version ?? 1,
+      magic_flow_url: buildMagicFlowUrl(p.id),
+      test_url: buildTestUrl(ctx.account.phone_number, firstKeyword),
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+    }
+  })
+
+  return { flows, total: body.total ?? flows.length }
+}
+
+function buildMagicFlowUrl(flowId: string): string {
+  // In a proper deployment this would read an env var for the public app URL.
+  // For v1 we hardcode freestand.xyz; the dashboard URL should come from config
+  // when we productionize. Tests just assert `contains "/flow/<id>"`.
+  return `https://app.freestand.xyz/flow/${flowId}`
+}
+
+function buildTestUrl(phoneNumber: string | undefined, keyword: string | undefined): string | undefined {
+  if (!phoneNumber || !keyword) return undefined
+  // Strip non-digit chars from the phone number for wa.me compatibility.
+  const digits = phoneNumber.replace(/\D/g, "")
+  return `https://wa.me/${digits}?text=${encodeURIComponent(keyword)}`
+}

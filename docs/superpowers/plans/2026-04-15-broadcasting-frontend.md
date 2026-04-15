@@ -2,17 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port fs-whatsapp's existing Vue `CampaignsView.vue` to a React page in magic-flow under `app/campaigns/`, extended to support flow broadcasts and a sampling-central audience source.
+**Goal:** Port fs-whatsapp's existing Vue `CampaignsView.vue` to a React page in magic-flow under `app/campaigns/`, extended to support flow broadcasts and a sampling-central audience source (via a pasted audience ID).
 
 **Architecture:**
 
-- New pages: `app/campaigns/page.tsx` (list), `app/campaigns/[id]/page.tsx` (detail), `app/campaigns/new/page.tsx` (create form)
-- React Query hooks in `hooks/queries/use-campaigns.ts` following the existing factory pattern
-- Audience picker component with three tabs — Contacts reuses the existing `useContactFilterUI` hook; CSV keeps the existing legacy path for template campaigns; Sampling Central is a new flow with audience ID paste + fetch + column mapping
-- Variable mapping form that dynamically shows rows based on the selected template's placeholders or the selected flow's variable references (fetched from `GET /api/chatbot/flows/{id}/variables`)
-- Campaign detail page subscribes to the existing WebSocket campaign stats updates
+- New pages under `app/campaigns/` (Next.js App Router).
+- React Query hooks in `hooks/queries/use-campaigns.ts` following the existing factory pattern.
+- `LOCAL_PREFIXES` in `lib/api-client.ts` is narrowed from `/api/campaigns` to `/api/campaigns/create` so that new campaign endpoints go directly to fs-whatsapp instead of Next.js.
+- No `Combobox` wrapper exists in this codebase — searchable dropdowns use `<Popover> + <Command> + CommandInput + CommandList + CommandItem` directly, per `components/nodes/action/whatsapp-flow-node.tsx:13`. This plan follows that pattern.
+- WebSocket stats subscription reuses the existing `useWebSocket()` hook at `hooks/use-websocket.ts:195` which returns `{ subscribe, sendEvent, isConnected }`.
+- Only the sampling-central audience source is implemented in v1. Contacts filter and CSV upload are deferred to v1.1 (spec documents this).
+- UI follows `magic-flow/CLAUDE.md` design rules: shadcn components only, `hover:bg-muted` not `hover:bg-accent`, `cursor-pointer` on clickables, `PageHeader` component for dashboard headers.
 
-**Tech stack:** Next.js 14 (Pages Router — actually App Router; check `magic-flow/app/` vs `pages/`), React 18, TanStack React Query v5, shadcn-vue components — sorry, shadcn (React), Tailwind, Zod, react-hook-form. Existing patterns per `CLAUDE.md`.
+**Tech stack:** Next.js 14 (App Router), React 18, TanStack React Query v5 (verified via existing hooks), shadcn/ui (React), Tailwind, Zod + react-hook-form + shadcn Form kit. Existing `apiClient` at `lib/api-client.ts` for all fs-whatsapp calls.
 
 ---
 
@@ -22,53 +24,128 @@ See `docs/superpowers/specs/2026-04-15-broadcasting-flow-extensibility-design.md
 
 ## Prerequisites
 
-The fs-whatsapp backend plan (`fs-whatsapp/docs/superpowers/plans/2026-04-15-broadcasting-backend.md`) must be merged before the SC source and flow-campaign tests can pass end-to-end. The template+contacts paths can be developed in parallel since those endpoints already exist.
+The fs-whatsapp backend plan (`fs-whatsapp/docs/superpowers/plans/2026-04-15-broadcasting-backend.md`) must be merged before flow-campaign and SC-source end-to-end tests work. The list page can be built first against existing template-only backend.
+
+---
+
+## Ground-truth file pointers (verified at plan time)
+
+- `apiClient` at `lib/api-client.ts` — `get<T>(url)`, `post<T>(url, body)`, `put<T>(url, body)`, `delete<T>(url)`, `fetch<T>(url, options)`, `raw(url, options)`. All unwrap the fs-whatsapp envelope `{status, data}` via `unwrapEnvelope`. TypeScript generics work.
+- `LOCAL_PREFIXES` at `lib/api-client.ts:4` — currently `["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns", "/api/debug"]`. The `/api/campaigns` entry must be narrowed to `/api/campaigns/create` so other campaign routes reach fs-whatsapp.
+- `useChatbotFlows()` at `hooks/queries/use-chatbot.ts:14` — returns `UseQueryResult<ChatbotFlow[]>`. `data` is `ChatbotFlow[]` directly, NOT `{flows: [...]}`. Iterate with `data?.map(...)`.
+- `useTemplates(status?)` at `hooks/queries/use-templates.ts:14` — returns `UseQueryResult<any[]>`. `data` is `any[]` directly. Pass `"APPROVED"` (uppercase — matches backend `TemplateStatusApproved = "APPROVED"` at `fs-whatsapp/internal/models/constants.go:158`).
+- `useAccounts()` — returns `Account[]` directly (verified pattern).
+- `useWebSocket()` at `hooks/use-websocket.ts:195` — returns `{ subscribe, sendEvent, isConnected }`. Usage: `const { subscribe } = useWebSocket(); useEffect(() => subscribe("event_type", handler), [])` — subscribe returns an unsubscribe function which you return from the effect cleanup. Provider is mounted globally via `WebSocketProvider` in `app-shell.tsx`.
+- `FeatureGate` component at `components/feature-gate.tsx` — `<FeatureGate feature="campaigns">...</FeatureGate>`
+- `PageHeader` component at `components/page-header.tsx` — `<PageHeader title="..." />` with optional children for action buttons
+- `Combobox` component DOES NOT exist — `ls components/ui/ | grep combobox` returns nothing. Use `<Popover> + <Command>` from `components/ui/popover.tsx` + `components/ui/command.tsx`. Pattern: see `components/nodes/action/whatsapp-flow-node.tsx:13`.
+- `campaigns` feature is already in `DEFAULT_ROLE_FEATURES` at `lib/permissions.ts:7,26,31` for admin + manager roles. No permission file changes needed.
+- Existing Next.js route that must stay local: `app/api/campaigns/create/route.ts` (flow-publishing helper, NOT a CRUD endpoint). This is why we narrow `LOCAL_PREFIXES` to `/api/campaigns/create` specifically.
+
+---
 
 ## File Structure
 
 **New files:**
-- `app/campaigns/layout.tsx` — shell with `FeatureGate feature="campaigns"`
-- `app/campaigns/page.tsx` — list view
-- `app/campaigns/new/page.tsx` — create form
-- `app/campaigns/[id]/page.tsx` — detail view
-- `hooks/queries/use-campaigns.ts` — React Query hooks
-- `hooks/queries/query-keys.ts` — extend with `campaignKeys` factory
-- `components/campaigns/campaign-list.tsx` — table component
-- `components/campaigns/campaign-detail.tsx` — detail layout with counters + recipient table
-- `components/campaigns/campaign-create-form.tsx` — the big form
-- `components/campaigns/audience-picker.tsx` — tab component with 3 modes
-- `components/campaigns/audience-picker-sampling-central.tsx` — the SC-specific panel
-- `components/campaigns/variable-mapping-form.tsx` — the name → column mapping rows
-- `components/campaigns/info-banner-24hr.tsx` — the reusable banner for flow campaigns
-- `components/campaigns/campaign-status-badge.tsx` — reusable badge
-- `components/campaigns/recipient-table.tsx` — paginated recipient list
 - `types/campaigns.ts` — TypeScript types
-- `lib/campaigns-ws.ts` — WebSocket subscription helper
+- `hooks/queries/use-campaigns.ts` — React Query hooks
+- `hooks/queries/use-flow-variables.ts` — hook for `GET /api/chatbot/flows/{id}/variables`
+- `app/(dashboard)/campaigns/layout.tsx` — shell with `FeatureGate`
+- `app/(dashboard)/campaigns/page.tsx` — list page
+- `app/(dashboard)/campaigns/new/page.tsx` — create form wrapper
+- `app/(dashboard)/campaigns/[id]/page.tsx` — detail page wrapper
+- `components/campaigns/campaign-list.tsx`
+- `components/campaigns/campaign-detail.tsx`
+- `components/campaigns/campaign-create-form.tsx`
+- `components/campaigns/audience-picker-sampling-central.tsx`
+- `components/campaigns/variable-mapping-form.tsx`
+- `components/campaigns/info-banner-24hr.tsx`
+- `components/campaigns/campaign-status-badge.tsx`
+- `components/campaigns/recipient-table.tsx`
+- `components/campaigns/searchable-picker.tsx` — reusable Popover+Command wrapper used for account/template/flow pickers
+- `components/campaigns/use-campaign-stats-subscription.ts` — WebSocket subscription hook
 
 **Modified files:**
+- `lib/api-client.ts` — narrow `/api/campaigns` → `/api/campaigns/create` in `LOCAL_PREFIXES`
 - `components/app-sidebar.tsx` — add Campaigns nav item
-- `lib/permissions.ts` — verify `DEFAULT_ROLE_FEATURES` has `campaigns` on Admin/Manager
-- `hooks/queries/query-keys.ts` — add `campaignKeys` factory
+- `hooks/queries/query-keys.ts` — extend with `campaignKeys` factory (if that file is the one re-exporting; otherwise inline in `use-campaigns.ts`)
+
+**Note on App Router layout:** magic-flow uses Next.js App Router under `app/`. Dashboard pages live under `app/(dashboard)/` based on the existing `app/(dashboard)/chat/page.tsx` structure confirmed during verification. Place new campaign pages accordingly.
 
 ---
 
-## Task 1: React Query hooks + types
+## Task 0: Narrow LOCAL_PREFIXES
+
+**Files:**
+- Modify: `lib/api-client.ts`
+
+Without this fix, every campaign hook will 404 because `/api/campaigns/*` routes to Next.js which only has `/api/campaigns/create`.
+
+- [ ] **Step 1: Edit the prefixes**
+
+Open `lib/api-client.ts:4`. Change:
+
+```ts
+const LOCAL_PREFIXES = ["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns", "/api/debug"]
+```
+
+to:
+
+```ts
+// Keep /api/campaigns/create local because the Next.js handler at
+// app/api/campaigns/create/route.ts does flow-publishing transformation
+// before calling fs-whatsapp. All OTHER /api/campaigns/* routes should
+// go directly to fs-whatsapp — they're pure CRUD and have no server-side
+// secrets.
+const LOCAL_PREFIXES = ["/api/auth/", "/api/ai/", "/api/test-api", "/api/campaigns/create", "/api/debug"]
+```
+
+- [ ] **Step 2: Verify the existing flow-publishing route still works**
+
+Grep the frontend for callers of the local `/api/campaigns/create` endpoint:
+
+```bash
+grep -rn "/api/campaigns/create" /Users/pratikgupta/Freestand/magic-flow/ --include="*.ts" --include="*.tsx" | grep -v ".worktrees"
+```
+
+Confirm there's at least one caller (likely in the publish flow). The narrower prefix still matches these calls.
+
+- [ ] **Step 3: Type check**
+
+```bash
+cd /Users/pratikgupta/Freestand/magic-flow/.worktrees/broadcasting-plans
+npx tsc --noEmit 2>&1 | head -20
+```
+
+Expected: no new errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add lib/api-client.ts
+git commit -m "fix(api-client): narrow /api/campaigns LOCAL_PREFIXES to /api/campaigns/create"
+```
+
+---
+
+## Task 1: Types + React Query hooks
 
 **Files:**
 - Create: `types/campaigns.ts`
 - Create: `hooks/queries/use-campaigns.ts`
-- Modify: `hooks/queries/query-keys.ts`
 
-- [ ] **Step 1: Write the types file**
+- [ ] **Step 1: Write the types**
 
 Create `types/campaigns.ts`:
 
 ```ts
+// Campaign statuses mirror fs-whatsapp/internal/models/constants.go:143-151.
+// NOTE: "processing" (not "running") matches the backend enum.
 export type CampaignStatus =
   | "draft"
   | "scheduled"
   | "queued"
-  | "running"
+  | "processing"
   | "paused"
   | "completed"
   | "cancelled"
@@ -128,7 +205,12 @@ export interface CreateCampaignInput {
 }
 
 export interface CreateCampaignResponse {
-  campaign_id: string
+  id: string
+  name: string
+  account_name: string
+  template_id: string | null
+  flow_id: string | null
+  audience_source: AudienceSource
   status: CampaignStatus
   total_recipients: number
   contacts_created?: number
@@ -137,29 +219,13 @@ export interface CreateCampaignResponse {
 }
 ```
 
-- [ ] **Step 2: Extend query keys factory**
-
-Open `hooks/queries/query-keys.ts`. Add:
-
-```ts
-export const campaignKeys = {
-  all: ["campaigns"] as const,
-  lists: () => [...campaignKeys.all, "list"] as const,
-  list: (filters: Record<string, unknown> = {}) => [...campaignKeys.lists(), filters] as const,
-  details: () => [...campaignKeys.all, "detail"] as const,
-  detail: (id: string) => [...campaignKeys.details(), id] as const,
-  recipients: (campaignId: string, page: number) => [...campaignKeys.detail(campaignId), "recipients", page] as const,
-}
-```
-
-- [ ] **Step 3: Write the hooks file**
+- [ ] **Step 2: Write the hooks file**
 
 Create `hooks/queries/use-campaigns.ts`:
 
 ```ts
 import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api-client"
-import { campaignKeys } from "./query-keys"
 import type {
   Campaign,
   CampaignRecipient,
@@ -169,14 +235,23 @@ import type {
   CampaignStatus,
 } from "@/types/campaigns"
 
+export const campaignKeys = {
+  all: ["campaigns"] as const,
+  lists: () => [...campaignKeys.all, "list"] as const,
+  list: (filters: Record<string, unknown> = {}) => [...campaignKeys.lists(), filters] as const,
+  details: () => [...campaignKeys.all, "detail"] as const,
+  detail: (id: string) => [...campaignKeys.details(), id] as const,
+  recipients: (campaignId: string) => [...campaignKeys.detail(campaignId), "recipients"] as const,
+} as const
+
 export function useCampaigns(filters: { status?: CampaignStatus } = {}) {
   return useQuery({
     queryKey: campaignKeys.list(filters),
     queryFn: async () => {
       const params = new URLSearchParams()
       if (filters.status) params.set("status", filters.status)
-      const res = await apiClient.get<{ campaigns: Campaign[]; total: number }>(`/api/campaigns?${params}`)
-      return res
+      const qs = params.toString() ? `?${params}` : ""
+      return apiClient.get<{ campaigns: Campaign[]; total: number }>(`/api/campaigns${qs}`)
     },
     staleTime: 30 * 1000,
   })
@@ -185,7 +260,7 @@ export function useCampaigns(filters: { status?: CampaignStatus } = {}) {
 export function useCampaign(id: string | undefined) {
   return useQuery({
     queryKey: campaignKeys.detail(id ?? ""),
-    queryFn: () => apiClient.get<{ campaign: Campaign }>(`/api/campaigns/${id}`),
+    queryFn: () => apiClient.get<Campaign>(`/api/campaigns/${id}`),
     enabled: Boolean(id),
     staleTime: 10 * 1000,
   })
@@ -193,7 +268,7 @@ export function useCampaign(id: string | undefined) {
 
 export function useCampaignRecipients(campaignId: string | undefined) {
   return useInfiniteQuery({
-    queryKey: [...campaignKeys.details(), campaignId, "recipients"],
+    queryKey: campaignKeys.recipients(campaignId ?? ""),
     queryFn: async ({ pageParam = 1 }) => {
       return apiClient.get<{ recipients: CampaignRecipient[]; total: number }>(
         `/api/campaigns/${campaignId}/recipients?page=${pageParam}&limit=50`,
@@ -256,19 +331,19 @@ export function usePreviewAudience() {
 }
 ```
 
-- [ ] **Step 4: Verify types compile**
+- [ ] **Step 3: Type check**
 
 ```bash
-npx tsc --noEmit
+npx tsc --noEmit 2>&1 | grep -E "(campaigns|campaign)" | head -20
 ```
 
-Expected: no errors in the new files. (Pre-existing errors elsewhere are OK if they predate this task.)
+Expected: no errors in the new files.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add types/campaigns.ts hooks/queries/use-campaigns.ts hooks/queries/query-keys.ts
-git commit -m "feat(campaigns): React Query hooks and types"
+git add types/campaigns.ts hooks/queries/use-campaigns.ts
+git commit -m "feat(campaigns): types and React Query hooks"
 ```
 
 ---
@@ -276,19 +351,23 @@ git commit -m "feat(campaigns): React Query hooks and types"
 ## Task 2: Flow variables hook
 
 **Files:**
-- Modify: `hooks/queries/use-chatbot-flows.ts` (or create a new file `hooks/queries/use-flow-variables.ts`)
+- Create: `hooks/queries/use-flow-variables.ts`
 
-- [ ] **Step 1: Add the hook**
-
-Create `hooks/queries/use-flow-variables.ts`:
+- [ ] **Step 1: Write the hook**
 
 ```ts
 import { useQuery } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api-client"
+import { chatbotKeys } from "./use-chatbot"
 
+/**
+ * Fetch the set of {{variable}} names referenced anywhere in a flow's nodes.
+ * Backed by GET /api/chatbot/flows/{id}/variables on fs-whatsapp.
+ * Used by the campaign create form to populate the variable mapping UI.
+ */
 export function useFlowVariables(flowId: string | undefined) {
   return useQuery({
-    queryKey: ["chatbot-flows", flowId, "variables"],
+    queryKey: [...chatbotKeys.flows(), flowId, "variables"],
     queryFn: () => apiClient.get<{ variables: string[] }>(`/api/chatbot/flows/${flowId}/variables`),
     enabled: Boolean(flowId),
     staleTime: 5 * 60 * 1000, // flow variables rarely change
@@ -296,41 +375,176 @@ export function useFlowVariables(flowId: string | undefined) {
 }
 ```
 
-- [ ] **Step 2: Commit**
+Extends `chatbotKeys` from `use-chatbot.ts:4` instead of hardcoding a query key — preserves the factory pattern.
+
+- [ ] **Step 2: Type check**
+
+```bash
+npx tsc --noEmit 2>&1 | grep "use-flow-variables" | head
+```
+
+Expected: no errors.
+
+- [ ] **Step 3: Commit**
 
 ```bash
 git add hooks/queries/use-flow-variables.ts
-git commit -m "feat(flows): useFlowVariables hook for campaign variable mapping"
+git commit -m "feat(flows): useFlowVariables hook"
 ```
 
 ---
 
-## Task 3: Campaigns list page
+## Task 3: Searchable picker primitive
 
 **Files:**
-- Create: `app/campaigns/layout.tsx`
-- Create: `app/campaigns/page.tsx`
-- Create: `components/campaigns/campaign-list.tsx`
+- Create: `components/campaigns/searchable-picker.tsx`
+
+A single reusable `<SearchablePicker>` wrapping `Popover + Command + CommandInput + CommandList` — used for account, template, and flow pickers in the create form. Avoids repeating the pattern three times, and avoids a non-existent `Combobox` import.
+
+- [ ] **Step 1: Write the component**
+
+Create `components/campaigns/searchable-picker.tsx`:
+
+```tsx
+"use client"
+
+import { useState } from "react"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+
+export interface SearchablePickerOption {
+  value: string
+  label: string
+  description?: string
+}
+
+interface SearchablePickerProps {
+  options: SearchablePickerOption[]
+  value: string
+  onValueChange: (value: string) => void
+  placeholder?: string
+  emptyMessage?: string
+  disabled?: boolean
+}
+
+export function SearchablePicker({
+  options,
+  value,
+  onValueChange,
+  placeholder = "Select...",
+  emptyMessage = "No results found.",
+  disabled,
+}: SearchablePickerProps) {
+  const [open, setOpen] = useState(false)
+  const selected = options.find((o) => o.value === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn(
+            "w-full justify-between font-normal cursor-pointer",
+            !value && "text-muted-foreground",
+          )}
+        >
+          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search..." />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  onSelect={() => {
+                    onValueChange(option.value)
+                    setOpen(false)
+                  }}
+                  className="cursor-pointer hover:bg-muted"
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <div className="flex flex-col">
+                    <span>{option.label}</span>
+                    {option.description && (
+                      <span className="text-xs text-muted-foreground">{option.description}</span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+```
+
+- [ ] **Step 2: Type check**
+
+```bash
+npx tsc --noEmit 2>&1 | grep "searchable-picker" | head
+```
+
+Expected: no errors.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add components/campaigns/searchable-picker.tsx
+git commit -m "feat(campaigns): reusable SearchablePicker wrapping Popover+Command"
+```
+
+---
+
+## Task 4: Status badge component
+
+**Files:**
 - Create: `components/campaigns/campaign-status-badge.tsx`
 
-- [ ] **Step 1: Write the status badge component**
-
-Create `components/campaigns/campaign-status-badge.tsx`:
+- [ ] **Step 1: Write the component**
 
 ```tsx
 import { Badge } from "@/components/ui/badge"
 import type { CampaignStatus } from "@/types/campaigns"
 import { cn } from "@/lib/utils"
 
+// Note: "processing" (not "running") matches the backend enum at
+// fs-whatsapp/internal/models/constants.go:143-151.
 const STATUS_STYLES: Record<CampaignStatus, string> = {
-  draft:     "bg-muted text-muted-foreground",
-  scheduled: "bg-info/10 text-info",
-  queued:    "bg-info/10 text-info",
-  running:   "bg-primary/10 text-primary",
-  paused:    "bg-warning/10 text-warning",
-  completed: "bg-success/10 text-success",
-  cancelled: "bg-muted text-muted-foreground",
-  failed:    "bg-destructive/10 text-destructive",
+  draft:      "bg-muted text-muted-foreground",
+  scheduled:  "bg-info/10 text-info",
+  queued:     "bg-info/10 text-info",
+  processing: "bg-primary/10 text-primary",
+  paused:     "bg-warning/10 text-warning",
+  completed:  "bg-success/10 text-success",
+  cancelled:  "bg-muted text-muted-foreground",
+  failed:     "bg-destructive/10 text-destructive",
 }
 
 export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
@@ -342,9 +556,286 @@ export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
 }
 ```
 
-- [ ] **Step 2: Write the layout with FeatureGate**
+- [ ] **Step 2: Commit**
 
-Create `app/campaigns/layout.tsx`:
+```bash
+git add components/campaigns/campaign-status-badge.tsx
+git commit -m "feat(campaigns): status badge component"
+```
+
+---
+
+## Task 5: Info banner component
+
+**Files:**
+- Create: `components/campaigns/info-banner-24hr.tsx`
+
+- [ ] **Step 1: Write the component**
+
+```tsx
+import { Info } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+export function InfoBanner24hr({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex gap-3 rounded-md border border-info/30 bg-info/5 p-3 text-sm",
+        className,
+      )}
+    >
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+      <p className="text-muted-foreground">
+        If your flow doesn&apos;t start with a template message, only contacts who&apos;ve
+        messaged you in the last 24 hours will receive it. Add a template node at the start
+        to reach everyone.
+      </p>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add components/campaigns/info-banner-24hr.tsx
+git commit -m "feat(campaigns): 24hr window info banner"
+```
+
+---
+
+## Task 6: Variable mapping form
+
+**Files:**
+- Create: `components/campaigns/variable-mapping-form.tsx`
+
+- [ ] **Step 1: Write the component**
+
+```tsx
+"use client"
+
+import { useMemo } from "react"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+interface VariableMappingFormProps {
+  /** Variable names that need values (e.g. ["customer_name", "city"]) */
+  variables: string[]
+  /** Available source columns (e.g. ["name", "city", "pincode"] from SC) */
+  availableColumns: string[]
+  /** Current mapping: variable name → column name */
+  value: Record<string, string>
+  /** Called when mapping changes */
+  onChange: (next: Record<string, string>) => void
+}
+
+const DONT_MAP = "__dont_map__"
+
+export function VariableMappingForm({
+  variables,
+  availableColumns,
+  value,
+  onChange,
+}: VariableMappingFormProps) {
+  const sortedVars = useMemo(() => [...variables].sort(), [variables])
+
+  const handleChange = (variable: string, column: string) => {
+    const next = { ...value }
+    if (column === DONT_MAP) {
+      delete next[variable]
+    } else {
+      next[variable] = column
+    }
+    onChange(next)
+  }
+
+  if (variables.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This template/flow has no variables that need mapping.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Label className="text-sm font-medium">Map variables to audience columns</Label>
+      <div className="grid gap-2">
+        {sortedVars.map((variable) => (
+          <div key={variable} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <code className="text-sm font-mono px-2 py-1 rounded bg-muted">
+              {`{{${variable}}}`}
+            </code>
+            <span className="text-muted-foreground text-sm">→</span>
+            <Select
+              value={value[variable] ?? DONT_MAP}
+              onValueChange={(col) => handleChange(variable, col)}
+            >
+              <SelectTrigger className="cursor-pointer">
+                <SelectValue placeholder="Pick a column..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DONT_MAP} className="cursor-pointer">
+                  Don&apos;t map
+                </SelectItem>
+                {availableColumns.map((col) => (
+                  <SelectItem key={col} value={col} className="cursor-pointer">
+                    {col}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add components/campaigns/variable-mapping-form.tsx
+git commit -m "feat(campaigns): variable mapping form"
+```
+
+---
+
+## Task 7: Sampling-central audience picker
+
+**Files:**
+- Create: `components/campaigns/audience-picker-sampling-central.tsx`
+
+- [ ] **Step 1: Write the component**
+
+```tsx
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { usePreviewAudience } from "@/hooks/queries/use-campaigns"
+import { Loader2, Users } from "lucide-react"
+import type { AudiencePreview } from "@/types/campaigns"
+
+interface Props {
+  value: string // the audience_id
+  onChange: (audienceId: string) => void
+  onPreviewLoaded: (preview: AudiencePreview) => void
+}
+
+export function AudiencePickerSamplingCentral({ value, onChange, onPreviewLoaded }: Props) {
+  const [localId, setLocalId] = useState(value)
+  const [preview, setPreview] = useState<AudiencePreview | null>(null)
+  const previewMutation = usePreviewAudience()
+
+  const handleFetch = () => {
+    const trimmed = localId.trim()
+    if (!trimmed) return
+    previewMutation.mutate(
+      { source: "sampling-central", audience_id: trimmed },
+      {
+        onSuccess: (p) => {
+          setPreview(p)
+          onPreviewLoaded(p)
+          onChange(trimmed)
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="sc-audience-id">Sampling Central audience ID</Label>
+        <div className="flex gap-2">
+          <Input
+            id="sc-audience-id"
+            placeholder="sc-audience-abc123"
+            value={localId}
+            onChange={(e) => setLocalId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handleFetch()
+              }
+            }}
+          />
+          <Button
+            type="button"
+            onClick={handleFetch}
+            disabled={!localId.trim() || previewMutation.isPending}
+            className="cursor-pointer"
+          >
+            {previewMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch"}
+          </Button>
+        </div>
+      </div>
+
+      {previewMutation.isError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {(previewMutation.error as Error).message || "Failed to fetch audience"}
+        </div>
+      )}
+
+      {preview && (
+        <div className="rounded-md border bg-muted/50 p-3">
+          <div className="flex items-center gap-2 text-sm">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">{preview.name ?? "Audience"}</span>
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            {preview.total_count.toLocaleString()} contacts
+            {preview.audience_type && <> · {preview.audience_type}</>}
+          </div>
+          {preview.available_columns.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              Available columns: {preview.available_columns.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add components/campaigns/audience-picker-sampling-central.tsx
+git commit -m "feat(campaigns): sampling-central audience picker with preview"
+```
+
+---
+
+## Task 8: Campaigns list page + nav
+
+**Files:**
+- Create: `app/(dashboard)/campaigns/layout.tsx`
+- Create: `app/(dashboard)/campaigns/page.tsx`
+- Create: `components/campaigns/campaign-list.tsx`
+- Modify: `components/app-sidebar.tsx`
+
+- [ ] **Step 1: Verify the dashboard route group**
+
+```bash
+ls /Users/pratikgupta/Freestand/magic-flow/.worktrees/broadcasting-plans/app/\(dashboard\)/
+```
+
+Confirm it exists. If the project uses a different layout convention (e.g. `app/` directly without a route group), drop the `(dashboard)` segment from the paths below and place files under `app/campaigns/`.
+
+- [ ] **Step 2: Write the layout**
+
+Create `app/(dashboard)/campaigns/layout.tsx`:
 
 ```tsx
 import { FeatureGate } from "@/components/feature-gate"
@@ -356,7 +847,7 @@ export default function CampaignsLayout({ children }: { children: React.ReactNod
 
 - [ ] **Step 3: Write the list page**
 
-Create `app/campaigns/page.tsx`:
+Create `app/(dashboard)/campaigns/page.tsx`:
 
 ```tsx
 "use client"
@@ -375,7 +866,7 @@ export default function CampaignsPage() {
     <div className="flex flex-col gap-6 p-6">
       <PageHeader title="Campaigns">
         <Button asChild>
-          <Link href="/campaigns/new">
+          <Link href="/campaigns/new" className="cursor-pointer">
             <Plus className="mr-2 h-4 w-4" />
             New Campaign
           </Link>
@@ -390,7 +881,7 @@ export default function CampaignsPage() {
 }
 ```
 
-- [ ] **Step 4: Write the list table component**
+- [ ] **Step 4: Write the list component**
 
 Create `components/campaigns/campaign-list.tsx`:
 
@@ -468,319 +959,44 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
 }
 ```
 
-- [ ] **Step 5: Build + type check**
+- [ ] **Step 5: Add Campaigns to the sidebar nav**
 
-```bash
-npx tsc --noEmit
-```
-
-Expected: no new type errors.
-
-- [ ] **Step 6: Add nav item in sidebar**
-
-Open `components/app-sidebar.tsx`. Find the existing nav items array. Add:
+Open `components/app-sidebar.tsx`. Find the existing nav items array. Add a new entry; check for an existing nav item with a `feature` field to copy the format:
 
 ```tsx
 { title: "Campaigns", url: "/campaigns", icon: Megaphone, feature: "campaigns" as const },
 ```
 
-Import `Megaphone` from `lucide-react` if not already imported.
+Import `Megaphone` from `lucide-react` at the top of the file if not already imported. Place the nav item near the other dashboard-level items (Chat, Contacts, etc.).
 
-- [ ] **Step 7: Start dev server and verify**
+- [ ] **Step 6: Type check + visual verify**
 
 ```bash
+npx tsc --noEmit 2>&1 | grep -E "(campaigns|Campaign)" | head -20
 docker compose up -d
-# Wait a few seconds, then open http://localhost:3002/campaigns
+# Wait, then open http://localhost:3002/campaigns
 ```
 
-Expected: page loads with "No campaigns yet" empty state (or existing campaigns if DB has some). Status badge styles should match the design system colors.
+Expected: page renders with either an empty state or an existing campaigns table. Sidebar shows "Campaigns" nav.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add app/campaigns/layout.tsx app/campaigns/page.tsx components/campaigns/campaign-list.tsx components/campaigns/campaign-status-badge.tsx components/app-sidebar.tsx
-git commit -m "feat(campaigns): list page and status badge"
+git add app/\(dashboard\)/campaigns/layout.tsx app/\(dashboard\)/campaigns/page.tsx components/campaigns/campaign-list.tsx components/app-sidebar.tsx
+git commit -m "feat(campaigns): list page + sidebar nav"
 ```
 
 ---
 
-## Task 4: Info banner component
+## Task 9: Campaign create form
 
 **Files:**
-- Create: `components/campaigns/info-banner-24hr.tsx`
-
-- [ ] **Step 1: Write the component**
-
-Create `components/campaigns/info-banner-24hr.tsx`:
-
-```tsx
-import { Info } from "lucide-react"
-import { cn } from "@/lib/utils"
-
-export function InfoBanner24hr({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        "flex gap-3 rounded-md border border-info/30 bg-info/5 p-3 text-sm",
-        className,
-      )}
-    >
-      <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
-      <p className="text-muted-foreground">
-        If your flow doesn&apos;t start with a template message, only contacts who&apos;ve messaged
-        you in the last 24 hours will receive it. Add a template node at the start to reach everyone.
-      </p>
-    </div>
-  )
-}
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add components/campaigns/info-banner-24hr.tsx
-git commit -m "feat(campaigns): 24hr window info banner component"
-```
-
----
-
-## Task 5: Variable mapping form
-
-**Files:**
-- Create: `components/campaigns/variable-mapping-form.tsx`
-
-- [ ] **Step 1: Write the component**
-
-Create `components/campaigns/variable-mapping-form.tsx`:
-
-```tsx
-"use client"
-
-import { useMemo } from "react"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-
-interface VariableMappingFormProps {
-  /** Variable names that need values (e.g. ["customer_name", "city"] from flow or template) */
-  variables: string[]
-  /** Available source columns (e.g. ["name", "city", "pincode"] from SC) */
-  availableColumns: string[]
-  /** Current mapping: variable name → column name */
-  value: Record<string, string>
-  /** Called when mapping changes */
-  onChange: (next: Record<string, string>) => void
-}
-
-const DONT_MAP = "__dont_map__"
-
-export function VariableMappingForm({
-  variables,
-  availableColumns,
-  value,
-  onChange,
-}: VariableMappingFormProps) {
-  const handleChange = (variable: string, column: string) => {
-    const next = { ...value }
-    if (column === DONT_MAP) {
-      delete next[variable]
-    } else {
-      next[variable] = column
-    }
-    onChange(next)
-  }
-
-  const sortedVars = useMemo(() => [...variables].sort(), [variables])
-
-  if (variables.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        This template/flow has no variables that need mapping.
-      </p>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <Label className="text-sm font-medium">Map variables to audience columns</Label>
-      <div className="grid gap-2">
-        {sortedVars.map((variable) => (
-          <div key={variable} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-            <code className="text-sm font-mono px-2 py-1 rounded bg-muted">
-              {`{{${variable}}}`}
-            </code>
-            <span className="text-muted-foreground text-sm">→</span>
-            <Select
-              value={value[variable] ?? DONT_MAP}
-              onValueChange={(col) => handleChange(variable, col)}
-            >
-              <SelectTrigger className="cursor-pointer">
-                <SelectValue placeholder="Pick a column..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={DONT_MAP} className="cursor-pointer">
-                  Don&apos;t map
-                </SelectItem>
-                {availableColumns.map((col) => (
-                  <SelectItem key={col} value={col} className="cursor-pointer">
-                    {col}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-```
-
-- [ ] **Step 2: Type check**
-
-```bash
-npx tsc --noEmit
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add components/campaigns/variable-mapping-form.tsx
-git commit -m "feat(campaigns): variable mapping form component"
-```
-
----
-
-## Task 6: Sampling-central audience picker
-
-**Files:**
-- Create: `components/campaigns/audience-picker-sampling-central.tsx`
-
-- [ ] **Step 1: Write the component**
-
-Create `components/campaigns/audience-picker-sampling-central.tsx`:
-
-```tsx
-"use client"
-
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { usePreviewAudience } from "@/hooks/queries/use-campaigns"
-import { Loader2, Users } from "lucide-react"
-import type { AudiencePreview } from "@/types/campaigns"
-
-interface Props {
-  value: { audience_id: string; column_mapping: Record<string, string> }
-  onChange: (v: { audience_id: string; column_mapping: Record<string, string> }) => void
-  onPreviewLoaded: (preview: AudiencePreview) => void
-}
-
-export function AudiencePickerSamplingCentral({ value, onChange, onPreviewLoaded }: Props) {
-  const [localId, setLocalId] = useState(value.audience_id)
-  const [preview, setPreview] = useState<AudiencePreview | null>(null)
-  const previewMutation = usePreviewAudience()
-
-  const handleFetch = () => {
-    if (!localId.trim()) return
-    previewMutation.mutate(
-      { source: "sampling-central", audience_id: localId.trim() },
-      {
-        onSuccess: (p) => {
-          setPreview(p)
-          onPreviewLoaded(p)
-          onChange({ ...value, audience_id: localId.trim() })
-        },
-      },
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="sc-audience-id">Sampling Central Audience ID</Label>
-        <div className="flex gap-2">
-          <Input
-            id="sc-audience-id"
-            placeholder="sc-audience-abc123"
-            value={localId}
-            onChange={(e) => setLocalId(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                handleFetch()
-              }
-            }}
-          />
-          <Button
-            type="button"
-            onClick={handleFetch}
-            disabled={!localId.trim() || previewMutation.isPending}
-            className="cursor-pointer"
-          >
-            {previewMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch"}
-          </Button>
-        </div>
-      </div>
-
-      {previewMutation.isError && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {(previewMutation.error as Error).message || "Failed to fetch audience"}
-        </div>
-      )}
-
-      {preview && (
-        <div className="rounded-md border bg-muted/50 p-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{preview.name ?? "Audience"}</span>
-          </div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            {preview.total_count.toLocaleString()} contacts
-            {preview.audience_type && <> · {preview.audience_type}</>}
-          </div>
-          {preview.available_columns.length > 0 && (
-            <div className="mt-2 text-xs text-muted-foreground">
-              Available columns: {preview.available_columns.join(", ")}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-```
-
-- [ ] **Step 2: Type check**
-
-```bash
-npx tsc --noEmit
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add components/campaigns/audience-picker-sampling-central.tsx
-git commit -m "feat(campaigns): sampling-central audience picker with fetch preview"
-```
-
----
-
-## Task 7: Campaign create form
-
-**Files:**
-- Create: `app/campaigns/new/page.tsx`
+- Create: `app/(dashboard)/campaigns/new/page.tsx`
 - Create: `components/campaigns/campaign-create-form.tsx`
 
-- [ ] **Step 1: Write the new page wrapper**
+- [ ] **Step 1: Page wrapper**
 
-Create `app/campaigns/new/page.tsx`:
+Create `app/(dashboard)/campaigns/new/page.tsx`:
 
 ```tsx
 import { PageHeader } from "@/components/page-header"
@@ -796,7 +1012,7 @@ export default function NewCampaignPage() {
 }
 ```
 
-- [ ] **Step 2: Write the form**
+- [ ] **Step 2: Create form**
 
 Create `components/campaigns/campaign-create-form.tsx`:
 
@@ -813,16 +1029,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Combobox } from "@/components/ui/combobox"
+import { Loader2 } from "lucide-react"
 import { useAccounts } from "@/hooks/queries/use-accounts"
 import { useTemplates } from "@/hooks/queries/use-templates"
-import { useChatbotFlows } from "@/hooks/queries"
+import { useChatbotFlows } from "@/hooks/queries/use-chatbot"
 import { useFlowVariables } from "@/hooks/queries/use-flow-variables"
 import { useCreateCampaign } from "@/hooks/queries/use-campaigns"
+import { SearchablePicker } from "./searchable-picker"
 import { InfoBanner24hr } from "./info-banner-24hr"
 import { VariableMappingForm } from "./variable-mapping-form"
 import { AudiencePickerSamplingCentral } from "./audience-picker-sampling-central"
-import { Loader2 } from "lucide-react"
 import type { AudiencePreview } from "@/types/campaigns"
 
 const schema = z
@@ -832,35 +1048,44 @@ const schema = z
     type: z.enum(["template", "flow"]),
     template_id: z.string().optional(),
     flow_id: z.string().optional(),
-    audience_source: z.enum(["sampling-central"]), // v1 only; contacts/csv will be added later
     sc_audience_id: z.string().optional(),
   })
   .refine((data) => (data.type === "template" ? !!data.template_id : !!data.flow_id), {
-    message: "Select a template or flow",
+    message: "Pick a template or flow",
     path: ["template_id"],
   })
-  .refine((data) => data.audience_source !== "sampling-central" || !!data.sc_audience_id, {
+  .refine((data) => !!data.sc_audience_id, {
     message: "Audience ID is required",
     path: ["sc_audience_id"],
   })
 
 type FormValues = z.infer<typeof schema>
 
+// Extract {{name}} refs from template body (ignore dotted names like session.x)
+function extractTemplatePlaceholders(body: string | undefined): string[] {
+  if (!body) return []
+  const set = new Set<string>()
+  for (const m of body.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}/g)) {
+    const name = m[1]
+    if (!name.includes(".")) set.add(name)
+  }
+  return Array.from(set)
+}
+
 export function CampaignCreateForm() {
   const router = useRouter()
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      name: "",
-      account_name: "",
-      type: "template",
-      audience_source: "sampling-central",
-    },
+    defaultValues: { name: "", account_name: "", type: "template" },
   })
 
+  // Existing hooks — verified signatures:
+  //   useAccounts() → Account[] directly
+  //   useTemplates("APPROVED") → any[] directly (note: uppercase APPROVED matches backend enum)
+  //   useChatbotFlows() → ChatbotFlow[] directly (NOT { flows: [...] })
   const { data: accounts } = useAccounts()
-  const { data: templatesData } = useTemplates("approved")
-  const { data: flowsData } = useChatbotFlows()
+  const { data: templates } = useTemplates("APPROVED")
+  const { data: flows } = useChatbotFlows()
   const { mutateAsync: createCampaign, isPending } = useCreateCampaign()
 
   const type = form.watch("type")
@@ -871,15 +1096,12 @@ export function CampaignCreateForm() {
   const [preview, setPreview] = useState<AudiencePreview | null>(null)
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
 
-  // Determine which variables need mapping
+  // Variables that need mapping
   const variablesToMap: string[] = (() => {
     if (type === "flow") return flowVars?.variables ?? []
     if (type === "template" && templateId) {
-      const t = templatesData?.templates.find((t) => t.id === templateId)
-      if (!t) return []
-      // Extract {{name}} references from body
-      const matches = (t.body_content ?? "").match(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g) ?? []
-      return [...new Set(matches.map((m) => m.slice(2, -2)))]
+      const t = (templates ?? []).find((tpl: any) => tpl.id === templateId)
+      return extractTemplatePlaceholders(t?.body_content)
     }
     return []
   })()
@@ -901,7 +1123,7 @@ export function CampaignCreateForm() {
       },
       schedule_at: null,
     })
-    router.push(`/campaigns/${res.campaign_id}`)
+    router.push(`/campaigns/${res.id}`)
   }
 
   return (
@@ -930,10 +1152,10 @@ export function CampaignCreateForm() {
             <FormItem>
               <FormLabel>WhatsApp account</FormLabel>
               <FormControl>
-                <Combobox
+                <SearchablePicker
                   value={field.value}
                   onValueChange={field.onChange}
-                  options={(accounts ?? []).map((a) => ({ value: a.name, label: a.name }))}
+                  options={(accounts ?? []).map((a: any) => ({ value: a.name, label: a.name }))}
                   placeholder="Pick an account..."
                 />
               </FormControl>
@@ -951,8 +1173,12 @@ export function CampaignCreateForm() {
             render={({ field }) => (
               <Tabs value={field.value} onValueChange={(v) => field.onChange(v)}>
                 <TabsList className="w-fit">
-                  <TabsTrigger value="template" className="cursor-pointer">Template</TabsTrigger>
-                  <TabsTrigger value="flow" className="cursor-pointer">Flow</TabsTrigger>
+                  <TabsTrigger value="template" className="cursor-pointer">
+                    Template
+                  </TabsTrigger>
+                  <TabsTrigger value="flow" className="cursor-pointer">
+                    Flow
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="template" className="mt-3">
@@ -962,10 +1188,10 @@ export function CampaignCreateForm() {
                     render={({ field: tfield }) => (
                       <FormItem>
                         <FormControl>
-                          <Combobox
+                          <SearchablePicker
                             value={tfield.value ?? ""}
                             onValueChange={tfield.onChange}
-                            options={(templatesData?.templates ?? []).map((t) => ({
+                            options={(templates ?? []).map((t: any) => ({
                               value: t.id,
                               label: t.name,
                             }))}
@@ -985,10 +1211,10 @@ export function CampaignCreateForm() {
                     render={({ field: ffield }) => (
                       <FormItem>
                         <FormControl>
-                          <Combobox
+                          <SearchablePicker
                             value={ffield.value ?? ""}
                             onValueChange={ffield.onChange}
-                            options={(flowsData?.flows ?? []).map((f) => ({
+                            options={(flows ?? []).map((f) => ({
                               value: f.id,
                               label: f.name,
                             }))}
@@ -1016,12 +1242,9 @@ export function CampaignCreateForm() {
               <FormItem>
                 <FormControl>
                   <AudiencePickerSamplingCentral
-                    value={{ audience_id: field.value ?? "", column_mapping: columnMapping }}
-                    onChange={(v) => {
-                      field.onChange(v.audience_id)
-                      setColumnMapping(v.column_mapping)
-                    }}
-                    onPreviewLoaded={(p) => setPreview(p)}
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onPreviewLoaded={setPreview}
                   />
                 </FormControl>
                 <FormMessage />
@@ -1030,7 +1253,7 @@ export function CampaignCreateForm() {
           />
         </div>
 
-        {/* Variable mapping — only when we have preview + variables to map */}
+        {/* Variable mapping — only shown after preview + when vars exist */}
         {preview && variablesToMap.length > 0 && (
           <VariableMappingForm
             variables={variablesToMap}
@@ -1040,7 +1263,6 @@ export function CampaignCreateForm() {
           />
         )}
 
-        {/* Submit */}
         <div className="flex gap-2 pt-2">
           <Button type="submit" disabled={isPending} className="cursor-pointer">
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -1061,47 +1283,50 @@ export function CampaignCreateForm() {
 }
 ```
 
-**Note:** the `Combobox` component may or may not exist with that exact API in this codebase. Check `components/ui/combobox.tsx`. If the API is different (e.g. you must pass children), adapt accordingly. Use a searchable Popover + Command pattern if no Combobox wrapper exists.
+**Key fixes vs the first draft:**
+- `useTemplates("APPROVED")` — uppercase, matches backend enum
+- `(templates ?? []).find(...)` — templates is the array directly, not `.templates` wrapper
+- `(flows ?? []).map(...)` — flows is the array directly, not `.flows` wrapper
+- `SearchablePicker` import from `./searchable-picker` — no `@/components/ui/combobox` which doesn't exist
+- `res.id` (not `res.campaign_id`) — backend returns `{id, ...}` per the rewritten `CreateCampaign` in the backend plan
 
 - [ ] **Step 3: Type check**
 
 ```bash
-npx tsc --noEmit
+npx tsc --noEmit 2>&1 | grep -E "campaign-create-form" | head
 ```
 
-Fix any import errors. Common issues:
-- `useChatbotFlows` may be exported from a different path — search `hooks/queries/`
-- `useTemplates` signature — check existing usage
-- `useAccounts` signature
+Fix any errors. Common issues:
+- `useAccounts` return type may have `Account[]` typed or `any[]` — the `any` cast `(a: any)` handles both
+- Template body field may be called `body_content` or `body` — check `useTemplates` shape and adjust `extractTemplatePlaceholders` accordingly
 
-- [ ] **Step 4: Visual verify in browser**
+- [ ] **Step 4: Visual verify**
 
-```bash
-# Dev server already running from earlier tasks
-# Open http://localhost:3002/campaigns/new
-```
-
-Expected: the form renders, all fields work, tabs switch between template and flow, info banner shows under the flow tab.
+Open `http://localhost:3002/campaigns/new`. Confirm:
+- Three searchable pickers (account, template, flow) work
+- Tabs switch between template and flow
+- Info banner appears under the Flow tab
+- Audience ID input + Fetch button works (will error until backend is running with SC config, but should call the preview endpoint)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/campaigns/new/page.tsx components/campaigns/campaign-create-form.tsx
+git add app/\(dashboard\)/campaigns/new/page.tsx components/campaigns/campaign-create-form.tsx
 git commit -m "feat(campaigns): create form with SC audience + variable mapping"
 ```
 
 ---
 
-## Task 8: Campaign detail page
+## Task 10: Campaign detail page + recipient table
 
 **Files:**
-- Create: `app/campaigns/[id]/page.tsx`
+- Create: `app/(dashboard)/campaigns/[id]/page.tsx`
 - Create: `components/campaigns/campaign-detail.tsx`
 - Create: `components/campaigns/recipient-table.tsx`
 
-- [ ] **Step 1: Detail page wrapper**
+- [ ] **Step 1: Page wrapper**
 
-Create `app/campaigns/[id]/page.tsx`:
+Create `app/(dashboard)/campaigns/[id]/page.tsx`:
 
 ```tsx
 "use client"
@@ -1118,11 +1343,13 @@ export default function CampaignDetailPage() {
   if (isLoading) return <div className="p-6 text-muted-foreground">Loading...</div>
   if (isError || !data) return <div className="p-6 text-destructive">Campaign not found</div>
 
-  return <CampaignDetail campaign={data.campaign} />
+  return <CampaignDetail campaign={data} />
 }
 ```
 
-- [ ] **Step 2: Detail layout component**
+Note: `useCampaign` returns `Campaign` directly (not wrapped), since `apiClient.get` unwraps the envelope.
+
+- [ ] **Step 2: Detail layout**
 
 Create `components/campaigns/campaign-detail.tsx`:
 
@@ -1135,21 +1362,33 @@ import { Progress } from "@/components/ui/progress"
 import { PageHeader } from "@/components/page-header"
 import { CampaignStatusBadge } from "./campaign-status-badge"
 import { RecipientTable } from "./recipient-table"
-import { useStartCampaign, usePauseCampaign, useCancelCampaign } from "@/hooks/queries/use-campaigns"
+import { useCampaignStatsSubscription } from "./use-campaign-stats-subscription"
+import {
+  useStartCampaign,
+  usePauseCampaign,
+  useCancelCampaign,
+} from "@/hooks/queries/use-campaigns"
 import type { Campaign } from "@/types/campaigns"
 import { FileText, GitBranch } from "lucide-react"
 
 export function CampaignDetail({ campaign }: { campaign: Campaign }) {
+  useCampaignStatsSubscription(campaign.id)
+
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
   const { mutate: pauseCampaign, isPending: pausing } = usePauseCampaign()
   const { mutate: cancelCampaign, isPending: cancelling } = useCancelCampaign()
 
   const canStart = campaign.status === "draft" || campaign.status === "scheduled"
-  const canPause = campaign.status === "running"
-  const canCancel = campaign.status === "running" || campaign.status === "paused" || campaign.status === "scheduled"
+  const canPause = campaign.status === "processing"
+  const canCancel =
+    campaign.status === "processing" ||
+    campaign.status === "paused" ||
+    campaign.status === "scheduled"
 
   const progressPct = campaign.total_recipients
-    ? Math.round(((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100)
+    ? Math.round(
+        ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100,
+      )
     : 0
 
   return (
@@ -1157,27 +1396,45 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
       <PageHeader title={campaign.name}>
         <div className="flex items-center gap-2">
           {canStart && (
-            <Button onClick={() => startCampaign(campaign.id)} disabled={starting} className="cursor-pointer">
+            <Button
+              onClick={() => startCampaign(campaign.id)}
+              disabled={starting}
+              className="cursor-pointer"
+            >
               Start Campaign
             </Button>
           )}
           {canPause && (
-            <Button variant="outline" onClick={() => pauseCampaign(campaign.id)} disabled={pausing} className="cursor-pointer">
+            <Button
+              variant="outline"
+              onClick={() => pauseCampaign(campaign.id)}
+              disabled={pausing}
+              className="cursor-pointer"
+            >
               Pause
             </Button>
           )}
           {canCancel && (
-            <Button variant="destructive" onClick={() => cancelCampaign(campaign.id)} disabled={cancelling} className="cursor-pointer">
+            <Button
+              variant="destructive"
+              onClick={() => cancelCampaign(campaign.id)}
+              disabled={cancelling}
+              className="cursor-pointer"
+            >
               Cancel
             </Button>
           )}
         </div>
       </PageHeader>
 
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
         <CampaignStatusBadge status={campaign.status} />
         <span className="flex items-center gap-1.5">
-          {campaign.flow_id ? <GitBranch className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+          {campaign.flow_id ? (
+            <GitBranch className="h-3.5 w-3.5" />
+          ) : (
+            <FileText className="h-3.5 w-3.5" />
+          )}
           {campaign.flow_id ? "Flow campaign" : "Template campaign"}
         </span>
         <span>·</span>
@@ -1239,7 +1496,7 @@ function Stat({
 }
 ```
 
-- [ ] **Step 3: Recipient table component**
+- [ ] **Step 3: Recipient table**
 
 Create `components/campaigns/recipient-table.tsx`:
 
@@ -1252,9 +1509,12 @@ import { Button } from "@/components/ui/button"
 import { useCampaignRecipients } from "@/hooks/queries/use-campaigns"
 
 export function RecipientTable({ campaignId }: { campaignId: string }) {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useCampaignRecipients(campaignId)
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useCampaignRecipients(campaignId)
 
-  if (isLoading) return <div className="text-sm text-muted-foreground">Loading recipients...</div>
+  if (isLoading) {
+    return <div className="text-sm text-muted-foreground">Loading recipients...</div>
+  }
 
   const allRecipients = data?.pages.flatMap((p) => p.recipients) ?? []
 
@@ -1313,137 +1573,131 @@ export function RecipientTable({ campaignId }: { campaignId: string }) {
 }
 ```
 
-- [ ] **Step 4: Type check + visual verify**
+- [ ] **Step 4: Type check**
 
 ```bash
-npx tsc --noEmit
-# Open http://localhost:3002/campaigns/<existing-id> — or create one via the form first
+npx tsc --noEmit 2>&1 | grep campaign | head
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/campaigns/[id]/page.tsx components/campaigns/campaign-detail.tsx components/campaigns/recipient-table.tsx
-git commit -m "feat(campaigns): detail page with counters, progress bar, recipient table"
+git add app/\(dashboard\)/campaigns/\[id\]/page.tsx components/campaigns/campaign-detail.tsx components/campaigns/recipient-table.tsx
+git commit -m "feat(campaigns): detail page with counters and recipient table"
 ```
 
 ---
 
-## Task 9: WebSocket live updates
+## Task 11: WebSocket stats subscription
 
 **Files:**
-- Create: `lib/campaigns-ws.ts`
-- Modify: `components/campaigns/campaign-detail.tsx`
+- Create: `components/campaigns/use-campaign-stats-subscription.ts`
 
-- [ ] **Step 1: Check existing WebSocket infrastructure**
+Uses the existing `useWebSocket()` hook at `hooks/use-websocket.ts:195` — verified API: `{ subscribe, sendEvent, isConnected }`. The `subscribe(eventType, handler)` returns an unsubscribe function.
 
-Look at how existing chat features subscribe to the WebSocket. Relevant files:
-- `lib/websocket-client.ts` or similar
-- `contexts/websocket-context.tsx` or `hooks/use-websocket.ts`
-
-The Vue version broadcasts `campaign_stats_update` events on the WebSocket. Find the existing subscription pattern and match it.
-
-- [ ] **Step 2: Write a hook that invalidates campaign detail on stats update**
-
-Create `lib/campaigns-ws.ts` (or add to an existing ws subscription file):
+- [ ] **Step 1: Write the hook**
 
 ```ts
+"use client"
+
 import { useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { campaignKeys } from "@/hooks/queries/query-keys"
-// Import existing websocket subscribe function
-import { subscribeWebSocket } from "@/lib/websocket" // adjust path
+import { useWebSocket } from "@/hooks/use-websocket"
+import { campaignKeys } from "@/hooks/queries/use-campaigns"
 
+/**
+ * Subscribe to the "campaign_stats_update" WebSocket event and invalidate the
+ * campaign detail + recipients queries when stats for this campaign change.
+ *
+ * The backend publishes campaign_stats_update events via
+ * queue.Publisher.PublishCampaignStats — see fs-whatsapp/internal/worker/worker.go
+ * checkCampaignCompletion and publishCampaignStats for the emitter side.
+ */
 export function useCampaignStatsSubscription(campaignId: string) {
+  const { subscribe } = useWebSocket()
   const qc = useQueryClient()
 
   useEffect(() => {
     if (!campaignId) return
-    const unsubscribe = subscribeWebSocket((msg) => {
-      if (msg.type === "campaign_stats_update" && msg.payload?.campaign_id === campaignId) {
+    const unsubscribe = subscribe("campaign_stats_update", (payload: any) => {
+      if (payload?.campaign_id === campaignId) {
         qc.invalidateQueries({ queryKey: campaignKeys.detail(campaignId) })
-        qc.invalidateQueries({ queryKey: [...campaignKeys.details(), campaignId, "recipients"] })
+        qc.invalidateQueries({ queryKey: campaignKeys.recipients(campaignId) })
       }
     })
     return unsubscribe
-  }, [campaignId, qc])
+  }, [campaignId, subscribe, qc])
 }
 ```
 
-- [ ] **Step 3: Wire into the detail page**
-
-In `components/campaigns/campaign-detail.tsx`, call the hook at the top:
-
-```tsx
-import { useCampaignStatsSubscription } from "@/lib/campaigns-ws"
-// ...
-export function CampaignDetail({ campaign }: { campaign: Campaign }) {
-  useCampaignStatsSubscription(campaign.id)
-  // ... rest
-}
-```
-
-- [ ] **Step 4: Verify in browser**
-
-Trigger a test campaign start (via the backend curl from backend Task 12). Open the detail page. Watch the counters increment in real time as the worker dispatches.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Type check**
 
 ```bash
-git add lib/campaigns-ws.ts components/campaigns/campaign-detail.tsx
-git commit -m "feat(campaigns): WebSocket live stats updates on detail page"
+npx tsc --noEmit 2>&1 | grep stats-subscription | head
+```
+
+Expected: no errors.
+
+- [ ] **Step 3: Verify in browser (with backend running)**
+
+Start a test campaign from the create form. Open the detail page. Watch counters increment as the worker processes recipients. If nothing updates, check browser DevTools Network tab for the WebSocket connection and look for `campaign_stats_update` frames.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add components/campaigns/use-campaign-stats-subscription.ts
+git commit -m "feat(campaigns): WebSocket subscription for live stats updates"
 ```
 
 ---
 
-## Task 10: RBAC verification + final pass
+## Task 12: End-to-end verification + lint
 
-- [ ] **Step 1: Verify permissions fallback**
-
-Open `lib/permissions.ts`. Confirm `DEFAULT_ROLE_FEATURES` has `campaigns` enabled for admin and manager roles. If not, add it:
-
-```ts
-export const DEFAULT_ROLE_FEATURES: Record<Role, Feature[]> = {
-  admin: [..., "campaigns"],
-  manager: [..., "campaigns"],
-  agent: [...], // agents do NOT get campaigns
-}
-```
-
-- [ ] **Step 2: Final type check**
+- [ ] **Step 1: TypeScript check**
 
 ```bash
-npx tsc --noEmit
+npx tsc --noEmit 2>&1 | grep -E "campaign" | head -30
 ```
 
-Expected: no errors in any new file.
+Expected: zero errors involving campaign files.
 
-- [ ] **Step 3: Run unit tests (if vitest suite covers any of the new files)**
+- [ ] **Step 2: Run existing tests (don't break anything)**
 
 ```bash
-npx vitest run components/campaigns
+npx vitest run 2>&1 | tail -20
 ```
 
-Expected: no tests exist yet for these files; vitest may report "No test files found", which is fine for v1. Add tests in a follow-up.
+Expected: existing test suites pass. New component tests are NOT required for v1 (defer to v1.1).
 
-- [ ] **Step 4: Smoke test end-to-end**
+- [ ] **Step 3: Lint**
 
-With backend running and sampling-central stub reachable:
+```bash
+npx next lint 2>&1 | tail -30
+```
 
-1. Navigate to `/campaigns` — should show empty state
-2. Click New Campaign
-3. Fill in name, account, pick Flow, pick a flow
-4. Paste a test audience ID, click Fetch — should show count + columns
-5. Map flow variables to SC columns
-6. Click Start Campaign
-7. Should redirect to `/campaigns/{id}` with live counters
-8. Watch counters update as worker dispatches
+Fix any errors in new files. Warnings in pre-existing files can be ignored.
+
+- [ ] **Step 4: Full smoke test**
+
+With backend running (from the backend plan's Task 12 smoke test):
+
+1. Open `http://localhost:3002/campaigns` → "No campaigns yet" empty state
+2. Click "New Campaign"
+3. Name: "Frontend Smoke Test"
+4. Account: pick one from the searchable picker
+5. Type: Flow
+6. Flow: pick a flow from the searchable picker
+7. Audience ID: paste a test SC audience ID, click Fetch → preview card appears with count + columns
+8. Variable mapping rows render based on the flow's variables; map each to an SC column
+9. Click "Start Campaign"
+10. Redirect to `/campaigns/{id}` → live detail page
+11. Watch counters update as the worker dispatches
 
 - [ ] **Step 5: Commit any final fixes**
 
 ```bash
 git add -u
-git commit -m "chore: RBAC and final pass"
+git commit -m "chore: lint and type fixes for broadcasting frontend"
 ```
 
 - [ ] **Step 6: Push**
@@ -1456,25 +1710,27 @@ git push -u origin plan/broadcasting-flow-extensibility
 
 ## Summary
 
-10 tasks land the magic-flow frontend side of broadcasting:
+12 tasks land the magic-flow frontend side:
 
-1. React Query hooks + types
+0. Narrow `/api/campaigns` LOCAL_PREFIXES to `/api/campaigns/create`
+1. Types + React Query hooks
 2. Flow variables hook
-3. Campaigns list page + nav
-4. Info banner component
-5. Variable mapping form
-6. Sampling-central audience picker
-7. Campaign create form
-8. Campaign detail page
-9. WebSocket live updates
-10. RBAC + final pass
-
-Execution depends on the backend plan landing first for flow-campaign testing, but pages 1-4 (list, badge, banner, mapping form) can be built in parallel on mocked data.
+3. `SearchablePicker` primitive (Popover+Command)
+4. `CampaignStatusBadge`
+5. `InfoBanner24hr`
+6. `VariableMappingForm`
+7. `AudiencePickerSamplingCentral`
+8. Campaigns list page + sidebar nav
+9. Campaign create form
+10. Campaign detail page + recipient table
+11. WebSocket stats subscription
+12. Lint + e2e verification
 
 ## Deferred for v1.1
 
-- `Contacts` audience tab (reuse `useContactFilterUI`) — backend support exists, frontend tab just needs wiring
-- `CSV` audience tab — backend staging endpoint needed first
-- Flow variable mapping validation warning ("your mapping doesn't cover `customer_name`")
-- Unit tests for components (vitest)
-- Pause/resume confirmation dialogs (use AlertDialog per CLAUDE.md UI rules)
+- Contacts audience tab (backend + frontend)
+- CSV audience tab (backend staging + frontend upload UI + column mapping)
+- Component unit tests (vitest)
+- Pause/resume confirmation dialogs (AlertDialog per CLAUDE.md UI rules)
+- Campaign template variable validation warning ("mapping doesn't cover `customer_name`")
+- SC audience ID dropdown (would require new SC list endpoint)

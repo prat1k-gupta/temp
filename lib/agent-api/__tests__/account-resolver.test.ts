@@ -17,10 +17,13 @@ describe("getActingAccount", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          accounts: [
-            { id: "acc_1", name: "Acme Main", phone_number: "+919876543210", status: "active", has_access_token: true },
-            { id: "acc_2", name: "Second", phone_number: "+919988776655", status: "active", has_access_token: true },
-          ],
+          status: "success",
+          data: {
+            accounts: [
+              { id: "acc_1", name: "Acme Main", phone_number: "+919876543210", status: "active", has_access_token: true },
+              { id: "acc_2", name: "Second", phone_number: "+919988776655", status: "active", has_access_token: true },
+            ],
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -36,9 +39,13 @@ describe("getActingAccount", () => {
 
   it("forwards X-API-Key header on the fetch call", async () => {
     ;(global.fetch as any).mockResolvedValue(
-      new Response(JSON.stringify({ accounts: [{ id: "a", name: "n", status: "active", has_access_token: true }] }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: { accounts: [{ id: "a", name: "n", status: "active", has_access_token: true }] },
+        }),
+        { status: 200 },
+      ),
     )
     await getActingAccount("whm_abc")
     const [, init] = (global.fetch as any).mock.calls[0]
@@ -54,7 +61,9 @@ describe("getActingAccount", () => {
   })
 
   it("throws no_account_configured when accounts list is empty", async () => {
-    ;(global.fetch as any).mockResolvedValue(new Response(JSON.stringify({ accounts: [] }), { status: 200 }))
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: "success", data: { accounts: [] } }), { status: 200 }),
+    )
     await expect(getActingAccount("whm_abc")).rejects.toMatchObject({
       name: "AgentError",
       code: "no_account_configured",
@@ -81,7 +90,8 @@ describe("getActingAccount", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          accounts: [{ id: "a", name: "n", status: "active", has_access_token: true }],
+          status: "success",
+          data: { accounts: [{ id: "a", name: "n", status: "active", has_access_token: true }] },
         }),
         { status: 200 },
       ),

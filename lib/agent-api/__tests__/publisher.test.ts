@@ -29,20 +29,23 @@ describe("listFlows", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          projects: [
-            {
-              id: "mf_1",
-              name: "iPhone 11 Launch",
-              created_at: "2026-04-15T11:42:08Z",
-              updated_at: "2026-04-15T11:47:22Z",
-              trigger_keywords: ["iphone11"],
-              node_count: 6,
-              latest_version: 3,
-            },
-          ],
-          total: 1,
-          page: 1,
-          limit: 50,
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "iPhone 11 Launch",
+                created_at: "2026-04-15T11:42:08Z",
+                updated_at: "2026-04-15T11:47:22Z",
+                trigger_keywords: ["iphone11"],
+                node_count: 6,
+                latest_version: 3,
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 50,
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -65,7 +68,7 @@ describe("listFlows", () => {
 
   it("forwards X-API-Key in the fetch headers", async () => {
     ;(global.fetch as any).mockResolvedValue(
-      new Response(JSON.stringify({ projects: [], total: 0 }), { status: 200 }),
+      new Response(JSON.stringify({ status: "success", data: { projects: [], total: 0 } }), { status: 200 }),
     )
     await listFlows(mockCtx(), 10)
     const [, init] = (global.fetch as any).mock.calls[0]
@@ -74,7 +77,7 @@ describe("listFlows", () => {
 
   it("passes limit to fs-whatsapp as query param", async () => {
     ;(global.fetch as any).mockResolvedValue(
-      new Response(JSON.stringify({ projects: [], total: 0 }), { status: 200 }),
+      new Response(JSON.stringify({ status: "success", data: { projects: [], total: 0 } }), { status: 200 }),
     )
     await listFlows(mockCtx(), 25)
     const [url] = (global.fetch as any).mock.calls[0]
@@ -85,18 +88,21 @@ describe("listFlows", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          projects: [
-            {
-              id: "mf_1",
-              name: "Foo",
-              created_at: "2026-01-01T00:00:00Z",
-              updated_at: "2026-01-01T00:00:00Z",
-              trigger_keywords: ["bar"],
-              node_count: 2,
-              latest_version: 1,
-            },
-          ],
-          total: 1,
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "Foo",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["bar"],
+                node_count: 2,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
         }),
         { status: 200 },
       ),
@@ -108,7 +114,10 @@ describe("listFlows", () => {
 
   it("returns empty array when fs-whatsapp has no projects for this org", async () => {
     ;(global.fetch as any).mockResolvedValue(
-      new Response(JSON.stringify({ projects: [], total: 0, page: 1, limit: 50 }), { status: 200 }),
+      new Response(
+        JSON.stringify({ status: "success", data: { projects: [], total: 0, page: 1, limit: 50 } }),
+        { status: 200 },
+      ),
     )
     const result = await listFlows(mockCtx(), 50)
     expect(result.flows).toEqual([])
@@ -119,18 +128,21 @@ describe("listFlows", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          projects: [
-            {
-              id: "mf_1",
-              name: "Multi",
-              created_at: "2026-01-01T00:00:00Z",
-              updated_at: "2026-01-01T00:00:00Z",
-              trigger_keywords: ["alpha", "beta"],
-              node_count: 3,
-              latest_version: 1,
-            },
-          ],
-          total: 1,
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "Multi",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["alpha", "beta"],
+                node_count: 3,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
         }),
         { status: 200 },
       ),

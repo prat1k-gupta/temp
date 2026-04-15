@@ -17,26 +17,33 @@ describe("GET /v1/agent/flows", () => {
   function mockFsResponses() {
     // First call: GET /api/accounts (from withAgentAuth → getActingAccount)
     // Second call: GET /api/magic-flow/projects (from listFlows)
+    // Both fs-whatsapp endpoints wrap responses in {status, data} via SendEnvelope.
     const accountsBody = {
-      accounts: [
-        { id: "acc_1", name: "Acme Main", phone_number: "+919876543210", status: "active", has_access_token: true },
-      ],
+      status: "success",
+      data: {
+        accounts: [
+          { id: "acc_1", name: "Acme Main", phone_number: "+919876543210", status: "active", has_access_token: true },
+        ],
+      },
     }
     const projectsBody = {
-      projects: [
-        {
-          id: "mf_1",
-          name: "iPhone Launch",
-          created_at: "2026-04-15T11:42:08Z",
-          updated_at: "2026-04-15T11:47:22Z",
-          trigger_keywords: ["iphone11"],
-          node_count: 6,
-          latest_version: 2,
-        },
-      ],
-      total: 1,
-      page: 1,
-      limit: 50,
+      status: "success",
+      data: {
+        projects: [
+          {
+            id: "mf_1",
+            name: "iPhone Launch",
+            created_at: "2026-04-15T11:42:08Z",
+            updated_at: "2026-04-15T11:47:22Z",
+            trigger_keywords: ["iphone11"],
+            node_count: 6,
+            latest_version: 2,
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 50,
+      },
     }
     let callIndex = 0
     ;(global.fetch as any).mockImplementation((url: string) => {

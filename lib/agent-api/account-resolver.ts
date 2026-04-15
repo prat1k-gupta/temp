@@ -43,14 +43,16 @@ export async function getActingAccount(apiKey: string): Promise<Account> {
     throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when listing accounts`)
   }
 
-  let body: { accounts?: WhatsAppAccountRaw[] }
+  // fs-whatsapp wraps responses in {status, data} via SendEnvelope,
+  // so the real shape is {status: "success", data: {accounts: [...]}}
+  let body: { status?: string; data?: { accounts?: WhatsAppAccountRaw[] } }
   try {
-    body = (await res.json()) as { accounts?: WhatsAppAccountRaw[] }
+    body = (await res.json()) as { status?: string; data?: { accounts?: WhatsAppAccountRaw[] } }
   } catch {
     throw new AgentError("internal_error", "fs-whatsapp returned unparseable accounts response")
   }
 
-  const accounts = body.accounts ?? []
+  const accounts = body.data?.accounts ?? []
   if (accounts.length === 0) {
     throw new AgentError(
       "no_account_configured",

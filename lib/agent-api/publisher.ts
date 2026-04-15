@@ -23,20 +23,23 @@ export interface ListFlowsResult {
   total: number
 }
 
-/** Shape fs-whatsapp returns from GET /api/magic-flow/projects */
-interface FsProjectsResponse {
-  projects: Array<{
-    id: string
-    name: string
-    created_at: string
-    updated_at: string
-    trigger_keywords?: string[]
-    node_count?: number
-    latest_version?: number
-  }>
-  total: number
-  page?: number
-  limit?: number
+/** Shape fs-whatsapp returns from GET /api/magic-flow/projects — wrapped in SendEnvelope */
+interface FsProjectsEnvelope {
+  status?: string
+  data?: {
+    projects: Array<{
+      id: string
+      name: string
+      created_at: string
+      updated_at: string
+      trigger_keywords?: string[]
+      node_count?: number
+      latest_version?: number
+    }>
+    total: number
+    page?: number
+    limit?: number
+  }
 }
 
 /**
@@ -66,14 +69,15 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
     throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when listing projects`)
   }
 
-  let body: FsProjectsResponse
+  let body: FsProjectsEnvelope
   try {
-    body = (await res.json()) as FsProjectsResponse
+    body = (await res.json()) as FsProjectsEnvelope
   } catch {
     throw new AgentError("internal_error", "fs-whatsapp returned unparseable projects response")
   }
 
-  const flows: PublicFlow[] = (body.projects ?? []).map((p) => {
+  const projects = body.data?.projects ?? []
+  const flows: PublicFlow[] = projects.map((p) => {
     const firstKeyword = (p.trigger_keywords ?? [])[0]
     return {
       flow_id: p.id,
@@ -88,7 +92,7 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
     }
   })
 
-  return { flows, total: body.total ?? flows.length }
+  return { flows, total: body.data?.total ?? flows.length }
 }
 
 function buildMagicFlowUrl(flowId: string): string {

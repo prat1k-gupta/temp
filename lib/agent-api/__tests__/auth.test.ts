@@ -19,7 +19,10 @@ describe("withAgentAuth", () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(
         JSON.stringify({
-          accounts: [{ id: "a", name: "n", phone_number: "+91999", status: "active", has_access_token: true }],
+          status: "success",
+          data: {
+            accounts: [{ id: "a", name: "n", phone_number: "+91999", status: "active", has_access_token: true }],
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),

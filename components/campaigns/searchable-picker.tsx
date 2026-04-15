@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import {
   Command,
   CommandEmpty,
@@ -40,23 +40,26 @@ export function SearchablePicker({
   const [open, setOpen] = useState(false)
   const selected = options.find((o) => o.value === value)
 
+  // Uses plain <button> + buttonVariants() instead of <Button> because
+  // shadcn's Button component doesn't forwardRef in this project's version
+  // (see magic-flow/CLAUDE.md Learnings) — PopoverTrigger asChild needs a
+  // ref forwarded from its child, and <Button> silently drops the ref which
+  // breaks click handling.
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            "w-full justify-between font-normal cursor-pointer",
-            !value && "text-muted-foreground",
-          )}
-        >
-          <span className="truncate">{selected?.label ?? placeholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+      <PopoverTrigger
+        type="button"
+        role="combobox"
+        aria-expanded={open}
+        disabled={disabled}
+        className={cn(
+          buttonVariants({ variant: "outline" }),
+          "w-full justify-between font-normal cursor-pointer",
+          !value && "text-muted-foreground",
+        )}
+      >
+        <span className="truncate">{selected?.label ?? placeholder}</span>
+        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command>

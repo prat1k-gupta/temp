@@ -61,7 +61,11 @@ export function SearchablePicker({
         <span className="truncate">{selected?.label ?? placeholder}</span>
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        className="w-(--radix-popover-trigger-width) min-w-(--radix-popover-trigger-width) p-0"
+      >
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandList>

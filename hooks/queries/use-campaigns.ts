@@ -111,6 +111,26 @@ export function useCancelCampaign() {
   })
 }
 
+export function useRetryFailedCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<{ retry_count: number }>(`/api/campaigns/${id}/retry-failed`, {}),
+    onSuccess: (_data, id) => invalidateCampaignQueries(qc, id),
+  })
+}
+
+export function useDeleteCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/api/campaigns/${id}`),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: campaignKeys.lists() })
+      qc.removeQueries({ queryKey: campaignKeys.detail(id) })
+    },
+  })
+}
+
 export function usePreviewAudience() {
   return useMutation({
     mutationFn: (input: { source: string; audience_id?: string; filter?: unknown }) =>

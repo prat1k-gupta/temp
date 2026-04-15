@@ -11,9 +11,10 @@ import {
   useStartCampaign,
   usePauseCampaign,
   useCancelCampaign,
+  useRetryFailedCampaign,
 } from "@/hooks/queries/use-campaigns"
 import type { Campaign } from "@/types/campaigns"
-import { FileText, GitBranch } from "lucide-react"
+import { FileText, GitBranch, RotateCcw } from "lucide-react"
 
 export function CampaignDetail({ campaign }: { campaign: Campaign }) {
   useCampaignStatsSubscription(campaign.id)
@@ -21,13 +22,19 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
   const { mutate: pauseCampaign, isPending: pausing } = usePauseCampaign()
   const { mutate: cancelCampaign, isPending: cancelling } = useCancelCampaign()
+  const { mutate: retryFailed, isPending: retrying } = useRetryFailedCampaign()
 
-  const canStart = campaign.status === "draft" || campaign.status === "scheduled"
+  const canStart = campaign.status === "draft" || campaign.status === "scheduled" || campaign.status === "paused"
   const canPause = campaign.status === "processing"
   const canCancel =
     campaign.status === "processing" ||
     campaign.status === "paused" ||
     campaign.status === "scheduled"
+  const canRetry =
+    campaign.failed_count > 0 &&
+    (campaign.status === "completed" ||
+      campaign.status === "failed" ||
+      campaign.status === "paused")
 
   const progressPct = campaign.total_recipients
     ? Math.round(
@@ -45,7 +52,18 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
               disabled={starting}
               className="cursor-pointer"
             >
-              Start Campaign
+              {campaign.status === "paused" ? "Resume" : "Start Campaign"}
+            </Button>
+          )}
+          {canRetry && (
+            <Button
+              variant="outline"
+              onClick={() => retryFailed(campaign.id)}
+              disabled={retrying}
+              className="cursor-pointer"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Retry failed ({campaign.failed_count})
             </Button>
           )}
           {canPause && (

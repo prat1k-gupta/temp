@@ -1,8 +1,10 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { PageHeader } from "@/components/page-header"
 import { CampaignStatusBadge } from "./campaign-status-badge"
 import { RecipientTable } from "./recipient-table"
@@ -14,9 +16,10 @@ import {
   useRetryFailedCampaign,
 } from "@/hooks/queries/use-campaigns"
 import type { Campaign } from "@/types/campaigns"
-import { FileText, GitBranch, RotateCcw } from "lucide-react"
+import { ArrowLeft, FileText, GitBranch, Info, RotateCcw } from "lucide-react"
 
 export function CampaignDetail({ campaign }: { campaign: Campaign }) {
+  const router = useRouter()
   useCampaignStatsSubscription(campaign.id)
 
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
@@ -36,15 +39,31 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
       campaign.status === "failed" ||
       campaign.status === "paused")
 
+  // Per-recipient progress (not per-message) so flow broadcasts, where one
+  // recipient can receive many messages, don't overflow past 100%.
   const progressPct = campaign.total_recipients
-    ? Math.round(
-        ((campaign.sent_count + campaign.failed_count) / campaign.total_recipients) * 100,
+    ? Math.min(
+        100,
+        Math.round(((campaign.recipients_completed ?? 0) / campaign.total_recipients) * 100),
       )
     : 0
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <PageHeader title={campaign.name}>
+      <PageHeader
+        title={campaign.name}
+        leading={
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => router.push("/campaigns")}
+            className="shrink-0 h-8 w-8 p-0 cursor-pointer"
+            title="Back to campaigns"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+        }
+      >
         <div className="flex items-center gap-2">
           {canStart && (
             <Button
@@ -112,7 +131,32 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
         )}
       </div>
 
-      <Progress value={progressPct} className="h-2" />
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <span>
+              {(campaign.recipients_completed ?? 0).toLocaleString()} of{" "}
+              {campaign.total_recipients.toLocaleString()} recipients completed
+            </span>
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="cursor-help" aria-label="How progress is calculated">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground/70" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs text-xs">
+                  Progress = recipients whose first message has resolved (sent or failed) ÷ total
+                  recipients. Per-message counts below (sent / delivered / read / failed) can exceed the
+                  number of recipients because flow broadcasts can send multiple messages per recipient.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <span className="tabular-nums">{progressPct}%</span>
+        </div>
+        <Progress value={progressPct} className="h-2" />
+      </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Stat label="Flow recipients" value={campaign.total_recipients} />

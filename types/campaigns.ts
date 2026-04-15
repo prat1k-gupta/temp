@@ -23,6 +23,7 @@ export interface Campaign {
   source_external_id: string | null
   status: CampaignStatus
   total_recipients: number
+  recipients_completed: number
   sent_count: number
   delivered_count: number
   read_count: number

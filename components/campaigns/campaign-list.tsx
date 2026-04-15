@@ -31,6 +31,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   useCancelCampaign,
   useDeleteCampaign,
   useRetryFailedCampaign,
@@ -90,8 +96,11 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
           <tbody>
             {campaigns.map((c) => {
               const total = c.total_recipients || 0
-              const done = c.sent_count + c.failed_count
-              const progressPct = total ? Math.round((done / total) * 100) : 0
+              // Use recipients_completed (per-recipient) not sent_count (per-message) — for
+              // flow broadcasts one recipient can trigger many sends, so sent_count exceeds
+              // total_recipients and would push the bar past 100%.
+              const done = c.recipients_completed ?? 0
+              const progressPct = total ? Math.min(100, Math.round((done / total) * 100)) : 0
               return (
                 <tr
                   key={c.id}
@@ -137,22 +146,34 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   {/* Progress */}
                   <td className="px-4 py-3">
                     {total > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-24 rounded-full bg-muted">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all",
-                              c.failed_count > 0 && c.status === "completed"
-                                ? "bg-destructive"
-                                : "bg-primary",
-                            )}
-                            style={{ width: `${progressPct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">
-                          {progressPct}%
-                        </span>
-                      </div>
+                      <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2 cursor-help">
+                              <div className="h-1.5 w-24 rounded-full bg-muted">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full transition-all",
+                                    c.failed_count > 0 && c.status === "completed"
+                                      ? "bg-destructive"
+                                      : "bg-primary",
+                                  )}
+                                  style={{ width: `${progressPct}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">
+                                {progressPct}%
+                              </span>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs text-xs">
+                            {done.toLocaleString()} of {total.toLocaleString()} recipients
+                            completed. Progress counts recipients whose first message has
+                            resolved — not per-message sends, since flow broadcasts can send
+                            multiple messages per recipient.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}

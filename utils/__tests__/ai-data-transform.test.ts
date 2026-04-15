@@ -75,21 +75,26 @@ describe("processAiEdges", () => {
 })
 
 describe("transformAiNodeData", () => {
-  it("converts options to buttons for quickReply using createButtonData", () => {
+  it("normalizes legacy options input to data.choices for quickReply", () => {
     const result = transformAiNodeData({ options: ["Yes", "No"] }, "quickReply")
-    expect(result.buttons).toHaveLength(2)
-    // Button IDs should have random suffixes (not just `btn-${Date.now()}-0`)
-    expect(result.buttons[0].id).toMatch(/^btn-/)
-    expect(result.buttons[0].text).toBe("Yes")
-    expect(result.buttons[1].text).toBe("No")
+    expect(result.choices).toHaveLength(2)
+    // Choice IDs should have stable prefixes from createChoiceData
+    expect(result.choices[0].id).toMatch(/^choice-/)
+    expect(result.choices[0].text).toBe("Yes")
+    expect(result.choices[1].text).toBe("No")
+    // Legacy fields should be stripped
+    expect(result.buttons).toBeUndefined()
+    expect(result.options).toBeUndefined()
   })
 
-  it("converts string buttons for quickReply using createButtonData", () => {
+  it("normalizes legacy string buttons input to data.choices for quickReply", () => {
     const result = transformAiNodeData({ buttons: ["A", "B", "C"] }, "quickReply")
-    expect(result.buttons).toHaveLength(3)
-    expect(result.buttons[0].text).toBe("A")
-    // Each button should have a unique ID
-    const ids = new Set(result.buttons.map((b: any) => b.id))
+    expect(result.choices).toHaveLength(3)
+    expect(result.choices[0].text).toBe("A")
+    // Each choice should have a unique ID
+    const ids = new Set(result.choices.map((c: any) => c.id))
     expect(ids.size).toBe(3)
+    expect(result.buttons).toBeUndefined()
+    expect(result.options).toBeUndefined()
   })
 })

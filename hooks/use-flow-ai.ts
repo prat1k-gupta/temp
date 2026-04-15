@@ -1,11 +1,10 @@
 import { useState, useCallback } from "react"
 import type { Node, Edge } from "@xyflow/react"
 import { addEdge } from "@xyflow/react"
-import type { Platform, ButtonData, OptionData } from "@/types"
+import type { Platform } from "@/types"
 import type { EditFlowPlan, NodeContent } from "@/types/flow-plan"
 import { getBaseNodeType, isMultiOutputType } from "@/utils/platform-helpers"
 import { createNode, createCommentNode } from "@/utils/node-factory"
-import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { processAiNodes, processAiEdges, transformAiNodeData, normalizeAiNodeType } from "@/utils/ai-data-transform"
 import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
@@ -436,22 +435,11 @@ export function useFlowAI({
               const transformedAiData = transformAiNodeData(aiNode.data || {}, baseType)
               const updatedData = { ...existingNode.data, ...transformedAiData }
 
-              // Auto-convert quickReply → interactiveList if buttons exceed platform limit
-              let effectiveType = aiNode.type
-              if (baseType === "quickReply" && updatedData.buttons) {
-                const buttons = updatedData.buttons as ButtonData[]
-                const nodePlatform = (updatedData.platform as Platform) || platform
-                const conversion = shouldConvertToList(buttons.length, nodePlatform)
-                if (conversion.shouldConvert) {
-                  const options = convertButtonsToOptions(buttons)
-                  updatedData.options = options
-                  updatedData.buttons = undefined
-                  updatedData.label = conversion.newLabel
-                  updatedData.listTitle = updatedData.listTitle || "Select an option"
-                  effectiveType = conversion.newNodeType
-                  console.log(`[handleUpdateFlow] Auto-converted quickReply → interactiveList for ${aiNode.id} (${buttons.length} buttons)`)
-                }
-              }
+              // Auto-convert quickReply → interactiveList is handled upstream
+              // by flow-plan-builder's maybeAutoConvertToList — the updated
+              // node already carries its final type and data.choices before
+              // reaching here.
+              const effectiveType = aiNode.type
 
               updatedExisting.push({ ...existingNode, ...aiNode, type: effectiveType, data: updatedData })
               // Track the update so publish flow sees it. trackNodeUpdate
@@ -669,19 +657,17 @@ export function useFlowAI({
           let changed = false
           const normalized = eds.map((e) => {
             if (!e.sourceHandle && nodesWithButtonEdges.has(e.source)) {
-              // Try to assign to an unoccupied button/option handle using node data
+              // Try to assign to an unoccupied choice handle using node data
               const sourceNode = nodes.find((n) => n.id === e.source)
-              const buttons = (sourceNode?.data?.buttons as ButtonData[]) || []
-              const options = (sourceNode?.data?.options as OptionData[]) || []
+              const choices = ((sourceNode?.data?.choices as Array<{ id?: string }> | undefined) || [])
               const occupied = occupiedHandles.get(e.source) || new Set()
 
-              const freeButton = buttons.find((btn) => btn.id && !occupied.has(btn.id))
-              const freeOption = !freeButton ? options.find((opt) => opt.id && !occupied.has(opt.id)) : undefined
-              const resolvedHandle = freeButton?.id || freeOption?.id
+              const freeChoice = choices.find((c) => c.id && !occupied.has(c.id))
+              const resolvedHandle = freeChoice?.id
 
               if (!resolvedHandle) {
-                // All button/option handles occupied — leave edge as-is rather than using "sync-next"
-                console.warn(`[handleUpdateFlow] No free button/option handle for ${e.source} → ${e.target}, leaving handleless`)
+                // All choice handles occupied — leave edge as-is rather than using "sync-next"
+                console.warn(`[handleUpdateFlow] No free choice handle for ${e.source} → ${e.target}, leaving handleless`)
                 return e
               }
 
@@ -770,13 +756,11 @@ export function useFlowAI({
         // Normalize to base node type
         let normalizedType = getBaseNodeType(suggestion.type)
 
-        // Auto-convert list→quickReply when ≤3 options (WhatsApp/Instagram button limit)
+        // Auto-convert list→quickReply when ≤3 choices (WhatsApp/Instagram limit).
+        // The choices field is unified across both types so no field rename needed.
         const gc = suggestion.generatedContent
-        if (normalizedType === "list" && gc?.options && gc.options.length <= BUTTON_LIMITS[platform]) {
+        if (normalizedType === "list" && gc?.choices && gc.choices.length <= BUTTON_LIMITS[platform]) {
           normalizedType = "quickReply"
-          // Convert options → buttons format
-          gc.buttons = gc.options.map((o: any) => ({ text: o.text || o }))
-          delete gc.options
         }
 
         // Convert generatedContent → NodeContent (plan format)
@@ -784,8 +768,9 @@ export function useFlowAI({
           label: gc?.label,
           question: gc?.question,
           text: gc?.text,
-          buttons: gc?.buttons?.map((b: any) => b.text || b.label || ""),
-          options: gc?.options?.map((o: any) => o.text || ""),
+          choices: gc?.choices?.map((c: any) => c.text || c.label || c)
+            ?? gc?.buttons?.map((b: any) => b.text || b.label || "")
+            ?? gc?.options?.map((o: any) => o.text || ""),
         }
 
         // Determine which handle to attach from and which existing edge to replace
@@ -794,10 +779,10 @@ export function useFlowAI({
         let outgoingEdge: typeof edges[number] | undefined
 
         if (isMultiOutput && suggestion.sourceButtonIndex != null) {
-          // Connect from a specific button handle
-          const buttons: Array<{ id?: string }> = (selectedNode.data as any)?.buttons || []
-          const btn = buttons[suggestion.sourceButtonIndex]
-          attachHandle = btn?.id ? btn.id : `button-${suggestion.sourceButtonIndex}`
+          // Connect from a specific choice handle
+          const choices: Array<{ id?: string }> = (selectedNode.data as any)?.choices || []
+          const choice = choices[suggestion.sourceButtonIndex]
+          attachHandle = choice?.id ? choice.id : `button-${suggestion.sourceButtonIndex}`
           outgoingEdge = edges.find(
             (e) => e.source === selectedNode.id && e.sourceHandle === attachHandle
           )

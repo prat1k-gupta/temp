@@ -279,15 +279,16 @@ function buildDataStructure(
     base.media = "{ type: 'image'|'video'|'document', url: string } — optional media header (no audio on buttons)"
   }
 
-  // Buttons
+  // Choices — unified field used by both quickReply (buttons) and
+  // interactiveList (options). Runtime data is stored on data.choices
+  // regardless of which legacy content field the AI used as input.
   if (t === "quickReply") {
-    base.buttons = [{ text: "string (button label)", id: "string (optional)" }]
+    base.choices = [{ text: "string (button label)", id: "string (optional)" }]
   }
 
-  // List options
   if (t === "interactiveList") {
     base.listTitle = "string (max 20 chars)"
-    base.options = [
+    base.choices = [
       { text: "string (option title, max 24 chars)", description: "string (optional, max 72 chars)", id: "string (optional)" },
     ]
   }

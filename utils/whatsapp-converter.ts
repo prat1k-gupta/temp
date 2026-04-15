@@ -285,19 +285,19 @@ export function convertToFsWhatsApp(
       case "whatsappQuickReply":
       case "quickReply": {
         step.message_type = "buttons"
-        const buttons = (data.buttons || []) as Array<{ id?: string; text?: string; label?: string }>
-        step.buttons = buttons.map((btn, idx) => ({
-          id: btn.id || `btn-${idx}`,
-          title: btn.text || btn.label || `Button ${idx + 1}`,
+        const choices = (data.choices ?? []) as Array<{ id?: string; text?: string; label?: string }>
+        step.buttons = choices.map((c, idx) => ({
+          id: c.id || `btn-${idx}`,
+          title: c.text || c.label || `Button ${idx + 1}`,
         }))
 
         // Button handle edges → conditional_next (keyed by button ID, as fs-whatsapp expects)
         const conditionalNext: Record<string, string> = {}
-        for (const btn of buttons) {
-          const btnId = btn.id || `btn-${buttons.indexOf(btn)}`
-          const target = resolveNextStep(node.id, btnId, edgeMap, nodeStepNames)
+        for (const c of choices) {
+          const cId = c.id || `btn-${choices.indexOf(c)}`
+          const target = resolveNextStep(node.id, cId, edgeMap, nodeStepNames)
           if (target) {
-            conditionalNext[btnId] = target
+            conditionalNext[cId] = target
           }
         }
         if (Object.keys(conditionalNext).length > 0) {
@@ -319,19 +319,19 @@ export function convertToFsWhatsApp(
       case "whatsappInteractiveList":
       case "interactiveList": {
         step.message_type = "buttons"
-        const options = (data.options || []) as Array<{ id?: string; text?: string }>
-        step.buttons = options.map((opt, idx) => ({
-          id: opt.id || `opt-${idx}`,
-          title: opt.text || `Option ${idx + 1}`,
+        const choices = (data.choices ?? []) as Array<{ id?: string; text?: string }>
+        step.buttons = choices.map((c, idx) => ({
+          id: c.id || `opt-${idx}`,
+          title: c.text || `Option ${idx + 1}`,
         }))
 
         // Option handle edges → conditional_next (keyed by option ID, as fs-whatsapp expects)
         const conditionalNext: Record<string, string> = {}
-        for (const opt of options) {
-          const optId = opt.id || `opt-${options.indexOf(opt)}`
-          const target = resolveNextStep(node.id, optId, edgeMap, nodeStepNames)
+        for (const c of choices) {
+          const cId = c.id || `opt-${choices.indexOf(c)}`
+          const target = resolveNextStep(node.id, cId, edgeMap, nodeStepNames)
           if (target) {
-            conditionalNext[optId] = target
+            conditionalNext[cId] = target
           }
         }
         if (Object.keys(conditionalNext).length > 0) {
@@ -452,18 +452,18 @@ export function convertToFsWhatsApp(
       case "instagramQuickReply": {
         step.message_type = "buttons"
         step.input_type = "button"
-        const igButtons = (data.buttons || []) as Array<{ id?: string; text?: string; label?: string }>
-        step.buttons = igButtons.map((btn, idx) => ({
-          id: btn.id || `btn-${idx}`,
-          title: btn.text || btn.label || `Button ${idx + 1}`,
+        const igChoices = (data.choices ?? []) as Array<{ id?: string; text?: string; label?: string }>
+        step.buttons = igChoices.map((c, idx) => ({
+          id: c.id || `btn-${idx}`,
+          title: c.text || c.label || `Button ${idx + 1}`,
         }))
 
         const igConditionalNext: Record<string, string> = {}
-        for (const btn of igButtons) {
-          const btnId = btn.id || `btn-${igButtons.indexOf(btn)}`
-          const target = resolveNextStep(node.id, btnId, edgeMap, nodeStepNames)
+        for (const c of igChoices) {
+          const cId = c.id || `btn-${igChoices.indexOf(c)}`
+          const target = resolveNextStep(node.id, cId, edgeMap, nodeStepNames)
           if (target) {
-            igConditionalNext[btnId] = target
+            igConditionalNext[cId] = target
           }
         }
         if (Object.keys(igConditionalNext).length > 0) {
@@ -754,7 +754,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         break
       case "whatsappQuickReply":
         data.question = step.message
-        data.buttons = (step.buttons || []).map((btn) => ({
+        data.choices = (step.buttons || []).map((btn) => ({
           id: btn.id,
           text: btn.title,
           label: btn.title,
@@ -766,7 +766,7 @@ export function convertFromFsWhatsApp(flow: FsWhatsAppFlow): { nodes: Node[]; ed
         break
       case "whatsappInteractiveList":
         data.question = step.message
-        data.options = (step.buttons || []).map((btn) => ({
+        data.choices = (step.buttons || []).map((btn) => ({
           id: btn.id,
           text: btn.title,
         }))

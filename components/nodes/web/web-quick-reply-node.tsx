@@ -13,12 +13,12 @@ import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { useState, useEffect, useRef } from "react"
 import { getNodeLimits } from "@/constants"
-import type { Platform, ButtonData } from "@/types"
+import type { Platform, ChoiceData } from "@/types"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
 export function WebQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
-  const buttons = data.buttons || []
+  const choices = data.choices ?? []
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingButtonIndex, setEditingButtonIndex] = useState<number | null>(null)
@@ -99,58 +99,57 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
   }
 
   const startEditingButton = (index: number) => {
-    setEditingButtonValue(buttons[index]?.text || "")
+    setEditingButtonValue(choices[index]?.text || "")
     setEditingButtonIndex(index)
   }
 
   const finishEditingButton = () => {
     if (editingButtonIndex !== null && data.onNodeUpdate) {
-      const updatedButtons = [...buttons]
-      updatedButtons[editingButtonIndex] = { ...updatedButtons[editingButtonIndex], text: editingButtonValue }
+      const updatedChoices = [...choices]
+      updatedChoices[editingButtonIndex] = { ...updatedChoices[editingButtonIndex], text: editingButtonValue }
       if (editingButtonValue.length > maxButtonLength) {
         return
       }
-      data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
-    } 
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
+    }
     setEditingButtonIndex(null)
   }
 
   const cancelEditingButton = () => {
     if (editingButtonIndex !== null) {
-      setEditingButtonValue(buttons[editingButtonIndex]?.text || "")
+      setEditingButtonValue(choices[editingButtonIndex]?.text || "")
     }
     setEditingButtonIndex(null)
   }
 
-  const removeButton = (index: number) => {
-    const updatedButtons = buttons.filter((_: any, i: number) => i !== index)
+  const removeChoice = (index: number) => {
+    const updatedChoices = choices.filter((_: any, i: number) => i !== index)
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
     }
   }
 
-  const handleUpdateButtons = (newButtons: ButtonData[]) => {
-    // Convert ButtonData to the format expected by this node
-    const formattedButtons = newButtons.map(btn => ({
+  const handleUpdateChoices = (newButtons: ChoiceData[]) => {
+    const formattedChoices = newButtons.map(btn => ({
       text: btn.label,
       id: btn.id,
       value: btn.value
     }))
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+      data.onNodeUpdate(data.id, { ...data, choices: formattedChoices })
     }
   }
 
   const handleImproveButton = async (index: number) => {
-    const button = buttons[index]
-    if (!button || !button.text?.trim()) {
+    const choice = choices[index]
+    if (!choice || !choice.text?.trim()) {
       toast.error('Please add text to the button first')
       return
     }
 
     setImprovingButtonIndex(index)
     try {
-      const result = await ai.improveCopy(button.text, 'button', {
+      const result = await ai.improveCopy(choice.text, 'button', {
         maxLength: maxButtonLength,
         context: {
           purpose: 'button label',
@@ -159,13 +158,13 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
       })
 
       if (result) {
-        const updatedButtons = [...buttons]
-        updatedButtons[index] = {
-          ...button,
+        const updatedChoices = [...choices]
+        updatedChoices[index] = {
+          ...choice,
           text: result.improvedText
         }
         if (data.onNodeUpdate) {
-          data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+          data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
         }
         toast.success('Button improved!', {
           description: result.improvements[0] || 'Label enhanced'
@@ -179,16 +178,16 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
   }
 
   const handleShortenButton = async (index: number) => {
-    const button = buttons[index]
-    if (!button) return
+    const choice = choices[index]
+    if (!choice) return
 
-    // Get context from other buttons
-    const otherButtons = buttons
+    // Get context from other choices
+    const otherButtons = choices
       .filter((_: any, i: number) => i !== index)
       .map((b: any) => b.text)
       .filter(Boolean)
 
-    const result = await ai.shortenText(button.text, maxButtonLength, {
+    const result = await ai.shortenText(choice.text, maxButtonLength, {
       context: {
         purpose: 'button label',
         flowContext: data.question || '',
@@ -197,13 +196,13 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
     })
 
     if (result) {
-      const updatedButtons = [...buttons]
-      updatedButtons[index] = {
-        ...button,
+      const updatedChoices = [...choices]
+      updatedChoices[index] = {
+        ...choice,
         text: result.shortenedText
       }
       if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+        data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
       }
       // Also update the editing value if we're editing this button
       if (editingButtonIndex === index) {
@@ -315,11 +314,11 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && buttons.length < maxButtons && (
+          {(data.question || editingQuestionValue) && choices.length < maxButtons && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
-              buttons={buttons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
-              onUpdateButtons={handleUpdateButtons}
+              buttons={choices.map((c: any) => ({ id: c.id || `choice-${Date.now()}`, label: c.text, value: c.value }))}
+              onUpdateButtons={handleUpdateChoices}
               maxButtons={maxButtons}
               maxButtonLength={maxButtonLength}
               nodeType={nodeType}
@@ -328,7 +327,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
           )}
 
           <div className="space-y-1.5">
-            {buttons.map((button: any, index: number) => (
+            {choices.map((button: any, index: number) => (
               <div key={index} className="relative group">
                 {editingButtonIndex === index ? (
                   <div className="space-y-2 group/button-edit">
@@ -350,7 +349,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeButton(index)}
+                        onClick={() => removeChoice(index)}
                         className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3" />
@@ -437,7 +436,7 @@ export function WebQuickReplyNode({ data, selected }: { data: any; selected?: bo
             ))}
           </div>
 
-          {buttons.length < 10 && (
+          {choices.length < 10 && (
             <Button
               variant="ghost"
               size="sm"

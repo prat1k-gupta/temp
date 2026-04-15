@@ -1,21 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform, NodeData, ButtonData, OptionData } from "@/types"
+import type { Platform, NodeData, ChoiceData } from "@/types"
 import {
   getPlatformSpecificNodeType,
-  getPlatformSpecificLabel,
 } from "@/utils/platform-helpers"
 import {
   isValidNodeId,
-  createButtonData,
-  createOptionData,
 } from "@/utils"
 import {
-  areButtonsWithinNodeLimits,
   areOptionsWithinNodeLimits,
 } from "@/constants"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
-import { shouldConvertToList, convertButtonsToOptions } from "@/utils/node-operations"
+import { shouldConvertToList, createChoiceData } from "@/utils/node-operations"
 import { changeTracker } from "@/utils/change-tracker"
 import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 import { updateFlow } from "@/utils/flow-storage"
@@ -141,6 +137,8 @@ export function useNodeOperations({
           return
         }
 
+        const nodePlatform = (node.data.platform as Platform) || "web"
+
         // Handle question nodes (convert to quick reply)
         if (
           node.type === "question" ||
@@ -148,14 +146,14 @@ export function useNodeOperations({
           node.type === "whatsappQuestion" ||
           node.type === "instagramQuestion"
         ) {
-          const nodePlatform = (node.data.platform as Platform) || "web"
           const newType = getPlatformSpecificNodeType("quickReply", nodePlatform)
+          const patch = { label: "Quick Reply", choices: [createChoiceData("Option 1", 0)] }
 
           withEditTracking()
           changeTracker.trackNodeUpdate(
             nodeId,
             node.data,
-            { ...node.data, label: "Quick Reply", buttons: [createButtonData("Option 1", 0)] },
+            { ...node.data, ...patch },
             node.type,
             newType
           )
@@ -164,37 +162,33 @@ export function useNodeOperations({
           setNodes((nds) =>
             nds.map((n) =>
               n.id === nodeId
-                ? {
-                    ...n,
-                    type: newType,
-                    data: { ...n.data, label: "Quick Reply", buttons: [createButtonData("Option 1", 0)] },
-                  }
+                ? { ...n, type: newType, data: { ...n.data, ...patch } }
                 : n
             )
           )
           setNodeToFocus(nodeId)
         }
-        // Handle quick reply nodes (add button or convert to list)
+        // Handle quick reply nodes (add choice or convert to list)
         else if (
           node.type === "quickReply" ||
           node.type === "webQuickReply" ||
           node.type === "whatsappQuickReply" ||
           node.type === "instagramQuickReply"
         ) {
-          const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
-          const nodePlatform = (node.data.platform as Platform) || "web"
-
-          const conversion = shouldConvertToList(currentButtons.length + 1, nodePlatform)
+          const currentChoices: ChoiceData[] = (node.data.choices as ChoiceData[]) || []
+          const conversion = shouldConvertToList(currentChoices.length + 1, nodePlatform)
 
           if (conversion.shouldConvert) {
-            const convertedOptions = convertButtonsToOptions(currentButtons)
-            const newOptions = [...convertedOptions, createOptionData("", currentButtons.length)] as OptionData[]
+            // Auto-convert quickReply → interactiveList. Only node.type changes —
+            // data.choices stays intact so existing edges (sourceHandle by choice.id)
+            // remain connected.
+            const newChoices = [...currentChoices, createChoiceData("", currentChoices.length)]
 
             withEditTracking()
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, label: conversion.newLabel, options: newOptions, buttons: undefined },
+              { ...node.data, label: conversion.newLabel, choices: newChoices },
               node.type,
               conversion.newNodeType
             )
@@ -206,51 +200,52 @@ export function useNodeOperations({
                   ? {
                       ...n,
                       type: conversion.newNodeType,
-                      data: { ...n.data, label: conversion.newLabel, options: newOptions, buttons: undefined },
+                      data: { ...n.data, label: conversion.newLabel, choices: newChoices },
                     }
                   : n
               )
             )
 
             console.log(
-              `[v0] Auto-converted Quick Reply to List (${currentButtons.length} → ${newOptions.length} options)`
+              `[v0] Auto-converted Quick Reply to List (${currentChoices.length} → ${newChoices.length} choices)`
             )
             toast.success(`Upgraded to ${conversion.newLabel}!`, {
-              description: `You can now add up to 10 options (was limited to ${currentButtons.length} buttons)`,
+              description: `You can now add up to 10 options (was limited to ${currentChoices.length} buttons)`,
             })
             setNodeToFocus(nodeId)
           } else {
-            const newButtons = [...currentButtons, createButtonData("", currentButtons.length)] as ButtonData[]
+            const newChoices = [...currentChoices, createChoiceData("", currentChoices.length)]
 
             withEditTracking()
-            changeTracker.trackNodeUpdate(nodeId, node.data, { ...node.data, buttons: newButtons }, node.type, node.type)
+            changeTracker.trackNodeUpdate(nodeId, node.data, { ...node.data, choices: newChoices }, node.type, node.type)
             updateDraftChanges()
 
             setNodes((nds) =>
               nds.map((n) =>
-                n.id === nodeId ? { ...n, data: { ...n.data, buttons: newButtons } } : n
+                n.id === nodeId ? { ...n, data: { ...n.data, choices: newChoices } } : n
               )
             )
           }
         }
-        // Handle list nodes (add option)
+        // Handle list nodes (add choice) — whatsapp-only
         else if (
           node.type === "interactiveList" ||
           node.type === "whatsappInteractiveList"
         ) {
-          const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
-          const nodePlatform = (node.data.platform as Platform) || "web"
-
-          const canAddOption = areOptionsWithinNodeLimits(currentOptions.length + 1, node.type, nodePlatform)
+          // interactiveList is whatsapp-only, so data.choices is always the field.
+          // Legacy fallback for un-migrated nodes still in memory.
+          const currentChoices: ChoiceData[] =
+            ((node.data.choices ?? node.data.options) as ChoiceData[]) || []
+          const canAddOption = areOptionsWithinNodeLimits(currentChoices.length + 1, node.type, nodePlatform)
 
           if (canAddOption.valid) {
-            const newOptions = [...currentOptions, createOptionData("", currentOptions.length)] as OptionData[]
+            const newChoices = [...currentChoices, createChoiceData("", currentChoices.length)]
 
             withEditTracking()
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, options: newOptions },
+              { ...node.data, choices: newChoices },
               node.type,
               node.type
             )
@@ -258,7 +253,7 @@ export function useNodeOperations({
 
             setNodes((nds) =>
               nds.map((n) =>
-                n.id === nodeId ? { ...n, data: { ...n.data, options: newOptions } } : n
+                n.id === nodeId ? { ...n, data: { ...n.data, choices: newChoices } } : n
               )
             )
           }
@@ -280,28 +275,28 @@ export function useNodeOperations({
         }
 
         const nodePlatform = (node.data.platform as Platform) || "web"
-        const currentButtons: ButtonData[] = (node.data.buttons as ButtonData[]) || []
-        const currentOptions: OptionData[] = (node.data.options as OptionData[]) || []
 
         if (
           node.type === "interactiveList" ||
           node.type === "whatsappInteractiveList"
         ) {
-          const newOptions = currentOptions.filter((_, i) => i !== buttonIndex)
+          // interactiveList is whatsapp-only, so data.choices is always the field.
+          // Legacy fallback for un-migrated nodes still in memory.
+          const currentChoices: ChoiceData[] =
+            ((node.data.choices ?? node.data.options) as ChoiceData[]) || []
+          const newChoices = currentChoices.filter((_, i) => i !== buttonIndex)
           const buttonLimit = BUTTON_LIMITS[nodePlatform]
 
-          if (newOptions.length <= buttonLimit) {
+          if (newChoices.length <= buttonLimit) {
+            // Auto-downgrade interactiveList → quickReply. Only node.type changes —
+            // data.choices stays intact so existing edges remain connected.
             const newType = getPlatformSpecificNodeType("quickReply", nodePlatform)
-            const buttonsFromOptions = newOptions.map((opt) => ({
-              text: opt.text || "",
-              id: opt.id || `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            }))
 
             withEditTracking()
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, label: "Quick Reply", buttons: buttonsFromOptions, options: undefined },
+              { ...node.data, label: "Quick Reply", choices: newChoices },
               node.type,
               newType
             )
@@ -313,7 +308,7 @@ export function useNodeOperations({
                   ? {
                       ...n,
                       type: newType,
-                      data: { ...n.data, label: "Quick Reply", buttons: buttonsFromOptions, options: undefined },
+                      data: { ...n.data, label: "Quick Reply", choices: newChoices },
                     }
                   : n
               )
@@ -323,7 +318,7 @@ export function useNodeOperations({
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, options: newOptions },
+              { ...node.data, choices: newChoices },
               node.type,
               node.type
             )
@@ -331,7 +326,7 @@ export function useNodeOperations({
 
             setNodes((nds) =>
               nds.map((n) =>
-                n.id === nodeId ? { ...n, data: { ...n.data, options: newOptions } } : n
+                n.id === nodeId ? { ...n, data: { ...n.data, choices: newChoices } } : n
               )
             )
           }
@@ -341,9 +336,10 @@ export function useNodeOperations({
           node.type === "whatsappQuickReply" ||
           node.type === "instagramQuickReply"
         ) {
-          const newButtons = currentButtons.filter((_, i) => i !== buttonIndex)
+          const currentChoices: ChoiceData[] = (node.data.choices as ChoiceData[]) || []
+          const newChoices = currentChoices.filter((_, i) => i !== buttonIndex)
 
-          if (newButtons.length === 0) {
+          if (newChoices.length === 0) {
             const newType = getPlatformSpecificNodeType("question", nodePlatform)
 
             withEditTracking()
@@ -368,7 +364,7 @@ export function useNodeOperations({
             changeTracker.trackNodeUpdate(
               nodeId,
               node.data,
-              { ...node.data, buttons: newButtons },
+              { ...node.data, choices: newChoices },
               node.type,
               node.type
             )
@@ -376,7 +372,7 @@ export function useNodeOperations({
 
             setNodes((nds) =>
               nds.map((n) =>
-                n.id === nodeId ? { ...n, data: { ...n.data, buttons: newButtons } } : n
+                n.id === nodeId ? { ...n, data: { ...n.data, choices: newChoices } } : n
               )
             )
           }

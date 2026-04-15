@@ -21,16 +21,17 @@ export interface ValidationConfig {
   maxRetries?: number
 }
 
-export interface ButtonData {
+/**
+ * Unified shape for whatsappQuickReply / whatsappInteractiveList / web choice
+ * nodes. Both node types now store their items in `data.choices`. The node
+ * type itself (quickReply vs interactiveList) determines render style, but
+ * the underlying data shape is the same.
+ */
+export interface ChoiceData {
   text?: string
-  label?: string
-  id?: string
-  value?: string
-}
-
-export interface OptionData {
-  text: string
   id?: string  // stable handle ID
+  label?: string  // alias for text used by some AI-generated flows
+  value?: string  // backend value, preserved for converter round-trip
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
@@ -54,7 +55,7 @@ export interface QuestionNodeData extends BaseNodeData {
 
 export interface QuickReplyNodeData extends BaseNodeData {
   question?: string
-  buttons?: ButtonData[]
+  choices?: ChoiceData[]
   storeAs?: string
   validation?: ValidationConfig
   media?: MediaAttachment
@@ -62,7 +63,7 @@ export interface QuickReplyNodeData extends BaseNodeData {
 
 export interface ListNodeData extends BaseNodeData {
   question?: string
-  options?: OptionData[]
+  choices?: ChoiceData[]
   storeAs?: string
   validation?: ValidationConfig
   media?: MediaAttachment
@@ -239,8 +240,7 @@ export interface SuggestedNode {
   previewContent?: string // Preview of the generated content
   generatedContent?: {
     question?: string
-    buttons?: Array<{ text: string; label?: string }>
-    options?: Array<{ text: string }>
+    choices?: Array<{ text: string; label?: string }>
     text?: string
     [key: string]: any
   }

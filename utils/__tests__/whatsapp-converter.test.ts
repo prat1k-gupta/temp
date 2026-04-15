@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { convertToFsWhatsApp, convertFromFsWhatsApp, type FsWhatsAppFlow } from "../whatsapp-converter"
 import type { Node, Edge } from "@xyflow/react"
+import type { ChoiceData } from "@/types"
 
 // --- Test Helpers ---
 
@@ -70,7 +71,7 @@ describe("convertToFsWhatsApp", () => {
         label: "Pick Color",
         question: "What color?",
         storeAs: "color_choice",
-        buttons: [
+        choices: [
           { id: "btn-red", text: "Red" },
           { id: "btn-blue", text: "Blue" },
         ],
@@ -105,7 +106,7 @@ describe("convertToFsWhatsApp", () => {
       node("list1", "whatsappInteractiveList", {
         label: "Pick Fruit",
         question: "Choose a fruit",
-        options: [
+        choices: [
           { id: "opt-apple", text: "Apple" },
           { id: "opt-banana", text: "Banana" },
         ],
@@ -332,7 +333,7 @@ describe("convertToFsWhatsApp", () => {
       node("qr1", "whatsappQuickReply", {
         label: "QR",
         question: "Pick one",
-        buttons: [{ id: "btn-a", text: "A" }],
+        choices: [{ id: "btn-a", text: "A" }],
       }),
       node("m1", "whatsappMessage", { label: "Next", text: "After QR" }),
     ]
@@ -353,7 +354,7 @@ describe("convertToFsWhatsApp", () => {
       node("qr1", "whatsappQuickReply", {
         label: "QR",
         question: "Pick one",
-        buttons: [{ id: "btn-a", text: "A" }],
+        choices: [{ id: "btn-a", text: "A" }],
       }),
     ]
     const edges = [edge("start-1", "qr1")]
@@ -369,7 +370,7 @@ describe("convertToFsWhatsApp", () => {
       node("list1", "whatsappInteractiveList", {
         label: "List",
         question: "Choose",
-        options: [{ id: "opt-a", text: "A" }],
+        choices: [{ id: "opt-a", text: "A" }],
       }),
       node("m1", "whatsappMessage", { label: "Next", text: "After list" }),
     ]
@@ -462,7 +463,7 @@ describe("convertFromFsWhatsApp", () => {
     const { nodes, edges } = convertFromFsWhatsApp(flow)
     expect(nodes).toHaveLength(4) // start + 3
     expect(nodes[1].type).toBe("whatsappQuickReply")
-    expect((nodes[1].data.buttons as any[]).length).toBe(2)
+    expect((nodes[1].data.choices as any[]).length).toBe(2)
 
     // Should have edges for conditional routing
     const buttonEdges = edges.filter((e) => e.sourceHandle)
@@ -489,7 +490,7 @@ describe("convertFromFsWhatsApp", () => {
 
     const { nodes } = convertFromFsWhatsApp(flow)
     expect(nodes[1].type).toBe("whatsappInteractiveList")
-    expect((nodes[1].data.options as any[]).length).toBe(2)
+    expect((nodes[1].data.choices as any[]).length).toBe(2)
   })
 
   it("creates condition nodes from conditional_routing steps", () => {
@@ -581,6 +582,74 @@ describe("round-trip conversion", () => {
     expect(rtNodes[1].type).toBe("whatsappQuestion")
     expect(rtNodes[2].type).toBe("whatsappMessage")
     expect(rtNodes[1].data.storeAs).toBe("answer")
+  })
+
+  it("round-trips quickReply choices through forward → reverse without ID loss", () => {
+    const originalNodes = [
+      { id: "start", type: "start", position: { x: 0, y: 0 }, data: { platform: "whatsapp", label: "Start" } },
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 200, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick one",
+          choices: [
+            { text: "Yes", id: "btn-yes" },
+            { text: "No", id: "btn-no" },
+          ],
+        },
+      },
+    ] as any[]
+    const originalEdges = [
+      { id: "e1", source: "start", target: "qr-1" },
+    ] as any[]
+
+    const wire = convertToFsWhatsApp(originalNodes, originalEdges, "Test flow")
+    const { nodes: roundTrippedNodes } = convertFromFsWhatsApp(wire)
+    const qr = roundTrippedNodes.find((n: any) => n.type === "whatsappQuickReply")
+    expect(qr).toBeDefined()
+
+    const choices = (qr!.data as any).choices as ChoiceData[]
+    expect(choices).toHaveLength(2)
+    expect(choices[0].id).toBe("btn-yes")
+    expect(choices[0].text).toBe("Yes")
+    expect(choices[1].id).toBe("btn-no")
+    expect(choices[1].text).toBe("No")
+  })
+
+  it("round-trips interactiveList choices through forward → reverse without ID loss", () => {
+    const originalNodes = [
+      { id: "start", type: "start", position: { x: 0, y: 0 }, data: { platform: "whatsapp", label: "Start" } },
+      {
+        id: "list-1",
+        type: "whatsappInteractiveList",
+        position: { x: 200, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick from many",
+          choices: [
+            { text: "Option A", id: "opt-a" },
+            { text: "Option B", id: "opt-b" },
+            { text: "Option C", id: "opt-c" },
+            { text: "Option D", id: "opt-d" },
+          ],
+        },
+      },
+    ] as any[]
+    const originalEdges = [
+      { id: "e1", source: "start", target: "list-1" },
+    ] as any[]
+
+    const wire = convertToFsWhatsApp(originalNodes, originalEdges, "Test flow")
+    const { nodes: roundTrippedNodes } = convertFromFsWhatsApp(wire)
+    const list = roundTrippedNodes.find((n: any) => n.type === "whatsappInteractiveList")
+    expect(list).toBeDefined()
+
+    const choices = (list!.data as any).choices as ChoiceData[]
+    expect(choices).toHaveLength(4)
+    expect(choices.map(c => c.id)).toEqual(["opt-a", "opt-b", "opt-c", "opt-d"])
+    expect(choices.map(c => c.text)).toEqual(["Option A", "Option B", "Option C", "Option D"])
   })
 
   it("converts template message node with parameter mappings", () => {
@@ -870,7 +939,7 @@ describe("media attachment", () => {
       node("qr1", "whatsappQuickReply", {
         label: "Pick",
         question: "Choose an option",
-        buttons: [
+        choices: [
           { id: "btn-yes", text: "Yes" },
           { id: "btn-no", text: "No" },
         ],
@@ -912,7 +981,7 @@ describe("media attachment", () => {
       node("list1", "whatsappInteractiveList", {
         label: "Menu",
         question: "Pick a dish",
-        options: [
+        choices: [
           { id: "opt-1", text: "Pizza" },
           { id: "opt-2", text: "Pasta" },
           { id: "opt-3", text: "Salad" },

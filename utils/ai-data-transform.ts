@@ -2,47 +2,41 @@ import type { Node, Edge } from "@xyflow/react"
 import type { Platform } from "@/types"
 import { getBaseNodeType } from "./platform-helpers"
 import { createNode } from "./node-factory"
-import { createButtonData } from "./node-operations"
+import { createChoiceData } from "./node-operations"
 import { autoPopulateStoreAs } from "./flow-plan-builder"
 
 /**
- * Transform AI node data - handles quickReply options→buttons conversion,
- * string→object normalization, and list option formatting
+ * Transform AI node data — normalizes any input shape (choices / buttons /
+ * options / string[]) into the canonical data.choices array for quickReply
+ * and interactiveList nodes. Non-choice fields pass through untouched.
  */
 export function transformAiNodeData(aiData: Record<string, any>, baseType: string): Record<string, any> {
   const transformed = { ...aiData }
 
-  if (baseType === "quickReply") {
-    // Convert options to buttons for quickReply nodes
-    if (Array.isArray(transformed.options) && !transformed.buttons) {
-      transformed.buttons = transformed.options.map((opt: string | any, index: number) => {
-        const text = typeof opt === "string" ? opt : (opt.text || opt.label || "")
-        return createButtonData(text, index)
-      })
-      delete transformed.options
-    }
-    // Also handle if buttons are provided as strings
-    if (Array.isArray(transformed.buttons) && transformed.buttons.length > 0) {
-      transformed.buttons = transformed.buttons.map((btn: string | any, index: number) => {
-        if (typeof btn === "string") {
-          return createButtonData(btn, index)
-        }
-        return {
-          ...createButtonData(btn.text || btn.label || "", index),
-          id: btn.id || createButtonData("", index).id,
-          text: btn.text || btn.label || "",
-        }
-      })
-    }
-  } else if (baseType === "list") {
-    // Transform options to proper format for list nodes, preserving stable IDs
-    if (Array.isArray(transformed.options)) {
-      transformed.options = transformed.options.map((opt: string | any) => {
-        if (typeof opt === "string") return { text: opt }
-        return { ...opt, text: opt.text || opt.label || "" }
-      })
-    }
+  if (baseType !== "quickReply" && baseType !== "list") {
+    return transformed
   }
+
+  // Precedence: choices > buttons > options. The AI may still emit the
+  // legacy field names; we coerce them all into data.choices.
+  const raw = transformed.choices ?? transformed.buttons ?? transformed.options
+  delete transformed.buttons
+  delete transformed.options
+
+  if (!Array.isArray(raw)) {
+    return transformed
+  }
+
+  transformed.choices = raw.map((entry: string | any, index: number) => {
+    const text = typeof entry === "string"
+      ? entry
+      : entry?.text ?? entry?.label ?? ""
+    const base = createChoiceData(text, index)
+    if (typeof entry === "object" && entry?.id) {
+      return { ...base, id: entry.id }
+    }
+    return base
+  })
 
   return transformed
 }

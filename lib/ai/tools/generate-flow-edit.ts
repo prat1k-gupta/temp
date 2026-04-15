@@ -394,7 +394,7 @@ function createEditTools(
 ) {
   const baseTools = {
     get_node_details: tool({
-      description: 'Get full details of a node including button/option handle IDs, storeAs, and content. Call this before editing nodes with buttons/options to get exact handle IDs for attachHandle and removeEdges.',
+      description: 'Get full details of a node including choice handle IDs, storeAs, and content. Call this before editing nodes with choices to get exact handle IDs for attachHandle and removeEdges.',
       inputSchema: z.object({
         nodeId: z.string().describe('The node ID (e.g. "plan-quickReply-2-x7f3")'),
       }),
@@ -410,14 +410,9 @@ function createEditTools(
         if (data?.question) details.question = data.question
         if (data?.text) details.text = data.text
         if (data?.storeAs) details.storeAs = data.storeAs
-        if (data?.buttons) {
-          details.buttons = (data.buttons as any[]).map((b: any, i: number) => ({
-            index: i, text: b.text || b.label, id: b.id, handleId: b.id || `button-${i}`,
-          }))
-        }
-        if (data?.options) {
-          details.options = (data.options as any[]).map((o: any, i: number) => ({
-            index: i, text: o.text, id: o.id, handleId: o.id || `option-${i}`,
+        if (data?.choices) {
+          details.choices = (data.choices as any[]).map((c: any, i: number) => ({
+            index: i, text: c.text || c.label, id: c.id, handleId: c.id || `button-${i}`,
           }))
         }
         return details
@@ -481,11 +476,11 @@ function createEditTools(
           // half-applied edit from reaching validate_result / the canvas.
           //
           // IMPORTANT: match "nodeUpdate target " with the trailing literal
-          // (not just "nodeUpdate ") — flow-plan-builder emits several other
-          // "nodeUpdate "-prefixed warnings for BENIGN coercions (options →
-          // buttons, buttons → options, both → canonical, auto-convert to
-          // list) that should pass through as non-fatal. Only the "target
-          // not found — skipped" case is a hard skip that must roll back.
+          // (not just "nodeUpdate ") — flow-plan-builder emits other
+          // "nodeUpdate "-prefixed warnings for BENIGN events like the
+          // quickReply → interactiveList auto-convert, which must pass
+          // through as non-fatal. Only the "target not found — skipped"
+          // case is a hard skip that must roll back.
           const skipWarnings = editResult.warnings.filter(
             (w) => w.startsWith("addEdge ") || w.startsWith("nodeUpdate target ")
           )

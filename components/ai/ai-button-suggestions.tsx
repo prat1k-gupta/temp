@@ -3,10 +3,10 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Sparkles, Check, X } from "lucide-react"
-import type { ButtonData, Platform } from "@/types"
+import type { ChoiceData, Platform } from "@/types"
 
 interface AIButtonSuggestionsProps {
-  suggestedButtons: ButtonData[]
+  suggestedButtons: ChoiceData[]
   maxButtons?: number
   platform: Platform
   loading?: boolean

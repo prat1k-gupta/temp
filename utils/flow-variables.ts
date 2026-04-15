@@ -288,10 +288,10 @@ export function validateFlowVariables(
       }
     }
 
-    // Check button texts
-    if (Array.isArray(data.buttons)) {
-      for (const btn of data.buttons) {
-        if (typeof btn.text === "string") allRefs.push(...extractVariableReferences(btn.text))
+    // Check choice texts
+    if (Array.isArray(data.choices)) {
+      for (const c of data.choices) {
+        if (typeof c.text === "string") allRefs.push(...extractVariableReferences(c.text))
       }
     }
 

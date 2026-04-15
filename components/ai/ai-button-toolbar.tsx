@@ -9,13 +9,13 @@ import {
 } from '@/components/ui/tooltip'
 import { Sparkles, Wand2, Loader2 } from 'lucide-react'
 import { useNodeAI } from '@/hooks/use-node-ai'
-import type { Platform, ButtonData } from '@/types'
+import type { Platform, ChoiceData } from '@/types'
 import { toast } from 'sonner'
 
 interface AIButtonToolbarProps {
   questionContext: string
-  buttons: ButtonData[]
-  onUpdateButtons: (buttons: ButtonData[]) => void
+  buttons: ChoiceData[]
+  onUpdateButtons: (buttons: ChoiceData[]) => void
   maxButtons: number
   maxButtonLength?: number
   nodeType: string
@@ -86,8 +86,8 @@ export function AIButtonToolbar({
       if (result && result.options) {
         // Get only the new options (slice from current count)
         const newOptions = result.options.slice(buttons.length)
-        const newButtons: ButtonData[] = [...buttons, ...newOptions.map((option, index) => ({
-          id: `btn-${Date.now()}-${index}`,
+        const newButtons: ChoiceData[] = [...buttons, ...newOptions.map((option, index) => ({
+          id: `choice-${Date.now()}-${index}`,
           label: option.label,
           text: option.label,
           value: option.value || option.label.toLowerCase().replace(/\s+/g, '_')
@@ -128,8 +128,8 @@ export function AIButtonToolbar({
       if (result && result.options) {
         // Get only the new options (slice from current count)
         const newOptions = result.options.slice(buttons.length)
-        const newButtons: ButtonData[] = [...buttons, ...newOptions.map((option, index) => ({
-          id: `btn-${Date.now()}-${index}`,
+        const newButtons: ChoiceData[] = [...buttons, ...newOptions.map((option, index) => ({
+          id: `choice-${Date.now()}-${index}`,
           label: option.label,
           text: option.label,
           value: option.value || option.label.toLowerCase().replace(/\s+/g, '_')

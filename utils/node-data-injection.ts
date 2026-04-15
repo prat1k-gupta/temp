@@ -1,6 +1,6 @@
 import type { Node } from "@xyflow/react"
 import type { FlowData } from "@/utils/flow-storage"
-import type { ButtonData, OptionData } from "@/types"
+import type { ChoiceData } from "@/types"
 import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
 import { updateFlowKeywords } from "@/lib/whatsapp-api"
 
@@ -45,24 +45,14 @@ export function injectNodeCallbacks(
   allNodes?: Node[],
   whatsAppFlowContext?: WhatsAppFlowContext
 ): Node {
-  // Ensure stable IDs exist for buttons/options (migration for legacy data)
+  // Ensure stable IDs exist for choices (migration for legacy data)
   const data = { ...node.data }
-  if (Array.isArray(data.buttons)) {
-    const allHaveIds = (data.buttons as ButtonData[]).every((btn) => !!btn.id)
+  if (Array.isArray(data.choices)) {
+    const allHaveIds = (data.choices as ChoiceData[]).every((c) => !!c.id)
     if (!allHaveIds) {
-      data.buttons = (data.buttons as ButtonData[]).map((btn, i) => {
-        if (btn.id) return btn
-        return { ...btn, id: `btn-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
-      })
-      node = { ...node, data }
-    }
-  }
-  if (Array.isArray(data.options)) {
-    const allHaveIds = (data.options as OptionData[]).every((opt) => !!opt.id)
-    if (!allHaveIds) {
-      data.options = (data.options as OptionData[]).map((opt, i) => {
-        if (opt.id) return opt
-        return { ...opt, id: `opt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
+      data.choices = (data.choices as ChoiceData[]).map((c, i) => {
+        if (c.id) return c
+        return { ...c, id: `choice-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}` }
       })
       node = { ...node, data }
     }

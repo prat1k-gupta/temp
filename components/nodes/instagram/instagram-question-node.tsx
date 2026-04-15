@@ -12,7 +12,7 @@ import { InstagramIcon } from "@/components/platform-icons"
 import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { getNodeLimits } from "@/constants"
 import { useState, useEffect, useRef } from "react"
-import type { Platform, ButtonData } from "@/types"
+import type { Platform, ChoiceData } from "@/types"
 import { toast } from "sonner"
 import { getCompactButtonItemClasses, getAddButtonFlexClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
@@ -21,7 +21,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingLabelValue, setEditingLabelValue] = useState("")
   const [editingQuestionValue, setEditingQuestionValue] = useState("")
-  const [manualButtons, setManualButtons] = useState<ButtonData[]>(data.buttons || [])
+  const [manualChoices, setManualChoices] = useState<ChoiceData[]>(data.choices ?? [])
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null)
   const [editingButtonText, setEditingButtonText] = useState("")
   const editingContainerRef = useRef<HTMLDivElement>(null)
@@ -89,23 +89,23 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
 
   // Manual button management
   const addManualButton = () => {
-    if (manualButtons.length >= maxButtons) {
+    if (manualChoices.length >= maxButtons) {
       toast.error(`Maximum ${maxButtons} buttons allowed`)
       return
     }
     const buttonId = `btn-${Date.now()}`
-    const newButton: ButtonData = {
+    const newChoice: ChoiceData = {
       id: buttonId,
       text: "",
       label: "",
       value: ""
     }
-    const updated = [...manualButtons, newButton]
-    setManualButtons(updated)
+    const updated = [...manualChoices, newChoice]
+    setManualChoices(updated)
     setEditingButtonId(buttonId)
     setEditingButtonText("")
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+      data.onNodeUpdate(data.id, { ...data, choices: updated })
     }
   }
 
@@ -116,36 +116,36 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
 
   const finishEditingButton = () => {
     if (!editingButtonId) return
-    
-    const updated = manualButtons.map(btn => 
-      btn.id === editingButtonId 
+
+    const updated = manualChoices.map(btn =>
+      btn.id === editingButtonId
         ? { ...btn, text: editingButtonText, label: editingButtonText, value: editingButtonText.toLowerCase().replace(/\s+/g, '_') }
         : btn
     )
-    setManualButtons(updated)
+    setManualChoices(updated)
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+      data.onNodeUpdate(data.id, { ...data, choices: updated })
     }
     setEditingButtonId(null)
     setEditingButtonText("")
   }
 
   const deleteManualButton = (buttonId: string) => {
-    const updated = manualButtons.filter(btn => btn.id !== buttonId)
-    setManualButtons(updated)
+    const updated = manualChoices.filter(btn => btn.id !== buttonId)
+    setManualChoices(updated)
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: updated })
+      data.onNodeUpdate(data.id, { ...data, choices: updated })
     }
   }
 
-  // Sync manual buttons with data
+  // Sync manual choices with data
   useEffect(() => {
-    if (data.buttons && JSON.stringify(data.buttons) !== JSON.stringify(manualButtons)) {
-      setManualButtons(data.buttons)
+    if (data.choices && JSON.stringify(data.choices) !== JSON.stringify(manualChoices)) {
+      setManualChoices(data.choices)
     }
-  }, [data.buttons])
+  }, [data.choices])
 
-  const handleUpdateButtons = (newButtons: ButtonData[]) => {
+  const handleUpdateButtons = (newButtons: ChoiceData[]) => {
     const questionText = editingQuestionValue || data.question
 
     if (!questionText?.trim()) {
@@ -153,22 +153,22 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
       return
     }
 
-    // Convert buttons to proper format
-    const formattedButtons = newButtons.map(btn => ({
-      text: btn.label || btn.text,
+    // Convert buttons to choices shape for the unified field
+    const formattedChoices: ChoiceData[] = newButtons.map(btn => ({
+      text: btn.label || btn.text || "",
       id: btn.id,
       value: btn.value
     }))
 
     // Auto-convert to Quick Reply when buttons are generated
     if (data.onConvert) {
-      data.onConvert(data.id, 'instagramQuickReply', { 
+      data.onConvert(data.id, 'instagramQuickReply', {
         ...data,
         question: questionText,
-        buttons: formattedButtons
+        choices: formattedChoices
       })
       toast.success('Converted to Quick Reply!', {
-        description: `Added ${formattedButtons.length} button${formattedButtons.length > 1 ? 's' : ''}`
+        description: `Added ${formattedChoices.length} button${formattedChoices.length > 1 ? 's' : ''}`
       })
     }
   }
@@ -181,24 +181,24 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
       return
     }
 
-    if (manualButtons.length === 0) {
+    if (manualChoices.length === 0) {
       toast.error('No buttons to convert')
       return
     }
 
-    // Check if all manual buttons have text
-    const emptyButtons = manualButtons.filter(b => !b.text?.trim())
-    if (emptyButtons.length > 0) {
+    // Check if all manual choices have text
+    const emptyChoices = manualChoices.filter(b => !b.text?.trim())
+    if (emptyChoices.length > 0) {
       toast.error('Please fill in all button text')
       return
     }
 
-    // Convert to Quick Reply node with manual buttons
+    // Convert to Quick Reply node with manual choices
     if (data.onConvert) {
-      data.onConvert(data.id, 'instagramQuickReply', { 
+      data.onConvert(data.id, 'instagramQuickReply', {
         ...data,
         question: questionText,
-        buttons: manualButtons.map(b => ({
+        choices: manualChoices.map(b => ({
           text: b.text,
           id: b.id,
           value: b.value
@@ -309,10 +309,10 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && manualButtons.length < maxButtons && (
+          {(data.question || editingQuestionValue) && manualChoices.length < maxButtons && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
-              buttons={manualButtons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
+              buttons={manualChoices.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
               onUpdateButtons={handleUpdateButtons}
               maxButtons={maxButtons}
               maxButtonLength={maxButtonTextLength}
@@ -324,16 +324,16 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
           {/* Manual Buttons Section */}
           {(
             <div className="space-y-2">
-              {manualButtons.length > 0 && (
+              {manualChoices.length > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-pink-600 dark:text-pink-400">
-                    Buttons ({manualButtons.length}/{maxButtons})
+                    Buttons ({manualChoices.length}/{maxButtons})
                   </span>
                 </div>
               )}
               
               {/* Manual Buttons List */}
-              {manualButtons.map((button) => {
+              {manualChoices.map((button) => {
                 const buttonId = button.id || ""
                 return (
                 <div key={buttonId} className="flex items-center gap-1.5">
@@ -401,7 +401,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
               {/* Action Buttons Row */}
               <div className="flex gap-1.5">
                 {/* Add Manual Button */}
-                {manualButtons.length < maxButtons && (
+                {manualChoices.length < maxButtons && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -418,7 +418,7 @@ export function InstagramQuestionNode({ data, selected }: { data: any; selected?
                 )}
 
                 {/* Convert with Manual Buttons */}
-                {manualButtons.length > 0 && (
+                {manualChoices.length > 0 && (
                   <Button
                     variant="default"
                     size="sm"

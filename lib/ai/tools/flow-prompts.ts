@@ -123,8 +123,7 @@ function getCreateInstructions(): string {
     '',
     '**Content fields (all optional — factory provides defaults):**',
     '- question: string — for question, quickReply, interactiveList, super nodes',
-    '- buttons: string[] — plain labels for quickReply (e.g. ["Yes", "No"])',
-    '- options: string[] — plain labels for interactiveList',
+    '- choices: string[] — plain labels for quickReply AND interactiveList (e.g. ["Yes", "No"]). ONE field for both node types.',
     '- listTitle: string — for interactiveList',
     '- text: string — for whatsappMessage, instagramDM, instagramStory',
     '- label: string — custom display label (otherwise auto-generated)',
@@ -132,8 +131,9 @@ function getCreateInstructions(): string {
     '- storeAs: string — variable name to store the user\'s response (e.g. "selected_flavor"). ALWAYS provide this for question, quickReply, and interactiveList nodes so later nodes can reference the answer via {{storeAs_value}}.',
     '',
     '**CRITICAL — quickReply vs interactiveList:**',
-    '- **≤3 choices → ALWAYS use quickReply** (with buttons[]). NEVER use interactiveList for 3 or fewer options.',
-    '- **4+ choices → use interactiveList** (with options[] and listTitle).',
+    '- **≤3 choices → ALWAYS use quickReply** (with content.choices). NEVER use interactiveList for 3 or fewer options.',
+    '- **4+ choices → use interactiveList** (with content.choices and listTitle).',
+    '- Both node types use the SAME `content.choices` field — only the rendering style differs. The system auto-converts a quickReply to interactiveList if you push it past 3 choices.',
     '- This rule is absolute and has no exceptions.',
     '',
     '**VARIABLE INTERPOLATION (referencing previous answers):**',
@@ -211,7 +211,7 @@ function getEditInstructions(): string {
     '- Insert node between A→C → removeEdges A→C + chain with connectTo',
     '- Rewire buttons to existing node → removeEdges + addEdges (no chains needed)',
     '',
-    '**Content fields:** question, buttons[], options[], listTitle, text, label, message, storeAs, variables[{name,value}], tags[], tagAction',
+    '**Content fields:** question, choices[], listTitle, text, label, message, storeAs, variables[{name,value}], tags[], tagAction',
     '- storeAs: ALWAYS set for question/quickReply/interactiveList. Use snake_case (e.g. "delivery_slot").',
     '',
     '**Variables:** Use {{var_name}} for text inputs, {{var_name_title}} for button/list selections. Super nodes: {{user_name}}, {{user_email}}, {{user_dob}}, {{user_address}}. System: {{system.contact_name}}, {{system.phone_number}}. Global: {{global.variable_name}}.',
@@ -228,9 +228,8 @@ function getEditInstructions(): string {
     '- Write full sentences for questions.',
     '- Max branches: web=10, whatsapp=3, instagram=3.',
     '- Use addEdges with sourceButtonIndex to connect new quickReply/list buttons to existing nodes (no chain needed).',
-    '- **CRITICAL — button/option edge handles:** For edges whose source is a quickReply/interactiveList node, ALWAYS use `sourceButtonIndex` (0-based). NEVER put a raw handle ID like `btn-1776...` or `opt-...` into `sourceHandle`. Handle IDs returned by `get_node_details` are for YOUR INSPECTION ONLY — do not copy them into addEdges/removeEdges/chain attachHandle. The builder resolves `sourceButtonIndex` against the node\'s FINAL button/option array (after your nodeUpdates apply), so newly-added buttons work too.',
-    '- **CRITICAL — buttons vs options field:** The two fields are NOT interchangeable. Use `content.buttons` ONLY for `quickReply` nodes. Use `content.options` ONLY for `interactiveList` nodes. NEVER send both in the same nodeUpdate. If the existing node is a `whatsappQuickReply` and you need to push it past 3 choices, still send `content.buttons: [...all choices...]` — the system will auto-convert to `interactiveList`. Sending `content.options` on a quickReply creates an invalid hybrid state that the canvas silently ignores.',
-    '- **Adding a new button/option to an existing quickReply or list:** supply the FULL updated buttons/options array in a nodeUpdates entry using the CANONICAL field for the current node type (buttons for quickReply, options for list). To connect the NEW entry onward, use `sourceButtonIndex: <index-of-new-entry>` (typically the last index in the new array). Do NOT reuse an existing button\'s handle ID for the new entry — that creates two edges from the same old handle and leaves the new entry dangling.',
+    '- **CRITICAL — button/option edge handles:** For edges whose source is a quickReply/interactiveList node, ALWAYS use `sourceButtonIndex` (0-based). NEVER put a raw handle ID like `choice-1776...` into `sourceHandle`. Handle IDs returned by `get_node_details` are for YOUR INSPECTION ONLY — do not copy them into addEdges/removeEdges/chain attachHandle. The builder resolves `sourceButtonIndex` against the node\'s FINAL choices array (after your nodeUpdates apply), so newly-added choices work too.',
+    '- Use `content.choices` (string[]) for both whatsappQuickReply and whatsappInteractiveList nodes. The system unifies the field — you do NOT need to choose between `buttons` and `options`. If a quickReply has more than 3 choices, it auto-converts to interactiveList.',
     '- **NEVER use nodeType "flowTemplate" directly in chains.** For data collection, use "name", "email", "dob", "address". These resolve to templates automatically.',
   ].join("\n")
 }
@@ -240,7 +239,7 @@ function getCreateResponseFormat(): string {
   const example = JSON.stringify({
     message: "Created a sample delivery flow with feedback collection",
     steps: [
-      { step: "node", nodeType: "quickReply", content: { question: "Choose a delivery slot for your sample.", buttons: ["Morning", "Afternoon", "Evening"], storeAs: "delivery_slot" } },
+      { step: "node", nodeType: "quickReply", content: { question: "Choose a delivery slot for your sample.", choices: ["Morning", "Afternoon", "Evening"], storeAs: "delivery_slot" } },
       { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Morning slot confirmed!" } }] },
       { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Afternoon slot confirmed!" } }] },
       { step: "branch", buttonIndex: 2, steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Evening slot confirmed!" } }] },
@@ -280,15 +279,15 @@ function getEditResponseFormat(): string {
     nodeUpdates: [{
       nodeId: "plan-quickReply-2",
       content: {
-        // Full buttons array — existing 3 + new 4th. No handle IDs; the builder
+        // Full choices array — existing 3 + new 4th. No handle IDs; the builder
         // preserves IDs for existing text matches and assigns fresh IDs for new
         // entries. System auto-converts to interactiveList when count > 3.
-        buttons: ["Great", "Good", "Okay", "Other"],
+        choices: ["Great", "Good", "Okay", "Other"],
       },
     }],
     chains: [{
       attachTo: "plan-quickReply-2",
-      // positional — resolves against the FINAL buttons array (post-update),
+      // positional — resolves against the FINAL choices array (post-update),
       // so "button-3" points at the NEW 4th entry "Other".
       attachHandle: "button-3",
       steps: [{

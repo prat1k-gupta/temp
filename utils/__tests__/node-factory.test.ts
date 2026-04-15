@@ -49,8 +49,8 @@ describe("createQuickReplyNode", () => {
     it(`creates quick reply node for ${platform}`, () => {
       const node = createQuickReplyNode(platform, position)
       expect(node.data.platform).toBe(platform)
-      expect(node.data.buttons).toBeDefined()
-      expect((node.data.buttons as any[]).length).toBeGreaterThan(0)
+      expect(node.data.choices).toBeDefined()
+      expect((node.data.choices as any[]).length).toBeGreaterThan(0)
     })
   })
 
@@ -71,8 +71,8 @@ describe("createListNode", () => {
     it(`creates list node for ${platform}`, () => {
       const node = createListNode(platform, position)
       expect(node.data.platform).toBe(platform)
-      expect(node.data.options).toBeDefined()
-      expect((node.data.options as any[]).length).toBeGreaterThan(0)
+      expect(node.data.choices).toBeDefined()
+      expect((node.data.choices as any[]).length).toBeGreaterThan(0)
     })
   })
 

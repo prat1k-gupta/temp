@@ -50,8 +50,8 @@ export interface NodeContent {
   label?: string
   question?: string
   text?: string
-  buttons?: string[]
-  options?: string[]
+  /** Canonical field for whatsappQuickReply / whatsappInteractiveList items. */
+  choices?: string[]
   listTitle?: string
   comment?: string
   message?: string
@@ -95,8 +95,8 @@ export const nodeContentSchema = z.object({
   label: z.string().optional(),
   question: z.string().optional(),
   text: z.string().optional(),
-  buttons: z.array(z.string()).optional(),
-  options: z.array(z.string()).optional(),
+  // Canonical field for choice-bearing nodes (quickReply, interactiveList).
+  choices: z.array(z.string()).optional(),
   listTitle: z.string().optional(),
   comment: z.string().optional(),
   message: z.string().optional(),

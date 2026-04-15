@@ -79,8 +79,8 @@ export interface NodeTemplateLimits {
    * Used by the flattener to enumerate all possible exits from a node.
    * - "none": terminal node, no source handles (e.g. transfer, flowComplete)
    * - "default": single unnamed handle (e.g. question, message nodes)
-   * - "buttons": per-button handle from data.buttons[].id + "sync-next" fallthrough
-   * - "options": per-option handle from data.options[].id + "sync-next" fallthrough
+   * - "buttons": per-choice handle from data.choices[].id + "sync-next" fallthrough (quickReply)
+   * - "options": per-choice handle from data.choices[].id + "sync-next" fallthrough (interactiveList)
    * - "conditions": per-group handle from data.conditionGroups[].id + "else" fallback
    *
    * If omitted, inferred: maxConnections=0 → "none", otherwise "default".
@@ -220,8 +220,8 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
         "Question: 'Would you like a free sample?' Buttons: ['Yes, send it!', 'No, thanks']",
         "Question: 'Which product interests you?' Buttons: ['Shampoo', 'Conditioner', 'Hair Mask']",
       ],
-      contentFields: "question, buttons[], media (prefer over question when answer options are finite)",
-      requiredProperties: ["label", "question", "buttons", "platform"],
+      contentFields: "question, choices[], media (prefer over question when answer options are finite)",
+      requiredProperties: ["label", "question", "choices", "platform"],
       selectionRule: "Use for 1-3 choices. Always prefer over interactiveList for ≤3 options.",
     },
   },
@@ -245,8 +245,8 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       examples: [
         "List Title: 'Hair Care Products' Options: ['Shampoo', 'Conditioner', 'Hair Mask']",
       ],
-      contentFields: "question, options[], listTitle",
-      requiredProperties: ["label", "question", "listTitle", "options", "platform"],
+      contentFields: "question, choices[], listTitle",
+      requiredProperties: ["label", "question", "listTitle", "choices", "platform"],
       selectionRule: "Only for 4+ choices. Never use for ≤3 options — use quickReply.",
     },
   },
@@ -840,8 +840,8 @@ export function getNodeSourceHandles(nodeType: string, data: any): (string | und
       return []
 
     case "buttons": {
-      const buttons: any[] = data?.buttons || []
-      const handles: (string | undefined)[] = buttons
+      const choices: any[] = data?.choices ?? []
+      const handles: (string | undefined)[] = choices
         .map((b: any, i: number) => b.id || `button-${i}`)
       // "sync-next" is the fallthrough handle on quickReply/list/templateMessage
       handles.push("sync-next")
@@ -849,8 +849,8 @@ export function getNodeSourceHandles(nodeType: string, data: any): (string | und
     }
 
     case "options": {
-      const options: any[] = data?.options || []
-      const handles: (string | undefined)[] = options
+      const choices: any[] = data?.choices ?? []
+      const handles: (string | undefined)[] = choices
         .map((o: any, i: number) => o.id || `option-${i}`)
       handles.push("sync-next")
       return handles

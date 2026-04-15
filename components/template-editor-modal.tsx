@@ -126,31 +126,17 @@ function TemplateEditorInner({
         nds.map((n) => {
           if (n.id !== nodeId) return n
           const data = n.data as any
-          if (data.buttons) {
-            return {
-              ...n,
-              data: {
-                ...data,
-                buttons: [
-                  ...data.buttons,
-                  { text: `Option ${data.buttons.length + 1}`, id: `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
-                ],
-              },
-            }
+          if (!Array.isArray(data.choices)) return n
+          return {
+            ...n,
+            data: {
+              ...data,
+              choices: [
+                ...data.choices,
+                { text: `Option ${data.choices.length + 1}`, id: `choice-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
+              ],
+            },
           }
-          if (data.options) {
-            return {
-              ...n,
-              data: {
-                ...data,
-                options: [
-                  ...data.options,
-                  { text: `Option ${data.options.length + 1}`, id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
-                ],
-              },
-            }
-          }
-          return n
         })
       )
     },

@@ -5,7 +5,7 @@ import {
   getPlatformSpecificLabel, 
   getPlatformSpecificContent 
 } from "./platform-helpers"
-import { generateNodeId, createButtonData, createOptionData } from "./node-operations"
+import { generateNodeId, createChoiceData } from "./node-operations"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 
 interface NodePosition {
@@ -52,7 +52,7 @@ export const createQuickReplyNode = (
       platform,
       label: getPlatformSpecificLabel("quickReply", platform),
       question: getPlatformSpecificContent("quickReply", platform),
-      buttons: [createButtonData("Action 1")],
+      choices: [createChoiceData("Action 1")],
       storeAs: "",
     } as NodeData,
   }
@@ -75,7 +75,7 @@ export const createListNode = (
       platform,
       label: getPlatformSpecificLabel("interactiveList", platform),
       question: getPlatformSpecificContent("interactiveList", platform),
-      options: [createOptionData("Option 1")],
+      choices: [createChoiceData("Option 1")],
       storeAs: "",
     } as NodeData,
   }

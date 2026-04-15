@@ -136,7 +136,7 @@ describe("stripEphemeral", () => {
       id: "1", type: "test", position: { x: 0, y: 0 },
       data: {
         label: "test",
-        buttons: [{ id: "b1", text: "Go" }],
+        choices: [{ id: "c1", text: "Go" }],
         onSnapshot: () => {},
         onResumeTracking: () => {},
         onNodeUpdate: () => {},
@@ -145,7 +145,7 @@ describe("stripEphemeral", () => {
     }]
     const result = stripEphemeral(nodes)
     expect(result[0].data.label).toBe("test")
-    expect(result[0].data.buttons).toEqual([{ id: "b1", text: "Go" }])
+    expect(result[0].data.choices).toEqual([{ id: "c1", text: "Go" }])
     expect(result[0].data).not.toHaveProperty("onSnapshot")
     expect(result[0].data).not.toHaveProperty("onResumeTracking")
     expect(result[0].data).not.toHaveProperty("onNodeUpdate")

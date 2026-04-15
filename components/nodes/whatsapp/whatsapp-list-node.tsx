@@ -17,10 +17,10 @@ import { getAddButtonClasses, getDeleteButtonSmallClasses } from "@/utils/button
 import { StoreAsPill } from "@/components/nodes/core/store-as-pill"
 import { AIButtonToolbar } from "@/components/ai"
 import { slugify } from "@/utils/flow-variables"
-import type { ButtonData } from "@/types"
+import type { ChoiceData } from "@/types"
 
 export function WhatsAppListNode({ data, selected }: { data: any; selected?: boolean }) {
-  const options = data.options || []
+  const choices = data.choices ?? []
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingOptionIndex, setEditingOptionIndex] = useState<number | null>(null)
@@ -90,40 +90,40 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
   }
 
   const startEditingOption = (index: number) => {
-    setEditingOptionValue(options[index]?.text || "")
+    setEditingOptionValue(choices[index]?.text || "")
     setEditingOptionIndex(index)
   }
 
   const finishEditingOption = () => {
     if (editingOptionIndex !== null && data.onNodeUpdate) {
-      const updatedOptions = [...options]
-      updatedOptions[editingOptionIndex] = { ...updatedOptions[editingOptionIndex], text: editingOptionValue }
-      data.onNodeUpdate(data.id, { ...data, options: updatedOptions })
+      const updatedChoices = [...choices]
+      updatedChoices[editingOptionIndex] = { ...updatedChoices[editingOptionIndex], text: editingOptionValue }
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
     }
     setEditingOptionIndex(null)
   }
 
   const cancelEditingOption = () => {
     if (editingOptionIndex !== null) {
-      setEditingOptionValue(options[editingOptionIndex]?.text || "")
+      setEditingOptionValue(choices[editingOptionIndex]?.text || "")
     }
     setEditingOptionIndex(null)
   }
 
-  const removeOption = (index: number) => {
-    const updatedOptions = options.filter((_: any, i: number) => i !== index)
+  const removeChoice = (index: number) => {
+    const updatedChoices = choices.filter((_: any, i: number) => i !== index)
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, options: updatedOptions })
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
     }
   }
 
-  const handleUpdateOptions = (newButtons: ButtonData[]) => {
+  const handleUpdateChoices = (newButtons: ChoiceData[]) => {
     const formatted = newButtons.map(btn => ({
       text: btn.label,
       id: btn.id,
     }))
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, options: formatted.slice(0, maxOptions) })
+      data.onNodeUpdate(data.id, { ...data, choices: formatted.slice(0, maxOptions) })
     }
   }
 
@@ -234,11 +234,11 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
           </div>
 
           {/* AI Option Generator */}
-          {(data.question || editingQuestionValue) && options.length < maxOptions && (
+          {(data.question || editingQuestionValue) && choices.length < maxOptions && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
-              buttons={options.map((o: any) => ({ id: o.id || `opt-${Date.now()}`, label: o.text, value: o.text }))}
-              onUpdateButtons={handleUpdateOptions}
+              buttons={choices.map((o: any) => ({ id: o.id || `opt-${Date.now()}`, label: o.text, value: o.text }))}
+              onUpdateButtons={handleUpdateChoices}
               maxButtons={maxOptions}
               maxButtonLength={maxOptionLength}
               nodeType={nodeType}
@@ -247,7 +247,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
           )}
 
           <div className="space-y-1">
-            {options.map((option: any, index: number) => (
+            {choices.map((option: any, index: number) => (
               <div key={index} className="relative group">
                 {editingOptionIndex === index ? (
                   <div className="space-y-2">
@@ -272,7 +272,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeOption(index)}
+                        onClick={() => removeChoice(index)}
                         className={getDeleteButtonSmallClasses()}
                       >
                         <X className="w-3 h-3" />
@@ -309,7 +309,7 @@ export function WhatsAppListNode({ data, selected }: { data: any; selected?: boo
               </div>
             ))}
 
-            {options.length < 10 && (
+            {choices.length < 10 && (
               <Button
                 variant="ghost"
                 size="sm"

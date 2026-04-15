@@ -1,22 +1,16 @@
-import type { Platform, ButtonData, OptionData, NodeData } from "@/types"
+import type { Platform, ChoiceData, NodeData } from "@/types"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getPlatformSpecificNodeType, getPlatformSpecificLabel } from "./platform-helpers"
 import { isValidNodeId } from "./validation"
 
 /**
- * Create button data with proper structure
+ * Create choice data — canonical factory for whatsappQuickReply /
+ * whatsappInteractiveList / web choice nodes. All choice-bearing node
+ * types store their items in the unified `data.choices` field.
  */
-export const createButtonData = (text: string, index?: number): ButtonData => ({
+export const createChoiceData = (text: string, index?: number): ChoiceData => ({
   text: text || `Option ${(index || 0) + 1}`,
-  id: `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-})
-
-/**
- * Create option data with proper structure
- */
-export const createOptionData = (text: string, index?: number): OptionData => ({
-  text: text || `Option ${(index || 0) + 1}`,
-  id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  id: `choice-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 })
 
 /**
@@ -38,7 +32,7 @@ export const createBaseNodeData = (platform: Platform, nodeType: string): NodeDa
 /**
  * Check if a node can have more buttons added
  */
-export const canAddMoreButtons = (currentButtons: ButtonData[], platform: Platform): boolean => {
+export const canAddMoreButtons = (currentButtons: ChoiceData[], platform: Platform): boolean => {
   const limit = BUTTON_LIMITS[platform]
   return currentButtons.length < limit
 }
@@ -110,13 +104,3 @@ export function shouldConvertToList(
   }
 }
 
-/**
- * Convert ButtonData[] → OptionData[].
- * Preserves button IDs so existing edges (sourceHandle) stay connected.
- */
-export function convertButtonsToOptions(buttons: ButtonData[]): OptionData[] {
-  return buttons.map((btn, i) => ({
-    text: btn.text || btn.label || `Option ${i + 1}`,
-    id: btn.id || `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  }))
-}

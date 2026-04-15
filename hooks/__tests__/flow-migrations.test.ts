@@ -186,3 +186,4 @@ describe("migrateSuperNodesToTemplates", () => {
     expect(result.migrated).toBe(false)
   })
 })
+

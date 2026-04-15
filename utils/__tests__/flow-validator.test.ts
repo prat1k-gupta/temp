@@ -75,7 +75,7 @@ describe("validateGeneratedFlow", () => {
       makeNode("1", "start"),
       makeNode("qr1", "whatsappQuickReply", {
         question: "Pick one",
-        buttons: [
+        choices: [
           { id: "b0", text: "A" },
           { id: "b1", text: "B" },
           { id: "b2", text: "C" },
@@ -175,12 +175,12 @@ describe("validateGeneratedFlow", () => {
     ).toBe(false)
   })
 
-  it("accepts buttons within the platform limit", () => {
+  it("accepts choices within the platform limit", () => {
     const nodes = [
       makeNode("1", "start"),
       makeNode("qr1", "whatsappQuickReply", {
         question: "Pick one",
-        buttons: [
+        choices: [
           { id: "b0", text: "A" },
           { id: "b1", text: "B" },
           { id: "b2", text: "C" },
@@ -231,10 +231,10 @@ describe("validateGeneratedFlow", () => {
   })
 
   it("detects interactiveList exceeding option limit", () => {
-    const options = Array.from({ length: 12 }, (_, i) => ({ id: `opt-${i}`, text: `Option ${i}` }))
+    const choices = Array.from({ length: 12 }, (_, i) => ({ id: `opt-${i}`, text: `Option ${i}` }))
     const nodes = [
       makeNode("1", "start"),
-      makeNode("list1", "interactiveList", { question: "Pick one", options, listTitle: "Options" }),
+      makeNode("list1", "interactiveList", { question: "Pick one", choices, listTitle: "Options" }),
     ]
     const edges = [makeEdge("1", "list1")]
     const result = validateGeneratedFlow(nodes, edges, "whatsapp")

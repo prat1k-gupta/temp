@@ -14,13 +14,12 @@ import { AIToolbar, AIButtonToolbar } from "@/components/ai"
 import { useAIButtonGenerator } from "@/hooks/use-node-ai"
 import { getNodeLimits } from "@/constants"
 import { useState, useEffect, useRef } from "react"
-import type { Platform, ButtonData } from "@/types"
-import { convertButtonsToOptions } from "@/utils/node-operations"
+import type { Platform, ChoiceData } from "@/types"
 import { toast } from "sonner"
 import { getButtonItemClasses, getAddButtonClasses, getDeleteButtonClasses, getGhostButtonClasses } from "@/utils/button-styles"
 
 export function InstagramQuickReplyNode({ data, selected }: { data: any; selected?: boolean }) {
-  const buttons = data.buttons || []
+  const choices = data.choices ?? []
   const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editingButtonIndex, setEditingButtonIndex] = useState<number | null>(null)
@@ -95,84 +94,74 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   }
 
   const startEditingButton = (index: number) => {
-    setEditingButtonValue(buttons[index]?.text || "")
+    setEditingButtonValue(choices[index]?.text || "")
     setEditingButtonIndex(index)
   }
 
   const finishEditingButton = () => {
     if (editingButtonIndex !== null && data.onNodeUpdate) {
-      const updatedButtons = [...buttons]
-      updatedButtons[editingButtonIndex] = { ...updatedButtons[editingButtonIndex], text: editingButtonValue }
-      data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+      const updatedChoices = [...choices]
+      updatedChoices[editingButtonIndex] = { ...updatedChoices[editingButtonIndex], text: editingButtonValue }
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
     }
     setEditingButtonIndex(null)
   }
 
   const cancelEditingButton = () => {
     if (editingButtonIndex !== null) {
-      setEditingButtonValue(buttons[editingButtonIndex]?.text || "")
+      setEditingButtonValue(choices[editingButtonIndex]?.text || "")
     }
     setEditingButtonIndex(null)
   }
 
-  const removeButton = (index: number) => {
-    const updatedButtons = buttons.filter((_: any, i: number) => i !== index)
+  const removeChoice = (index: number) => {
+    const updatedChoices = choices.filter((_: any, i: number) => i !== index)
     if (data.onNodeUpdate) {
-      data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+      data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
     }
   }
 
-  const handleUpdateButtons = (newButtons: ButtonData[]) => {
-    const formattedButtons = newButtons.map(btn => ({
+  const handleUpdateChoices = (newButtons: ChoiceData[]) => {
+    const formattedChoices = newButtons.map(btn => ({
       text: btn.label,
       id: btn.id,
       value: btn.value
     }))
 
-    // If we have more buttons than the Quick Reply limit, trigger conversion to List
-    if (formattedButtons.length > maxButtons) {
-      handleConvertToListWithButtons(formattedButtons)
+    // If we have more choices than the Quick Reply limit, trigger conversion to List
+    if (formattedChoices.length > maxButtons) {
+      handleConvertToListWithChoices(formattedChoices)
     } else {
       if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: formattedButtons })
+        data.onNodeUpdate(data.id, { ...data, choices: formattedChoices })
       }
     }
   }
 
-  const handleConvertToListWithButtons = (buttons: any[]) => {
-    // Convert buttons to options using shared utility
-    const buttonData = buttons.map((b: any) => ({
-      text: b.text || b.label || "",
-      label: b.label || b.text || "",
-      id: b.id,
-      value: b.value,
-    })) as ButtonData[]
-    const options = convertButtonsToOptions(buttonData)
-
-    // Convert to List node
+  const handleConvertToListWithChoices = (currentChoices: any[]) => {
+    // Convert to List node — only the node type changes, data.choices is unchanged.
     if (data.onConvert) {
       data.onConvert(data.id, 'interactiveList', {
         ...data,
         question: data.question || "",
-        options,
-        buttons: undefined,
+        choices: currentChoices,
       })
       toast.success('Upgraded to Interactive List!', {
-        description: `Now you have ${options.length} options (was limited to ${maxButtons} buttons)`
+        description: `Now you have ${currentChoices.length} choices (was limited to ${maxButtons} on Quick Reply)`
       })
     }
   }
 
   const handleImproveButton = async (index: number) => {
-    const button = buttons[index]
-    if (!button || !button.text?.trim()) {
+    const choice = choices[index]
+    if (!choice || !choice.text?.trim()) {
       toast.error('Please add text to the button first')
       return
     }
 
     setImprovingButtonIndex(index)
     try {
-      const result = await ai.improveCopy(button.text, 'button', {
+      const result = await ai.improveCopy(choice.text, 'button', {
         maxLength: maxButtonLength,
         context: {
           purpose: 'Instagram button label',
@@ -181,13 +170,13 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
       })
 
       if (result) {
-        const updatedButtons = [...buttons]
-        updatedButtons[index] = {
-          ...button,
+        const updatedChoices = [...choices]
+        updatedChoices[index] = {
+          ...choice,
           text: result.improvedText
         }
         if (data.onNodeUpdate) {
-          data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+          data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
         }
         toast.success('Button improved!', {
           description: result.improvements[0] || 'Label enhanced'
@@ -201,16 +190,16 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
   }
 
   const handleShortenButton = async (index: number) => {
-    const button = buttons[index]
-    if (!button) return
+    const choice = choices[index]
+    if (!choice) return
 
-    // Get context from other buttons
-    const otherButtons = buttons
+    // Get context from other choices
+    const otherButtons = choices
       .filter((_: any, i: number) => i !== index)
       .map((b: any) => b.text)
       .filter(Boolean)
 
-    const result = await ai.shortenText(button.text, maxButtonLength, {
+    const result = await ai.shortenText(choice.text, maxButtonLength, {
       context: {
         purpose: 'Instagram button label',
         flowContext: data.question || '',
@@ -219,13 +208,13 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
     })
 
     if (result) {
-      const updatedButtons = [...buttons]
-      updatedButtons[index] = {
-        ...button,
+      const updatedChoices = [...choices]
+      updatedChoices[index] = {
+        ...choice,
         text: result.shortenedText
       }
       if (data.onNodeUpdate) {
-        data.onNodeUpdate(data.id, { ...data, buttons: updatedButtons })
+        data.onNodeUpdate(data.id, { ...data, choices: updatedChoices })
       }
       // Also update the editing value if we're editing this button
       if (editingButtonIndex === index) {
@@ -337,11 +326,11 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
           )}
 
           {/* AI Button Generator */}
-          {(data.question || editingQuestionValue) && buttons.length < 10 && (
+          {(data.question || editingQuestionValue) && choices.length < 10 && (
             <AIButtonToolbar
               questionContext={editingQuestionValue || data.question}
-              buttons={buttons.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
-              onUpdateButtons={handleUpdateButtons}
+              buttons={choices.map((b: any) => ({ id: b.id || `btn-${Date.now()}`, label: b.text, value: b.value }))}
+              onUpdateButtons={handleUpdateChoices}
               maxButtons={10} // Allow up to 10, will auto-convert to List if needed
               maxButtonLength={maxButtonLength}
               nodeType={nodeType}
@@ -350,7 +339,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
           )}
 
           <div className="space-y-1.5">
-            {buttons.map((button: any, index: number) => (
+            {choices.map((button: any, index: number) => (
               <div key={index} className="relative group">
                 {editingButtonIndex === index ? (
                   <div className="space-y-2 group/button-edit">
@@ -372,7 +361,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeButton(index)}
+                        onClick={() => removeChoice(index)}
                         className={getDeleteButtonClasses()}
                       >
                         <X className="w-3 h-3" />
@@ -459,7 +448,7 @@ export function InstagramQuickReplyNode({ data, selected }: { data: any; selecte
             ))}
           </div>
 
-          {buttons.length < 10 && (
+          {choices.length < 10 && (
             <Button
               variant="ghost"
               size="sm"

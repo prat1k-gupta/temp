@@ -6,7 +6,7 @@ import {
   isNodeTypeValidForPlatform,
 } from "../flow-plan-builder"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
-import type { Platform, ButtonData, OptionData, TemplateResolver } from "@/types"
+import type { Platform, ChoiceData, TemplateResolver } from "@/types"
 import { START_X, HORIZONTAL_GAP } from "../flow-layout"
 
 // ─── helpers ──────────────────────────────────────────
@@ -59,29 +59,6 @@ describe("isNodeTypeValidForPlatform", () => {
 // ─── contentToNodeData ────────────────────────────────
 
 describe("contentToNodeData", () => {
-  it("converts string buttons to ButtonData[]", () => {
-    const data = contentToNodeData(
-      { buttons: ["Yes", "No", "Maybe"] },
-      "quickReply"
-    )
-    const buttons = data.buttons as ButtonData[]
-    expect(buttons).toHaveLength(3)
-    expect(buttons[0].text).toBe("Yes")
-    expect(buttons[1].text).toBe("No")
-    expect(buttons[2].text).toBe("Maybe")
-  })
-
-  it("converts string options to OptionData[]", () => {
-    const data = contentToNodeData(
-      { options: ["Shampoo", "Conditioner"] },
-      "interactiveList"
-    )
-    const options = data.options as OptionData[]
-    expect(options).toHaveLength(2)
-    expect(options[0].text).toBe("Shampoo")
-    expect(options[1].text).toBe("Conditioner")
-  })
-
   it("passes through label, question, text, comment, message", () => {
     const data = contentToNodeData(
       { label: "L", question: "Q?", text: "T", comment: "C", message: "M" },
@@ -97,6 +74,21 @@ describe("contentToNodeData", () => {
   it("omits undefined fields", () => {
     const data = contentToNodeData({}, "name")
     expect(Object.keys(data)).toHaveLength(0)
+  })
+})
+
+describe("contentToNodeData — choices unification", () => {
+  it("maps content.choices → data.choices", () => {
+    const data = contentToNodeData({ choices: ["A", "B"] }, "whatsappQuickReply")
+    const choices = data.choices as ChoiceData[]
+    expect(choices).toHaveLength(2)
+    expect(choices.map(c => c.text)).toEqual(["A", "B"])
+  })
+
+  it("produces no data.choices when no input is supplied", () => {
+    const data = contentToNodeData({ question: "hi" }, "whatsappQuickReply")
+    expect(data.choices).toBeUndefined()
+    expect(data.question).toBe("hi")
   })
 })
 
@@ -182,7 +174,7 @@ describe("buildFlowFromPlan — branching", () => {
           nodeType: "quickReply",
           content: {
             question: "Pick one",
-            buttons: ["A", "B"],
+            choices: ["A", "B"],
           },
         },
         {
@@ -203,13 +195,13 @@ describe("buildFlowFromPlan — branching", () => {
     // 1 quickReply + 1 name + 1 email = 3 nodes
     expect(nodes).toHaveLength(3)
 
-    // Find branch edges by looking at the quickReply node's button IDs
+    // Find branch edges by looking at the quickReply node's choice IDs
     const qrNode = nodes.find((n) => n.id.includes("quickReply"))
-    const buttons = qrNode?.data?.buttons as ButtonData[]
-    expect(buttons).toHaveLength(2)
+    const choices = qrNode?.data?.choices as ChoiceData[]
+    expect(choices).toHaveLength(2)
 
-    const branchEdge0 = edges.find((e) => e.sourceHandle === buttons[0].id)
-    const branchEdge1 = edges.find((e) => e.sourceHandle === buttons[1].id)
+    const branchEdge0 = edges.find((e) => e.sourceHandle === choices[0].id)
+    const branchEdge1 = edges.find((e) => e.sourceHandle === choices[1].id)
 
     expect(branchEdge0).toBeDefined()
     expect(branchEdge1).toBeDefined()
@@ -224,7 +216,7 @@ describe("buildFlowFromPlan — branching", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A", "B", "C", "D"] },
+          content: { question: "Pick", choices: ["A", "B", "C", "D"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "name" }] },
         { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "email" }] },
@@ -250,7 +242,7 @@ describe("buildFlowFromPlan — branching", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Level 1", buttons: ["Go"] },
+          content: { question: "Level 1", choices: ["Go"] },
         },
         {
           step: "branch",
@@ -259,7 +251,7 @@ describe("buildFlowFromPlan — branching", () => {
             {
               step: "node",
               nodeType: "quickReply",
-              content: { question: "Level 2", buttons: ["Deeper"] },
+              content: { question: "Level 2", choices: ["Deeper"] },
             },
             {
               step: "branch",
@@ -276,8 +268,8 @@ describe("buildFlowFromPlan — branching", () => {
     // 2 quickReplys + 1 name = 3 nodes
     expect(nodes).toHaveLength(3)
 
-    // Both branch edges should have sourceHandle (stable btn- IDs)
-    const branchEdges = edges.filter((e) => e.sourceHandle?.startsWith("btn-"))
+    // Both branch edges should have sourceHandle (stable choice- IDs)
+    const branchEdges = edges.filter((e) => e.sourceHandle?.startsWith("choice-"))
     expect(branchEdges).toHaveLength(2)
   })
 })
@@ -348,7 +340,7 @@ describe("buildFlowFromPlan — nodeOrder", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A", "B"] },
+          content: { question: "Pick", choices: ["A", "B"] },
         },
         {
           step: "branch",
@@ -382,7 +374,7 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick a slot", buttons: ["Morning", "Afternoon", "Evening"] },
+          content: { question: "Pick a slot", choices: ["Morning", "Afternoon", "Evening"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "homeDelivery" }] },
         { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "homeDelivery" }] },
@@ -399,11 +391,11 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
     const questionNode = nodes.find((n) => n.id.includes("question"))
     expect(questionNode).toBeDefined()
 
-    // 3 button edges from quickReply (using stable btn- IDs)
+    // 3 choice edges from quickReply (using stable choice- IDs)
     const edgesFromQR = edges.filter((e) => e.source === quickReplyId)
     expect(edgesFromQR).toHaveLength(3)
     edgesFromQR.forEach((e) => {
-      expect(e.sourceHandle).toMatch(/^btn-/)
+      expect(e.sourceHandle).toMatch(/^choice-/)
     })
 
     // 3 convergence edges from homeDelivery nodes → question node
@@ -425,7 +417,7 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A"] },
+          content: { question: "Pick", choices: ["A"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "name" }] },
         // Shared convergence node + chained node after it
@@ -462,7 +454,7 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Choose", buttons: ["A"] },
+          content: { question: "Choose", choices: ["A"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "name" }] },
       ],
@@ -472,13 +464,13 @@ describe("buildFlowFromPlan — edge handling for quickReply", () => {
     const qrNode = nodes.find((n) => n.id.includes("quickReply"))
     expect(qrNode).toBeDefined()
     const quickReplyId = qrNode!.id
-    const buttons = qrNode?.data?.buttons as ButtonData[]
+    const choices = qrNode?.data?.choices as ChoiceData[]
 
-    // Only one edge from quickReply's first button (stable ID)
-    const btn0Edges = edges.filter(
-      (e) => e.source === quickReplyId && e.sourceHandle === buttons[0].id
+    // Only one edge from quickReply's first choice (stable ID)
+    const choice0Edges = edges.filter(
+      (e) => e.source === quickReplyId && e.sourceHandle === choices[0].id
     )
-    expect(btn0Edges).toHaveLength(1)
+    expect(choice0Edges).toHaveLength(1)
   })
 })
 
@@ -495,7 +487,7 @@ describe("buildFlowFromPlan — realistic flow", () => {
           nodeType: "quickReply",
           content: {
             question: "Which hair issue would you like help with?",
-            buttons: ["Dandruff", "Oily Hair", "Hair Loss"],
+            choices: ["Dandruff", "Oily Hair", "Hair Loss"],
           },
         },
         {
@@ -539,8 +531,8 @@ describe("buildFlowFromPlan — realistic flow", () => {
     expect(q?.type).toBe("whatsappQuestion")
     expect(q?.data.question).toBe("Tell us more about your hair type.")
 
-    // Check edges include sourceHandle branches (stable btn- IDs)
-    const branchEdges = edges.filter((e) => e.sourceHandle?.startsWith("btn-"))
+    // Check edges include sourceHandle branches (stable choice- IDs)
+    const branchEdges = edges.filter((e) => e.sourceHandle?.startsWith("choice-"))
     expect(branchEdges).toHaveLength(3)
 
     // Ensure all nodes are connected
@@ -562,7 +554,7 @@ describe("buildFlowFromPlan — convergence", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Rate us", buttons: ["Good", "Okay", "Bad"] },
+          content: { question: "Rate us", choices: ["Good", "Okay", "Bad"] },
         },
         { step: "node", nodeType: "question", content: { question: "Any comments?" } },
       ],
@@ -579,10 +571,10 @@ describe("buildFlowFromPlan — convergence", () => {
     // 3 edges from quickReply (using stable btn- IDs) all → question
     const edgesFromQR = edges.filter((e) => e.source === qrNode!.id && e.target === questionNode!.id)
     expect(edgesFromQR).toHaveLength(3)
-    // Each should use a stable button ID
-    const buttons = qrNode!.data.buttons as ButtonData[]
+    // Each should use a stable choice ID
+    const choices = qrNode!.data.choices as ChoiceData[]
     expect(edgesFromQR.map((e) => e.sourceHandle).sort()).toEqual(
-      buttons.map((b) => b.id).sort()
+      choices.map((c) => c.id).sort()
     )
   })
 
@@ -594,7 +586,7 @@ describe("buildFlowFromPlan — convergence", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A", "B"] },
+          content: { question: "Pick", choices: ["A", "B"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "name" }] },
         { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "email" }] },
@@ -627,7 +619,7 @@ describe("buildFlowFromPlan — convergence", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A", "B"] },
+          content: { question: "Pick", choices: ["A", "B"] },
         },
         {
           step: "branch",
@@ -661,7 +653,7 @@ describe("buildFlowFromPlan — convergence", () => {
         {
           step: "node",
           nodeType: "quickReply",
-          content: { question: "Pick", buttons: ["A", "B"] },
+          content: { question: "Pick", choices: ["A", "B"] },
         },
         { step: "branch", buttonIndex: 0, steps: [{ step: "node", nodeType: "name" }] },
         { step: "branch", buttonIndex: 1, steps: [{ step: "node", nodeType: "email" }] },
@@ -688,8 +680,8 @@ describe("buildFlowFromPlan — convergence", () => {
 // ─── buildEditFlowFromPlan ──────────────────────────
 
 describe("buildEditFlowFromPlan", () => {
-  it("resolves attachHandle 'button-N' to actual button ID from anchor node", () => {
-    // Simulate: existing quickReply node with real button IDs
+  it("resolves attachHandle 'button-N' to actual choice ID from anchor node", () => {
+    // Simulate: existing quickReply node with real choice IDs
     const existingNodes = [
       {
         id: "qr-1",
@@ -699,7 +691,7 @@ describe("buildEditFlowFromPlan", () => {
           platform: "whatsapp",
           label: "Breed",
           question: "What breed?",
-          buttons: [
+          choices: [
             { text: "Labrador", id: "btn-abc123" },
             { text: "Beagle", id: "btn-def456" },
             { text: "Bulldog", id: "btn-ghi789" },
@@ -729,7 +721,7 @@ describe("buildEditFlowFromPlan", () => {
     expect(attachEdge!.sourceHandle).toBe("btn-ghi789") // Bulldog's actual ID
   })
 
-  it("keeps attachHandle as-is when it is already a button ID", () => {
+  it("keeps attachHandle as-is when it is already a choice ID", () => {
     const existingNodes = [
       {
         id: "qr-1",
@@ -737,7 +729,7 @@ describe("buildEditFlowFromPlan", () => {
         position: { x: 100, y: 100 },
         data: {
           platform: "whatsapp",
-          buttons: [
+          choices: [
             { text: "A", id: "btn-aaa" },
             { text: "B", id: "btn-bbb" },
           ],
@@ -812,40 +804,6 @@ describe("buildEditFlowFromPlan — warnings", () => {
     // filter; any rename here must update the filter, and vice versa.
     expect(warnings[0].startsWith("nodeUpdate target ")).toBe(true)
   })
-
-  it("emits nodeUpdate coercion warnings that do NOT match the skip-rollback prefix", () => {
-    // The builder coerces the AI's field shape (options↔buttons) for
-    // quickReply / interactiveList without failing the edit. These
-    // warnings are prefixed `nodeUpdate "<id>":` (with a colon), so the
-    // skip-rollback filter that matches `nodeUpdate target ` must NOT
-    // catch them. If this ever breaks, apply_edit would start rolling
-    // back perfectly-applied coercions and the AI loop would thrash.
-    const existingNodes = [
-      {
-        id: "qr-1",
-        type: "whatsappQuickReply",
-        position: { x: 0, y: 0 },
-        data: {
-          question: "Pick one",
-          buttons: [{ text: "A", id: "btn-a" }],
-        },
-      },
-    ] as any[]
-
-    const editPlan: EditFlowPlan = {
-      message: "Add two more buttons via the options field",
-      nodeUpdates: [
-        { nodeId: "qr-1", content: { options: ["A", "B", "C"] } },
-      ],
-    }
-    const { warnings } = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
-    const coercion = warnings.find((w) => w.includes("coerced to buttons"))
-    expect(coercion).toBeDefined()
-    expect(coercion!.startsWith("nodeUpdate target ")).toBe(false)
-    // Belt-and-suspenders: no coercion warning should ever start with
-    // the rollback prefix.
-    expect(warnings.every((w) => !w.startsWith("nodeUpdate target "))).toBe(true)
-  })
 })
 
 // ─── randomized node IDs ────────────────────────────
@@ -877,7 +835,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
           nodeType: "quickReply",
           content: {
             question: "How often do you eat fruit?",
-            buttons: ["Daily", "Weekly", "Monthly", "Rarely", "Never"],
+            choices: ["Daily", "Weekly", "Monthly", "Rarely", "Never"],
           },
         },
       ],
@@ -888,13 +846,14 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
     expect(nodes).toHaveLength(1)
     // Should be converted to whatsappInteractiveList
     expect(nodes[0].type).toBe("whatsappInteractiveList")
-    // Should have options instead of buttons
-    const options = nodes[0].data.options as OptionData[]
-    expect(options).toHaveLength(5)
-    expect(options[0].text).toBe("Daily")
-    expect(options[4].text).toBe("Never")
-    // Buttons should be removed
+    // data.choices should survive the conversion (no rename)
+    const choices = nodes[0].data.choices as ChoiceData[]
+    expect(choices).toHaveLength(5)
+    expect(choices[0].text).toBe("Daily")
+    expect(choices[4].text).toBe("Never")
+    // Legacy fields should not exist on the migrated node
     expect(nodes[0].data.buttons).toBeUndefined()
+    expect(nodes[0].data.options).toBeUndefined()
     // Should have a listTitle
     expect(nodes[0].data.listTitle).toBeDefined()
     // Should preserve the question
@@ -913,7 +872,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
           nodeType: "quickReply",
           content: {
             question: "Pick one",
-            buttons: ["A", "B", "C", "D", "E"],
+            choices: ["A", "B", "C", "D", "E"],
           },
         },
       ],
@@ -922,14 +881,14 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
     const { nodes, warnings } = buildFlowFromPlan(plan, "web")
 
     expect(nodes).toHaveLength(1)
-    // Should stay as quickReply (web limit is 10, 5 buttons is fine)
+    // Should stay as quickReply (web limit is 10, 5 choices is fine)
     expect(nodes[0].type).toBe("quickReply")
-    const buttons = nodes[0].data.buttons as ButtonData[]
-    expect(buttons).toHaveLength(5)
+    const choices = nodes[0].data.choices as ChoiceData[]
+    expect(choices).toHaveLength(5)
     expect(warnings).toHaveLength(0)
   })
 
-  it("trims buttons on web when exceeding limit (10)", () => {
+  it("trims choices on web when exceeding limit (10)", () => {
     const plan: FlowPlan = {
       message: "test",
       steps: [
@@ -938,7 +897,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
           nodeType: "quickReply",
           content: {
             question: "Pick one",
-            buttons: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+            choices: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
           },
         },
       ],
@@ -949,13 +908,13 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
     expect(nodes).toHaveLength(1)
     // Web doesn't have interactiveList — should trim to 10
     expect(nodes[0].type).toBe("quickReply")
-    const buttons = nodes[0].data.buttons as ButtonData[]
-    expect(buttons).toHaveLength(10)
+    const choices = nodes[0].data.choices as ChoiceData[]
+    expect(choices).toHaveLength(10)
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings[0]).toContain("trimmed")
   })
 
-  it("preserves 3 buttons on whatsapp without conversion", () => {
+  it("preserves 3 choices on whatsapp without conversion", () => {
     const plan: FlowPlan = {
       message: "test",
       steps: [
@@ -964,7 +923,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
           nodeType: "quickReply",
           content: {
             question: "Yes or no?",
-            buttons: ["Yes", "No", "Maybe"],
+            choices: ["Yes", "No", "Maybe"],
           },
         },
       ],
@@ -974,12 +933,12 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
 
     expect(nodes).toHaveLength(1)
     expect(nodes[0].type).toBe("whatsappQuickReply")
-    const buttons = nodes[0].data.buttons as ButtonData[]
-    expect(buttons).toHaveLength(3)
+    const choices = nodes[0].data.choices as ChoiceData[]
+    expect(choices).toHaveLength(3)
     expect(warnings).toHaveLength(0)
   })
 
-  it("converted interactiveList still works as multi-output with options for branching", () => {
+  it("converted interactiveList still works as multi-output with choices for branching", () => {
     const plan: FlowPlan = {
       message: "test",
       steps: [
@@ -988,7 +947,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
           nodeType: "quickReply",
           content: {
             question: "Pick a fruit",
-            buttons: ["Apple", "Banana", "Cherry", "Date"],
+            choices: ["Apple", "Banana", "Cherry", "Date"],
           },
         },
         // Direct convergence — all options → same node
@@ -1001,19 +960,19 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
     // Should auto-convert to interactiveList
     const listNode = nodes.find((n) => n.type === "whatsappInteractiveList")
     expect(listNode).toBeDefined()
-    const options = listNode!.data.options as OptionData[]
-    expect(options).toHaveLength(4)
+    const choices = listNode!.data.choices as ChoiceData[]
+    expect(choices).toHaveLength(4)
 
-    // All 4 options should have edges → question node (direct convergence)
+    // All 4 choices should have edges → question node (direct convergence)
     const questionNode = nodes.find((n) => n.id.includes("question"))
     expect(questionNode).toBeDefined()
     const convergenceEdges = edges.filter(
       (e) => e.source === listNode!.id && e.target === questionNode!.id
     )
     expect(convergenceEdges).toHaveLength(4)
-    // Each edge should use a stable handle ID as sourceHandle (btn- preserved from conversion, or opt-)
+    // Each edge should use a stable choice- handle ID as sourceHandle (preserved from conversion)
     convergenceEdges.forEach((e) => {
-      expect(e.sourceHandle).toMatch(/^(btn|opt)-/)
+      expect(e.sourceHandle).toMatch(/^choice-/)
     })
   })
 
@@ -1038,7 +997,7 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
               nodeType: "quickReply",
               content: {
                 question: "Choose frequency",
-                buttons: ["Daily", "Weekly", "Monthly", "Rarely"],
+                choices: ["Daily", "Weekly", "Monthly", "Rarely"],
               },
             },
           ],
@@ -1050,9 +1009,45 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
 
     expect(newNodes).toHaveLength(1)
     expect(newNodes[0].type).toBe("whatsappInteractiveList")
-    const options = newNodes[0].data.options as OptionData[]
-    expect(options).toHaveLength(4)
+    const choices = newNodes[0].data.choices as ChoiceData[]
+    expect(choices).toHaveLength(4)
     expect(warnings.some((w) => w.includes("auto-converted"))).toBe(true)
+  })
+
+  it("preserves choice IDs when auto-converting quickReply → interactiveList", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          question: "Pick one",
+          choices: [
+            { text: "Yes", id: "choice-keep-1" },
+            { text: "No", id: "choice-keep-2" },
+            { text: "Maybe", id: "choice-keep-3" },
+          ],
+        },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Add a 4th choice",
+      nodeUpdates: [{
+        nodeId: "qr-1",
+        content: { choices: ["Yes", "No", "Maybe", "Definitely"] },
+      }],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
+
+    expect(result.nodeUpdates[0].newType).toBe("whatsappInteractiveList")
+    const updatedChoices = result.nodeUpdates[0].data.choices as ChoiceData[]
+    expect(updatedChoices[0].id).toBe("choice-keep-1")
+    expect(updatedChoices[1].id).toBe("choice-keep-2")
+    expect(updatedChoices[2].id).toBe("choice-keep-3")
+    expect(updatedChoices[3].id).toBeDefined()
+    expect(updatedChoices[3].text).toBe("Definitely")
   })
 })
 
@@ -1138,7 +1133,7 @@ describe("buildEditFlowFromPlan — connectTo", () => {
       removeNodeIds: ["X"],
       chains: [{
         attachTo: "A",
-        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Pick one", buttons: ["Yes", "No"] } }],
+        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Pick one", choices: ["Yes", "No"] } }],
         connectTo: "B",
       }],
     }
@@ -1176,7 +1171,7 @@ describe("buildEditFlowFromPlan — connectTo", () => {
       removeEdges: [{ source: "A", target: "B" }],
       chains: [{
         attachTo: "A",
-        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Choose", buttons: ["X", "Y"] } }],
+        steps: [{ step: "node", nodeType: "quickReply", content: { question: "Choose", choices: ["X", "Y"] } }],
         connectTo: "B",
       }],
     }
@@ -1362,7 +1357,7 @@ describe("buildEditFlowFromPlan — positionShifts", () => {
 // ─── merge/redirect pattern (addEdges + removeEdges) ─
 
 describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
-  it("redirects buttons to an existing node (merge pattern)", () => {
+  it("redirects choices to an existing node (merge pattern)", () => {
     const existingNodes = [
       {
         id: "qr-1",
@@ -1371,7 +1366,7 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
         data: {
           platform: "web",
           question: "Pick",
-          buttons: [
+          choices: [
             { text: "A", id: "btn-aaa" },
             { text: "B", id: "btn-bbb" },
             { text: "C", id: "btn-ccc" },
@@ -1416,7 +1411,7 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
     expect(result.removeEdges).toHaveLength(2)
   })
 
-  it("adds a new button via nodeUpdates + connects via addEdges", () => {
+  it("adds a new choice via nodeUpdates + connects via addEdges", () => {
     const existingNodes = [
       {
         id: "qr-1",
@@ -1425,7 +1420,7 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
         data: {
           platform: "web",
           question: "Pick",
-          buttons: [
+          choices: [
             { text: "A", id: "btn-aaa" },
             { text: "B", id: "btn-bbb" },
           ],
@@ -1435,30 +1430,30 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
     ] as any[]
 
     const editPlan: EditFlowPlan = {
-      message: "Added new button C pointing to target-a",
-      nodeUpdates: [{ nodeId: "qr-1", content: { buttons: ["A", "B", "New C"] } }],
+      message: "Added new choice C pointing to target-a",
+      nodeUpdates: [{ nodeId: "qr-1", content: { choices: ["A", "B", "New C"] } }],
       addEdges: [{ source: "qr-1", target: "target-a", sourceButtonIndex: 2 }],
     }
 
     const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
 
-    // nodeUpdate should have 3 buttons
+    // nodeUpdate should have 3 choices
     expect(result.nodeUpdates).toHaveLength(1)
-    const updatedButtons = result.nodeUpdates[0].data.buttons as ButtonData[]
-    expect(updatedButtons).toHaveLength(3)
+    const updatedChoices = result.nodeUpdates[0].data.choices as ChoiceData[]
+    expect(updatedChoices).toHaveLength(3)
 
-    // New edge should resolve button index 2 to the new button's ID (from nodeUpdate data)
+    // New edge should resolve button index 2 to the new choice's ID (from nodeUpdate data)
     expect(result.newEdges).toHaveLength(1)
     const newEdge = result.newEdges[0]
     expect(newEdge.source).toBe("qr-1")
     expect(newEdge.target).toBe("target-a")
-    // The third button (index 2) gets a new ID from contentToNodeData since it's beyond existing buttons
+    // The third choice (index 2) gets a new ID from contentToNodeData since it's beyond existing choices
     expect(newEdge.sourceHandle).toBeDefined()
     // It should NOT be "button-2" — it should be resolved to an actual ID
     expect(newEdge.sourceHandle).not.toBe("button-2")
   })
 
-  it("nodeUpdates preserves existing button IDs by position", () => {
+  it("nodeUpdates preserves existing choice IDs by position", () => {
     const existingNodes = [
       {
         id: "qr-1",
@@ -1467,7 +1462,7 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
         data: {
           platform: "web",
           question: "Pick",
-          buttons: [
+          choices: [
             { text: "Old A", id: "btn-original-0" },
             { text: "Old B", id: "btn-original-1" },
           ],
@@ -1476,31 +1471,31 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
     ] as any[]
 
     const editPlan: EditFlowPlan = {
-      message: "Updated button labels",
-      nodeUpdates: [{ nodeId: "qr-1", content: { buttons: ["New A", "New B", "New C"] } }],
+      message: "Updated choice labels",
+      nodeUpdates: [{ nodeId: "qr-1", content: { choices: ["New A", "New B", "New C"] } }],
     }
 
     const result = buildEditFlowFromPlan(editPlan, "web", existingNodes)
 
     expect(result.nodeUpdates).toHaveLength(1)
-    const updatedButtons = result.nodeUpdates[0].data.buttons as ButtonData[]
-    expect(updatedButtons).toHaveLength(3)
+    const updatedChoices = result.nodeUpdates[0].data.choices as ChoiceData[]
+    expect(updatedChoices).toHaveLength(3)
 
-    // First two buttons should retain their original IDs
-    expect(updatedButtons[0].id).toBe("btn-original-0")
-    expect(updatedButtons[1].id).toBe("btn-original-1")
-    // Third button gets a new ID (not from existing)
-    expect(updatedButtons[2].id).toBeDefined()
-    expect(updatedButtons[2].id).not.toBe("btn-original-0")
-    expect(updatedButtons[2].id).not.toBe("btn-original-1")
+    // First two choices should retain their original IDs
+    expect(updatedChoices[0].id).toBe("btn-original-0")
+    expect(updatedChoices[1].id).toBe("btn-original-1")
+    // Third choice gets a new ID (not from existing)
+    expect(updatedChoices[2].id).toBeDefined()
+    expect(updatedChoices[2].id).not.toBe("btn-original-0")
+    expect(updatedChoices[2].id).not.toBe("btn-original-1")
 
     // Text should be updated
-    expect(updatedButtons[0].text).toBe("New A")
-    expect(updatedButtons[1].text).toBe("New B")
-    expect(updatedButtons[2].text).toBe("New C")
+    expect(updatedChoices[0].text).toBe("New A")
+    expect(updatedChoices[1].text).toBe("New B")
+    expect(updatedChoices[2].text).toBe("New C")
   })
 
-  it("addEdges resolves 'button-N' sourceHandle to actual button ID", () => {
+  it("addEdges resolves 'button-N' sourceHandle to actual choice ID", () => {
     const existingNodes = [
       {
         id: "qr-1",
@@ -1508,7 +1503,7 @@ describe("buildEditFlowFromPlan — merge/redirect patterns", () => {
         position: { x: 100, y: 100 },
         data: {
           platform: "web",
-          buttons: [
+          choices: [
             { text: "A", id: "btn-real-0" },
             { text: "B", id: "btn-real-1" },
           ],

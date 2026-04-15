@@ -13,7 +13,6 @@ export interface FlowIssue {
     | "empty_content"
     | "unconnected_handle"
     | "unconnected_button"
-    | "mixed_button_option_fields"
     | "converter_error"
   nodeId?: string
   nodeLabel?: string
@@ -98,68 +97,46 @@ export function validateGeneratedFlow(
     })
   }
 
-  // 4. Button/option limits
+  // 4. Choice limits — quickReply capped by the platform button limit,
+  //    interactiveList capped at 10 (WhatsApp list max).
   const buttonLimit = BUTTON_LIMITS[platform] || 3
   for (const node of contentNodes) {
     const baseType = getBaseNodeType(node.type || "")
     const data = node.data as Record<string, any>
-    if (baseType === "quickReply" && Array.isArray(data.buttons)) {
-      if (data.buttons.length > buttonLimit) {
-        issues.push({
-          type: "button_limit_exceeded",
-          nodeId: node.id,
-          nodeLabel: data.label || node.type || "",
-          detail: `${data.buttons.length} buttons exceeds the ${platform} limit of ${buttonLimit}.`,
-          hint: `Reduce to ${buttonLimit} buttons or convert to an interactiveList (up to 10).`,
-        })
-      }
+    if (!Array.isArray(data.choices)) continue
+    if (baseType === "quickReply" && data.choices.length > buttonLimit) {
+      issues.push({
+        type: "button_limit_exceeded",
+        nodeId: node.id,
+        nodeLabel: data.label || node.type || "",
+        detail: `${data.choices.length} buttons exceeds the ${platform} limit of ${buttonLimit}.`,
+        hint: `Reduce to ${buttonLimit} buttons or convert to an interactiveList (up to 10).`,
+      })
     }
-    if (baseType === "list" && Array.isArray(data.options)) {
+    if (baseType === "list") {
       const optionLimit = 10 // WhatsApp max, applies to all platforms
-      if (data.options.length > optionLimit) {
+      if (data.choices.length > optionLimit) {
         issues.push({
           type: "button_limit_exceeded",
           nodeId: node.id,
           nodeLabel: data.label || node.type || "",
-          detail: `${data.options.length} list options exceeds the limit of ${optionLimit}.`,
+          detail: `${data.choices.length} list options exceeds the limit of ${optionLimit}.`,
           hint: `Reduce to ${optionLimit} options.`,
         })
       }
     }
   }
 
-  // 4a. A quickReply/list node must not carry BOTH buttons and options
-  //     simultaneously — that's an invalid hybrid state that usually comes
-  //     from the AI using the wrong field name in a nodeUpdate. The canvas
-  //     renders whichever field the component expects and silently drops
-  //     the other, so this is the only way the user would notice.
-  for (const node of contentNodes) {
-    const baseType = getBaseNodeType(node.type || "")
-    if (baseType !== "quickReply" && baseType !== "list") continue
-    const data = node.data as Record<string, any>
-    const hasButtons = Array.isArray(data.buttons) && data.buttons.length > 0
-    const hasOptions = Array.isArray(data.options) && data.options.length > 0
-    if (hasButtons && hasOptions) {
-      issues.push({
-        type: "mixed_button_option_fields",
-        nodeId: node.id,
-        nodeLabel: data.label || node.type || "",
-        detail: `Both buttons (${data.buttons.length}) and options (${data.options.length}) are set — invalid hybrid state.`,
-        hint: "Use only content.buttons for quickReply or only content.options for interactiveList, never both.",
-      })
-    }
-  }
-
-  // 4b. Every button/option on a quickReply/list must have an outgoing edge
-  //     from its own handle. Catches dangling buttons (e.g. AI added a new
-  //     button but used the wrong handle ID in addEdges, leaving the new one
-  //     without any onward connection).
+  // 4b. Every choice on a quickReply/list must have an outgoing edge from
+  //     its own handle. Catches dangling choices (e.g. AI added a new
+  //     choice but used the wrong handle ID in addEdges, leaving the new
+  //     one without any onward connection).
   for (const node of contentNodes) {
     const baseType = getBaseNodeType(node.type || "")
     if (baseType !== "quickReply" && baseType !== "list") continue
     const data = node.data as Record<string, any>
     const choices: Array<{ id?: string; text?: string; label?: string }> =
-      (data.buttons as any[]) || (data.options as any[]) || []
+      (data.choices as any[]) || []
     if (choices.length === 0) continue
     const outgoingHandles = new Set(
       edges

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
-  createButtonData,
-  createOptionData,
+  createChoiceData,
   generateNodeId,
   createBaseNodeData,
   canAddMoreButtons,
@@ -10,35 +9,6 @@ import {
   supportsButtons,
   supportsOptions,
 } from "../node-operations"
-
-describe("createButtonData", () => {
-  it("creates button data with provided text", () => {
-    const button = createButtonData("Click me")
-    expect(button.text).toBe("Click me")
-  })
-
-  it("uses fallback text when empty string provided", () => {
-    const button = createButtonData("", 2)
-    expect(button.text).toBe("Option 3")
-  })
-
-  it("uses default index when none provided", () => {
-    const button = createButtonData("")
-    expect(button.text).toBe("Option 1")
-  })
-})
-
-describe("createOptionData", () => {
-  it("creates option data with provided text", () => {
-    const option = createOptionData("Option A")
-    expect(option.text).toBe("Option A")
-  })
-
-  it("uses fallback text when empty string provided", () => {
-    const option = createOptionData("", 1)
-    expect(option.text).toBe("Option 2")
-  })
-})
 
 describe("generateNodeId", () => {
   it("generates ID with default prefix", () => {
@@ -150,5 +120,28 @@ describe("supportsOptions", () => {
     expect(supportsOptions("question")).toBe(false)
     expect(supportsOptions("quickReply")).toBe(false)
     expect(supportsOptions("comment")).toBe(false)
+  })
+})
+
+describe("createChoiceData", () => {
+  it("uses provided text", () => {
+    const choice = createChoiceData("Yes")
+    expect(choice.text).toBe("Yes")
+  })
+
+  it("falls back to indexed default when text is empty", () => {
+    expect(createChoiceData("", 0).text).toBe("Option 1")
+    expect(createChoiceData("", 2).text).toBe("Option 3")
+  })
+
+  it("generates an id with the choice- prefix", () => {
+    const choice = createChoiceData("A")
+    expect(choice.id).toMatch(/^choice-\d+-[a-z0-9]+$/)
+  })
+
+  it("generates unique ids across calls", () => {
+    const a = createChoiceData("A")
+    const b = createChoiceData("B")
+    expect(a.id).not.toBe(b.id)
   })
 })

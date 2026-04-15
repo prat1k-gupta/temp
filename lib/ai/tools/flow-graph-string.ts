@@ -48,32 +48,36 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     return `[${node.id}]${labelPart} (${node.type})${contentPart}${storeAsPart}`
   }
 
+  /**
+   * Read the unified `data.choices` for a choice-bearing node.
+   */
+  function readChoices(node: Node): Array<{ text?: string; label?: string; id?: string }> {
+    const data = node.data as any
+    return data?.choices ?? []
+  }
+
   function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {
     if (!sourceHandle) return null
-    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
-    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    const choices = readChoices(node)
     // Match by handle ID like "button-0", "button-1"
     const match = sourceHandle.match(/^button-(\d+)$/)
     if (match) {
       const idx = parseInt(match[1], 10)
-      if (idx < buttons.length) {
-        return buttons[idx]?.text || buttons[idx]?.label || `Button ${idx}`
+      if (idx < choices.length) {
+        return choices[idx]?.text || choices[idx]?.label || `Button ${idx}`
       }
     }
     // Match by handle ID like "option-0", "option-1"
     const optMatch = sourceHandle.match(/^option-(\d+)$/)
     if (optMatch) {
       const idx = parseInt(optMatch[1], 10)
-      if (idx < options.length) {
-        return options[idx]?.text || `Option ${idx}`
+      if (idx < choices.length) {
+        return choices[idx]?.text || `Option ${idx}`
       }
     }
-    // Also try matching by button.id
-    const byId = buttons.find(b => b.id === sourceHandle)
+    // Also try matching by choice.id
+    const byId = choices.find(c => c.id === sourceHandle)
     if (byId) return byId.text || byId.label || sourceHandle
-    // Also try matching by option.id
-    const byOptId = options.find(o => o.id === sourceHandle)
-    if (byOptId) return byOptId.text || sourceHandle
     // API fetch success/error handles
     if (sourceHandle === "success") return "Success"
     if (sourceHandle === "error") return "Error"
@@ -84,20 +88,16 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
 
   function getButtonIndex(node: Node, sourceHandle: string | undefined): number {
     if (!sourceHandle) return Infinity
-    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
-    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    const choices = readChoices(node)
     // Check button-N index handles
     const btnMatch = sourceHandle.match(/^button-(\d+)$/)
     if (btnMatch) return parseInt(btnMatch[1], 10)
     // Check option-N index handles
     const optMatch = sourceHandle.match(/^option-(\d+)$/)
-    if (optMatch) return buttons.length + parseInt(optMatch[1], 10)
-    // Check by button.id
-    const btnIdx = buttons.findIndex(b => b.id === sourceHandle)
-    if (btnIdx !== -1) return btnIdx
-    // Check by option.id (offset by buttons length to avoid collisions)
-    const optIdx = options.findIndex(o => o.id === sourceHandle)
-    if (optIdx !== -1) return buttons.length + optIdx
+    if (optMatch) return parseInt(optMatch[1], 10)
+    // Check by choice.id
+    const idx = choices.findIndex(c => c.id === sourceHandle)
+    if (idx !== -1) return idx
     return Infinity
   }
 
@@ -128,30 +128,21 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
     // Show output handles for multi-output nodes
     const isButtonNode = node.type ? isMultiOutputType(node.type) : false
     const fixedHandles = node.type ? getFixedHandles(node.type) : null
-    const buttons: Array<{ text?: string; label?: string; id?: string }> = (node.data as any)?.buttons || []
-    const options: Array<{ text?: string; id?: string }> = (node.data as any)?.options || []
+    const choices = readChoices(node)
 
     if (fixedHandles) {
       // Fixed-handle nodes (apiFetch): show "success" and "error" handles
       const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")
       lines.push(`${childPrefix}│ Handles: [${fixedHandles.map(h => `"${h}" (handle: ${h})`).join(", ")}]`)
-    } else if (isButtonNode && (buttons.length > 0 || options.length > 0)) {
+    } else if (isButtonNode && choices.length > 0) {
       const seen = new Set<string>()
       const items: string[] = []
-      for (let i = 0; i < buttons.length; i++) {
-        const b = buttons[i]
-        const handle = b.id || `button-${i}`
+      for (let i = 0; i < choices.length; i++) {
+        const c = choices[i]
+        const handle = c.id || `button-${i}`
         if (!seen.has(handle)) {
           seen.add(handle)
-          items.push(`"${b.text || b.label || "?"}" (handle: ${handle})`)
-        }
-      }
-      for (let i = 0; i < options.length; i++) {
-        const o = options[i]
-        const handle = o.id || `option-${i}`
-        if (!seen.has(handle)) {
-          seen.add(handle)
-          items.push(`"${o.text || "?"}" (handle: ${handle})`)
+          items.push(`"${c.text || c.label || "?"}" (handle: ${handle})`)
         }
       }
       const childPrefix = prefix + (connector === "└→ " ? "   " : "│  ")

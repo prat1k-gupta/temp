@@ -10,7 +10,7 @@
 import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform, ButtonData, OptionData, TemplateResolver } from "@/types"
+import type { Platform, ChoiceData, TemplateResolver } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
 
@@ -23,8 +23,16 @@ function normalizeHandle(handle: string | undefined | null): string | undefined 
   if (!handle || handle === "default") return undefined
   return handle
 }
+
+/**
+ * Read a node's choice items from the canonical `data.choices` field.
+ */
+function readChoices(node: { data?: any } | undefined | null): ChoiceData[] {
+  if (!node?.data) return []
+  return (node.data as { choices?: ChoiceData[] }).choices ?? []
+}
 import { createNode, createFlowTemplateNode } from "./node-factory"
-import { createButtonData, createOptionData, shouldConvertToList, convertButtonsToOptions } from "./node-operations"
+import { createChoiceData, shouldConvertToList } from "./node-operations"
 import { FlowLayoutManager, HORIZONTAL_GAP, BASE_Y } from "./flow-layout"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { NODE_TEMPLATES } from "@/constants/node-categories"
@@ -143,7 +151,10 @@ export function buildEditFlowFromPlan(
     plan = { ...plan, chains: plan.chains.map((c) => ({ ...c, steps: normalizeSteps(c.steps, platform) })) }
   }
 
-  // Process nodeUpdates — convert content to node data, preserving existing button/option IDs
+  // Process nodeUpdates — convert content to node data, preserving existing
+  // choice IDs by index. With the unified data.choices field, there's no
+  // longer any buttons-vs-options coercion to do — contentToNodeData always
+  // produces data.choices regardless of which input field the AI used.
   if (plan.nodeUpdates) {
     for (const update of plan.nodeUpdates) {
       const existingNode = existingNodes.find((n) => n.id === update.nodeId)
@@ -156,75 +167,34 @@ export function buildEditFlowFromPlan(
       const baseNodeType = getBaseNodeType(baseType)
       const data = contentToNodeData(update.content, baseType)
 
-      // Normalize choice field to match the existing node type:
-      //   - quickReply/list node should never end up with both buttons + options
-      //   - if AI sent `content.options` for a quickReply (wrong field), move to buttons
-      //   - if AI sent `content.buttons` for a list, move to options
-      // createButtonData/createOptionData produce different ID prefixes but preserving
-      // IDs by index below handles the migration cleanly.
-      if (baseNodeType === "quickReply" && data.options && !data.buttons) {
-        const options = data.options as Array<{ text?: string; label?: string; id?: string }>
-        data.buttons = options.map((opt, i): ButtonData => ({
-          text: opt.text || opt.label || `Option ${i + 1}`,
-          id: opt.id || `btn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        }))
-        delete data.options
-        warnings.push(`nodeUpdate "${update.nodeId}": AI used options field for quickReply — coerced to buttons`)
-      } else if (baseNodeType === "list" && data.buttons && !data.options) {
-        const buttons = data.buttons as Array<{ text?: string; label?: string; id?: string }>
-        data.options = buttons.map((btn, i): OptionData => ({
-          text: btn.text || btn.label || `Option ${i + 1}`,
-          id: btn.id || `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        }))
-        delete data.buttons
-        warnings.push(`nodeUpdate "${update.nodeId}": AI used buttons field for interactiveList — coerced to options`)
-      } else if (data.buttons && data.options) {
-        // Both set — pick the canonical field for the node type and drop the other
-        if (baseNodeType === "quickReply") {
-          delete data.options
-        } else if (baseNodeType === "list") {
-          delete data.buttons
-        }
-        warnings.push(`nodeUpdate "${update.nodeId}": AI sent both buttons and options — kept the canonical field for ${baseNodeType}`)
-      }
-
-      // Preserve existing button IDs where possible (match by index position)
-      if (data.buttons && existingNode.data.buttons) {
-        const existingButtons = existingNode.data.buttons as ButtonData[]
-        data.buttons = (data.buttons as ButtonData[]).map((btn, i) => ({
-          ...btn,
-          id: i < existingButtons.length && existingButtons[i].id
-            ? existingButtons[i].id
-            : btn.id,
-        }))
-      }
-      // Same for options
-      if (data.options && existingNode.data.options) {
-        const existingOptions = existingNode.data.options as OptionData[]
-        data.options = (data.options as OptionData[]).map((opt, i) => ({
-          ...opt,
-          id: i < existingOptions.length && existingOptions[i].id
-            ? existingOptions[i].id
-            : opt.id,
+      // Preserve existing choice IDs where possible (match by index)
+      if (data.choices && existingNode.data.choices) {
+        const existingChoices = existingNode.data.choices as ChoiceData[]
+        data.choices = (data.choices as ChoiceData[]).map((c, i) => ({
+          ...c,
+          id: i < existingChoices.length && existingChoices[i].id
+            ? existingChoices[i].id
+            : c.id,
         }))
       }
 
-      // Auto-convert quickReply → interactiveList if nodeUpdate pushes buttons over the limit
-      if (baseNodeType === "quickReply" && data.buttons) {
-        const buttons = data.buttons as ButtonData[]
-        const conversion = shouldConvertToList(buttons.length, platform)
+      // Auto-convert quickReply → interactiveList when choices exceed the
+      // platform's button limit. Only the node TYPE changes — data.choices
+      // is left untouched so handle IDs and labels survive the conversion.
+      if (baseNodeType === "quickReply" && data.choices) {
+        const choices = data.choices as ChoiceData[]
+        const conversion = shouldConvertToList(choices.length, platform)
         if (conversion.shouldConvert) {
-          const options = convertButtonsToOptions(buttons)
-          const { buttons: _removed, ...restData } = data
-          const convertedData: Record<string, unknown> = {
-            ...restData,
-            options,
-            buttons: undefined, // explicitly clear stale buttons so merged data doesn't have both
-            listTitle: (restData as any).listTitle || "Select an option",
-            label: conversion.newLabel,
-          }
-          nodeUpdates.push({ nodeId: update.nodeId, data: convertedData, newType: conversion.newNodeType })
-          warnings.push(`nodeUpdate "${update.nodeId}": quickReply auto-converted to interactiveList (${buttons.length} buttons exceeds ${platform} limit)`)
+          nodeUpdates.push({
+            nodeId: update.nodeId,
+            data: {
+              ...data,
+              listTitle: (data as any).listTitle || "Select an option",
+              label: conversion.newLabel,
+            },
+            newType: conversion.newNodeType,
+          })
+          warnings.push(`nodeUpdate "${update.nodeId}": quickReply auto-converted to interactiveList (${choices.length} choices exceeds ${platform} limit)`)
           continue
         }
       }
@@ -305,9 +275,8 @@ export function buildEditFlowFromPlan(
         const buttonMatch = resolvedHandle.match(/^button-(\d+)$/)
         if (buttonMatch) {
           const idx = parseInt(buttonMatch[1], 10)
-          const anchorButtons = (anchorNode.data?.buttons as ButtonData[] | undefined) || []
-          const anchorOptions = (anchorNode.data?.options as OptionData[] | undefined) || []
-          const resolved = anchorButtons[idx]?.id || anchorOptions[idx]?.id
+          const anchorChoices = readChoices(anchorNode)
+          const resolved = anchorChoices[idx]?.id
           if (resolved) {
             console.log(`[buildEditFlow] Resolved attachHandle "${resolvedHandle}" → "${resolved}" (button[${idx}] on ${chain.attachTo})`)
             resolvedHandle = resolved
@@ -431,9 +400,7 @@ export function buildEditFlowFromPlan(
             }
           } else {
             // Button/option nodes: use dynamic button/option IDs
-            const btns = (lastNode.data?.buttons as ButtonData[] | undefined) || []
-            const opts = (lastNode.data?.options as OptionData[] | undefined) || []
-            const handles = btns.length > 0 ? btns : opts
+            const handles = readChoices(lastNode)
             for (let i = 0; i < handles.length; i++) {
               const handleId = handles[i]?.id || `button-${i}`
               if (!occupied.has(handleId)) {
@@ -521,10 +488,8 @@ export function buildEditFlowFromPlan(
         if (sourceNode) {
           // Check updated data first, then existing node data
           const updatedData = updatedNodeData.get(newEdge.source)
-          const buttons = (updatedData?.buttons || sourceNode.data?.buttons) as ButtonData[] | undefined
-          const options = (updatedData?.options || sourceNode.data?.options) as OptionData[] | undefined
-          sourceHandle = buttons?.[newEdge.sourceButtonIndex]?.id
-            || options?.[newEdge.sourceButtonIndex]?.id
+          const choices = (updatedData?.choices ?? readChoices(sourceNode)) as ChoiceData[]
+          sourceHandle = choices[newEdge.sourceButtonIndex]?.id
             || `button-${newEdge.sourceButtonIndex}`
         }
       }
@@ -537,9 +502,8 @@ export function buildEditFlowFromPlan(
           const sourceNode = allNodes.find(n => n.id === newEdge.source)
           if (sourceNode) {
             const updatedData = updatedNodeData.get(newEdge.source)
-            const buttons = (updatedData?.buttons || sourceNode.data?.buttons) as ButtonData[] | undefined
-            const options = (updatedData?.options || sourceNode.data?.options) as OptionData[] | undefined
-            const resolved = buttons?.[idx]?.id || options?.[idx]?.id
+            const choices = (updatedData?.choices ?? readChoices(sourceNode)) as ChoiceData[]
+            const resolved = choices[idx]?.id
             if (resolved) {
               console.log(`[buildEditFlow] Resolved addEdge sourceHandle "${sourceHandle}" → "${resolved}"`)
               sourceHandle = resolved
@@ -766,9 +730,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
         }
       } else if (endpointNode && isMultiOutputType(endpointType)) {
         // Button/option nodes: use dynamic button/option IDs
-        const btns = (endpointNode.data?.buttons as ButtonData[] | undefined) || []
-        const opts = (endpointNode.data?.options as OptionData[] | undefined) || []
-        const handles = btns.length > 0 ? btns : opts
+        const handles = readChoices(endpointNode)
         for (let i = 0; i < handles.length; i++) {
           const handleId = handles[i]?.id || `button-${i}`
           ctx.edges.push({
@@ -814,11 +776,10 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
       }
     } else {
       // Button/option nodes: use dynamic button/option IDs
-      const buttons = (parentNode?.data?.buttons as ButtonData[] | undefined) || []
-      const options = (parentNode?.data?.options as OptionData[] | undefined) || []
-      const handleCount = buttons.length || options.length || 1
+      const choices = readChoices(parentNode)
+      const handleCount = choices.length || 1
       for (let i = 0; i < handleCount; i++) {
-        const handleId = buttons[i]?.id || options[i]?.id || `button-${i}`
+        const handleId = choices[i]?.id || `button-${i}`
         ctx.edges.push({
           id: `e-${ctx.lastMultiOutputNodeId}-${nodeId}-btn${i}`,
           source: ctx.lastMultiOutputNodeId,
@@ -923,11 +884,8 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     if (fixedHandles && step.buttonIndex < fixedHandles.length) {
       handleId = fixedHandles[step.buttonIndex]
     } else {
-      const parentButtons = (parentNode.data?.buttons as ButtonData[] | undefined) || []
-      const parentOptions = (parentNode.data?.options as OptionData[] | undefined) || []
-      handleId = parentButtons[step.buttonIndex]?.id
-        || parentOptions[step.buttonIndex]?.id
-        || `button-${step.buttonIndex}`
+      const parentChoices = readChoices(parentNode)
+      handleId = parentChoices[step.buttonIndex]?.id || `button-${step.buttonIndex}`
     }
     const edgeId = `e-${parentId}-${nodeId}-btn${step.buttonIndex}`
     ctx.edges.push({
@@ -987,8 +945,9 @@ export function isNodeTypeValidForPlatform(
 
 /**
  * Convert plan content fields to node data format.
- * Converts string buttons → ButtonData[], string options → OptionData[], etc.
- * Auto-generates storeAs from label/question for storable node types.
+ * Maps any of content.choices / content.buttons / content.options →
+ * ChoiceData[] at data.choices. Auto-generates storeAs from label/question
+ * for storable node types.
  */
 export function contentToNodeData(
   content: NodeContent,
@@ -1004,18 +963,11 @@ export function contentToNodeData(
   if (content.listTitle) data.listTitle = content.listTitle
   if (content.storeAs) data.storeAs = content.storeAs
 
-  // Convert string buttons → ButtonData[]
-  if (content.buttons && content.buttons.length > 0) {
-    data.buttons = content.buttons.map(
-      (text, i): ButtonData => createButtonData(text, i)
-    )
-  }
-
-  // Convert string options → OptionData[]
-  if (content.options && content.options.length > 0) {
-    data.options = content.options.map(
-      (text, i): OptionData => createOptionData(text, i)
-    )
+  // Map content.choices → data.choices. Canonical field for both
+  // whatsappQuickReply and whatsappInteractiveList items.
+  const rawChoices = content.choices
+  if (rawChoices && rawChoices.length > 0) {
+    data.choices = rawChoices.map((text, i): ChoiceData => createChoiceData(text, i))
   }
 
   // apiFetch fields
@@ -1049,9 +1001,10 @@ export function autoPopulateStoreAs(nodes: Node[]): void {
 // isMultiOutputType is imported from platform-helpers.ts
 
 /**
- * Auto-convert quickReply → interactiveList when buttons exceed platform limit.
- * WhatsApp/Instagram quickReply supports max 3 buttons; interactiveList supports up to 10.
- * Mutates the node in place. Returns the effective base nodeType after conversion.
+ * Auto-convert quickReply → interactiveList when choices exceed platform
+ * limit. Only the node TYPE is swapped — data.choices is left untouched so
+ * handle IDs and labels survive the conversion. Mutates the node in place.
+ * Returns the effective base nodeType after conversion.
  */
 function maybeAutoConvertToList(
   node: Node,
@@ -1061,41 +1014,37 @@ function maybeAutoConvertToList(
 ): string {
   if (originalType !== "quickReply") return originalType
 
-  const buttons = (node.data?.buttons as ButtonData[]) || []
+  const choices = readChoices(node)
   const limit = BUTTON_LIMITS[platform]
 
-  if (buttons.length <= limit) return originalType
+  if (choices.length <= limit) return originalType
 
-  const conversion = shouldConvertToList(buttons.length, platform)
+  const conversion = shouldConvertToList(choices.length, platform)
 
   if (!conversion.shouldConvert) {
-    // Can't convert (e.g., web doesn't have interactiveList) — trim buttons
-    node.data = { ...node.data, buttons: buttons.slice(0, limit) }
-    warnings.push(`quickReply trimmed from ${buttons.length} to ${limit} buttons (${platform} limit)`)
+    // Can't convert (e.g., web doesn't have interactiveList) — trim choices
+    node.data = { ...node.data, choices: choices.slice(0, limit) }
+    warnings.push(`quickReply trimmed from ${choices.length} to ${limit} choices (${platform} limit)`)
     return originalType
   }
 
-  // Convert: buttons → options, change type to interactiveList
-  const options = convertButtonsToOptions(buttons)
+  // Convert: swap node type, keep data.choices intact
   try {
     const listNode = createNode("interactiveList", platform, node.position, node.id)
-    // Preserve content fields (question, label, etc.) but swap buttons → options
-    const { buttons: _removedButtons, ...contentData } = node.data as Record<string, unknown>
     node.type = listNode.type
     node.data = {
       ...listNode.data,
-      ...contentData,
-      options,
-      listTitle: (contentData as any).listTitle || "Select an option",
+      ...node.data,
+      listTitle: (node.data as any)?.listTitle || "Select an option",
     }
   } catch {
-    // Fallback: trim buttons if createNode fails for interactiveList
-    node.data = { ...node.data, buttons: buttons.slice(0, limit) }
-    warnings.push(`quickReply trimmed from ${buttons.length} to ${limit} buttons (createNode fallback)`)
+    // Fallback: trim choices if createNode fails
+    node.data = { ...node.data, choices: choices.slice(0, limit) }
+    warnings.push(`quickReply trimmed from ${choices.length} to ${limit} choices (createNode fallback)`)
     return originalType
   }
 
-  warnings.push(`quickReply auto-converted to interactiveList: ${buttons.length} buttons exceeds ${platform} limit of ${limit}`)
+  warnings.push(`quickReply auto-converted to interactiveList: ${choices.length} choices exceeds ${platform} limit of ${limit}`)
   return "interactiveList"
 }
 
@@ -1110,15 +1059,10 @@ function findFreeHandle(
   existingEdges: Edge[],
   newEdges: Edge[]
 ): string | undefined {
-  const buttons = (anchorNode.data?.buttons as ButtonData[] | undefined) || []
-  const options = (anchorNode.data?.options as OptionData[] | undefined) || []
-  const allHandles = [
-    ...buttons.map(b => b.id).filter(Boolean),
-    ...options.map(o => o.id).filter(Boolean),
-  ] as string[]
+  const choices = readChoices(anchorNode)
+  const allHandles = choices.map(c => c.id).filter(Boolean) as string[]
   if (allHandles.length === 0) return undefined
 
-  // Collect handles already occupied by existing + new edges from this node
   const occupied = new Set<string>()
   for (const e of existingEdges) {
     if (e.source === anchorNode.id && e.sourceHandle) occupied.add(e.sourceHandle)

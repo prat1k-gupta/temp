@@ -147,7 +147,7 @@ describe("flattenFlow", () => {
       "tpl",
       [
         node("q1", "quickReply", 0, 0, {
-          buttons: [{ id: "btn-1", text: "A" }, { id: "btn-2", text: "B" }],
+          choices: [{ id: "btn-1", text: "A" }, { id: "btn-2", text: "B" }],
         }),
         node("q2", "question"),
         node("fc", "flowComplete"),
@@ -251,7 +251,7 @@ describe("flattenFlow", () => {
       "tpl",
       [
         node("qr", "quickReply", 0, 0, {
-          buttons: [{ id: "btn-a", text: "A" }, { id: "btn-b", text: "B" }],
+          choices: [{ id: "btn-a", text: "A" }, { id: "btn-b", text: "B" }],
         }),
         node("q1", "question"),
       ],
@@ -317,7 +317,7 @@ describe("flattenFlow", () => {
       "tpl",
       [
         node("list", "interactiveList", 0, 0, {
-          options: [{ id: "opt-a", text: "A" }, { id: "opt-b", text: "B" }],
+          choices: [{ id: "opt-a", text: "A" }, { id: "opt-b", text: "B" }],
         }),
         node("q1", "question"),
       ],

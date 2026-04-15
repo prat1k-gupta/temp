@@ -31,8 +31,7 @@ export {
 } from "./validation"
 
 export {
-  createButtonData,
-  createOptionData,
+  createChoiceData,
   generateNodeId,
   createBaseNodeData,
   canAddMoreButtons,

@@ -49,7 +49,7 @@ describe("buildFlowGraphString", () => {
       makeNode("qr-1", "whatsappQuickReply", {
         label: "Quick Reply",
         question: "Choose one",
-        buttons: [{ text: "Yes", id: "btn-0" }, { text: "No", id: "btn-1" }],
+        choices: [{ text: "Yes", id: "btn-0" }, { text: "No", id: "btn-1" }],
       }),
       makeNode("a-1", "address", { label: "Address" }),
       makeNode("m-1", "whatsappMessage", { label: "Message", text: "Thanks!" }),
@@ -75,7 +75,7 @@ describe("buildFlowGraphString", () => {
       makeNode("1", "start", { label: "Start" }),
       makeNode("qr-1", "whatsappQuickReply", {
         label: "QR",
-        buttons: [{ text: "A", id: "b0" }, { text: "B", id: "b1" }],
+        choices: [{ text: "A", id: "b0" }, { text: "B", id: "b1" }],
       }),
       makeNode("shared", "email", { label: "Email" }),
     ]
@@ -134,7 +134,7 @@ describe("buildFlowGraphString", () => {
       makeNode("plan-quickReply-4", "whatsappQuickReply", {
         label: "WhatsApp Quick Reply",
         question: "What breed is your dog?",
-        buttons: [
+        choices: [
           { text: "Labrador", id: "btn-veh6x" },
           { text: "Beagle", id: "btn-y4htb" },
           { text: "Bulldog", id: "btn-eufq9" },
@@ -143,7 +143,7 @@ describe("buildFlowGraphString", () => {
       makeNode("edit-quickReply-1", "whatsappQuickReply", {
         label: "WhatsApp Quick Reply",
         question: "Do you use any other brand besides Pedigree?",
-        buttons: [
+        choices: [
           { text: "Royal Canin", id: "btn-l592a" },
           { text: "Hill's Science", id: "btn-x6u49" },
           { text: "Other", id: "btn-44xlk" },
@@ -154,7 +154,7 @@ describe("buildFlowGraphString", () => {
       makeNode("plan-quickReply-7", "whatsappQuickReply", {
         label: "WhatsApp Quick Reply",
         question: "Choose a delivery slot for your sample.",
-        buttons: [
+        choices: [
           { text: "Morning", id: "btn-sk9rt" },
           { text: "Afternoon", id: "btn-7ygro" },
           { text: "Evening", id: "btn-kgjn3" },

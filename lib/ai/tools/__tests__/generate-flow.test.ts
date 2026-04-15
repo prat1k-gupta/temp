@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { deduplicateEdges } from "../generate-flow"
 import { buildCorrectionPrompt } from "../generate-flow-create"
-import { recoverUnvalidatedEdit, EDIT_STEP_BUDGET } from "../generate-flow-edit"
+import { applyNodeUpdates, recoverUnvalidatedEdit, EDIT_STEP_BUDGET } from "../generate-flow-edit"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import type { Edge, Node } from "@xyflow/react"
 import type { FlowIssue } from "@/utils/flow-validator"
@@ -236,5 +236,237 @@ describe("EDIT_STEP_BUDGET", () => {
     // which would give a misbehaving model room to loop and burn tokens.
     expect(EDIT_STEP_BUDGET).toBeGreaterThanOrEqual(20)
     expect(EDIT_STEP_BUDGET).toBeLessThanOrEqual(30)
+  })
+})
+
+describe("applyNodeUpdates", () => {
+  function makeNode(id: string, type: string, data: Record<string, any>): Node {
+    return {
+      id,
+      type,
+      position: { x: 0, y: 0 },
+      data: { platform: "whatsapp", ...data },
+    }
+  }
+
+  describe("same-type content updates", () => {
+    it("merges existing.data with update.data when newType is absent", () => {
+      const existing = [
+        makeNode("n1", "whatsappQuickReply", {
+          question: "Pick",
+          choices: [{ id: "a", text: "A" }],
+        }),
+      ]
+      const result = applyNodeUpdates(
+        [{ nodeId: "n1", data: { question: "Pick again" } }],
+        existing,
+        "whatsapp",
+      )
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe("whatsappQuickReply")
+      expect((result[0].data as any).question).toBe("Pick again")
+      // Untouched field preserved through merge:
+      expect((result[0].data as any).choices).toEqual([{ id: "a", text: "A" }])
+    })
+
+    it("treats newType equal to existing.type as a content-only merge", () => {
+      // newType === existing.type should NOT trigger the factory reset path —
+      // stale fields should survive.
+      const existing = [
+        makeNode("n1", "whatsappQuickReply", {
+          question: "Pick",
+          choices: [{ id: "a", text: "A" }],
+          storeAs: "pick_result",
+        }),
+      ]
+      const result = applyNodeUpdates(
+        [
+          {
+            nodeId: "n1",
+            data: { question: "Updated" },
+            newType: "whatsappQuickReply",
+          },
+        ],
+        existing,
+        "whatsapp",
+      )
+      expect(result[0].type).toBe("whatsappQuickReply")
+      expect((result[0].data as any).question).toBe("Updated")
+      // The choices and storeAs stay because this is a merge, not a replace.
+      expect((result[0].data as any).choices).toEqual([{ id: "a", text: "A" }])
+      expect((result[0].data as any).storeAs).toBe("pick_result")
+    })
+  })
+
+  describe("cross-type changes", () => {
+    it("replaces data with factory defaults + new content when newType differs", () => {
+      const existing = [
+        makeNode("n1", "whatsappQuickReply", {
+          question: "Pick a product",
+          choices: [
+            { id: "a", text: "A" },
+            { id: "b", text: "B" },
+          ],
+          storeAs: "product_choice",
+        }),
+      ]
+      const result = applyNodeUpdates(
+        [
+          {
+            nodeId: "n1",
+            newType: "whatsappMessage",
+            data: { text: "Thanks for picking!" },
+          },
+        ],
+        existing,
+        "whatsapp",
+      )
+      expect(result).toHaveLength(1)
+      expect(result[0].type).toBe("whatsappMessage")
+      // New field from update.data present:
+      expect((result[0].data as any).text).toBe("Thanks for picking!")
+      // Stale fields from old type are dropped (whatsappMessage factory only
+      // sets {platform, label, text}).
+      expect((result[0].data as any).choices).toBeUndefined()
+      expect((result[0].data as any).storeAs).toBeUndefined()
+      expect((result[0].data as any).question).toBeUndefined()
+      // Factory default label overridden with nothing, so the whatsappMessage
+      // factory label comes through:
+      expect((result[0].data as any).label).toBe("WhatsApp Message")
+      expect((result[0].data as any).platform).toBe("whatsapp")
+    })
+
+    it("preserves node id and position on cross-type change", () => {
+      const existing: Node[] = [
+        {
+          id: "n1",
+          type: "whatsappQuickReply",
+          position: { x: 100, y: 200 },
+          data: { platform: "whatsapp", question: "?" },
+        },
+      ]
+      const result = applyNodeUpdates(
+        [{ nodeId: "n1", newType: "whatsappMessage", data: { text: "Hi" } }],
+        existing,
+        "whatsapp",
+      )
+      expect(result[0].id).toBe("n1")
+      expect(result[0].position).toEqual({ x: 100, y: 200 })
+    })
+
+    it("lets update.data override factory defaults on cross-type change", () => {
+      // The AI's label must win over the factory's default label.
+      const existing = [
+        makeNode("n1", "whatsappQuickReply", { question: "?" }),
+      ]
+      const result = applyNodeUpdates(
+        [
+          {
+            nodeId: "n1",
+            newType: "whatsappMessage",
+            data: { label: "Thank-you message", text: "Thanks!" },
+          },
+        ],
+        existing,
+        "whatsapp",
+      )
+      expect((result[0].data as any).label).toBe("Thank-you message")
+      expect((result[0].data as any).text).toBe("Thanks!")
+    })
+
+    it("falls back to merge and keeps existing type when createNode throws for unknown newType", () => {
+      // Arbitrary type the factory doesn't know about — should fall back to
+      // the same-type merge instead of dropping the update, keep the existing
+      // type (NOT the garbage newType), and log a warning.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      try {
+        const existing = [
+          makeNode("n1", "whatsappQuickReply", { question: "?" }),
+        ]
+        const result = applyNodeUpdates(
+          [
+            {
+              nodeId: "n1",
+              newType: "nonExistentNodeType",
+              data: { question: "updated" },
+            },
+          ],
+          existing,
+          "whatsapp",
+        )
+        // Type should NOT be rewritten to garbage; fallback merge keeps existing type.
+        expect(result[0].type).toBe("whatsappQuickReply")
+        expect((result[0].data as any).question).toBe("updated")
+        expect(warnSpy).toHaveBeenCalled()
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+
+    it("treats base-type newType matching platform-prefixed existing.type as content-only merge", () => {
+      // The AI prompt teaches base-type names like "interactiveList". Existing
+      // nodes carry platform-prefixed types like "whatsappInteractiveList".
+      // Without base-type normalization, string inequality triggers a
+      // cross-type factory reset that drops user data. With the fix, the
+      // update is treated as same-type and data merges cleanly.
+      const existing: Node = {
+        id: "n1",
+        type: "whatsappInteractiveList",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Old question",
+          choices: [{ id: "c1", text: "Keep me" }],
+          storeAs: "keepMe",
+        },
+      } as any
+
+      const result = applyNodeUpdates(
+        [{ nodeId: "n1", newType: "interactiveList", data: { question: "New question" } }],
+        [existing],
+        "whatsapp",
+      )
+
+      expect(result[0].type).toBe("whatsappInteractiveList") // unchanged
+      expect((result[0].data as any).question).toBe("New question")
+      expect((result[0].data as any).choices).toEqual([{ id: "c1", text: "Keep me" }]) // not dropped
+      expect((result[0].data as any).storeAs).toBe("keepMe") // not dropped
+    })
+
+    it("cross-type conversion whatsappQuickReply → interactiveList actually changes type via createNode", () => {
+      // Regression: getBaseNodeType returns "list" but createNode registers
+      // the factory under "interactiveList". Without the normalize bridge,
+      // createNode throws on "list" and the fallback merge keeps the old
+      // type, so the AI's type change silently becomes a content-only edit.
+      const existing: Node = {
+        id: "qr1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick one",
+          choices: [{ id: "c1", text: "A" }],
+        },
+      } as any
+
+      const result = applyNodeUpdates(
+        [{ nodeId: "qr1", newType: "interactiveList", data: { listTitle: "Options" } }],
+        [existing],
+        "whatsapp",
+      )
+
+      expect(result[0].type).toBe("whatsappInteractiveList")
+      expect((result[0].data as any).listTitle).toBe("Options")
+    })
+  })
+
+  it("skips updates whose target node doesn't exist", () => {
+    const existing = [makeNode("n1", "whatsappQuickReply", {})]
+    const result = applyNodeUpdates(
+      [{ nodeId: "missing", data: { question: "?" } }],
+      existing,
+      "whatsapp",
+    )
+    expect(result).toHaveLength(0)
   })
 })

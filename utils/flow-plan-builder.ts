@@ -40,6 +40,165 @@ import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { isMultiOutputType, getFixedHandles, getBaseNodeType } from "./platform-helpers"
 import { autoStoreAs, collectFlowVariables } from "./flow-variables"
 
+/**
+ * Compute the outgoing handle IDs a node of `nodeType` will expose AFTER
+ * a nodeUpdate is applied with the given data. Used by classifyTypeChange
+ * to decide whether the old outgoing edges can be preserved, collapsed,
+ * or must be refused.
+ */
+function computeOutgoingHandles(
+  nodeType: string,
+  data: Record<string, any>,
+  _platform: Platform
+): string[] {
+  const baseType = getBaseNodeType(nodeType)
+
+  // Fixed-handle types (apiFetch → ["success", "error"] etc.)
+  const fixed = getFixedHandles(nodeType)
+  if (fixed) return fixed
+
+  // Choice-bearing types: one handle per choice (stable by index)
+  if (baseType === "quickReply" || baseType === "list") {
+    const choices = (data.choices || []) as ChoiceData[]
+    return choices.map((c, i) => c.id || `button-${i}`)
+  }
+
+  // Single-output types (question, message, name, email, etc.) render a
+  // handleless default edge; we model that as one "default" handle here
+  // so contraction-to-default cases can route to it.
+  return ["default"]
+}
+
+/**
+ * Discriminated classification of what to do with a node's outgoing edges
+ * when an AI nodeUpdate switches the node to a new type in place.
+ */
+type TypeChangeClassification =
+  | { kind: "no-edges" }
+  | { kind: "preserve" }
+  | { kind: "fanout"; sharedTarget: string; newHandles: string[] }
+  | { kind: "collapse"; sharedTarget: string; defaultHandle?: string }
+  | {
+      kind: "ambiguous"
+      reason: string
+      oldTargets: Array<{ handle: string; target: string }>
+      newHandles: string[]
+    }
+
+/**
+ * Decide how to rewire an existing node's outgoing edges when its type
+ * changes via a nodeUpdate.
+ *
+ * Rules (in order):
+ *  1. No outgoing edges → no work.
+ *  2. Same base type (e.g. whatsappQuestion → instagramQuestion, or
+ *     quickReply ↔ interactiveList which both live on data.choices with
+ *     identical handle IDs) → preserve all edges as-is.
+ *  3. Contraction with all-same-target → collapse old edges to a single
+ *     edge on the new type's default handle.
+ *  4. Otherwise (multiple distinct targets, shape mismatch, or new type
+ *     has fewer handles than the old node used) → ambiguous. Caller
+ *     should refuse the nodeUpdate and push an `ambiguous_type_change`
+ *     warning so apply_edit surfaces a question to the user.
+ */
+function classifyTypeChange(
+  existingNode: Node,
+  newType: string,
+  updatedData: Record<string, any>,
+  platform: Platform,
+  existingEdges: Edge[]
+): TypeChangeClassification {
+  const outgoing = existingEdges.filter((e) => e.source === existingNode.id)
+  if (outgoing.length === 0) return { kind: "no-edges" }
+
+  const oldBaseType = getBaseNodeType(existingNode.type || "")
+  const newBaseType = getBaseNodeType(newType)
+
+  // Same-family: both types are choice-bearing (quickReply ↔ interactiveList).
+  // Both read data.choices the same way, so handle IDs are preserved by the
+  // data replacement in applyNodeUpdates — preserve all edges.
+  const choiceBearingBaseTypes = new Set(["quickReply", "list"])
+  if (
+    choiceBearingBaseTypes.has(oldBaseType) &&
+    choiceBearingBaseTypes.has(newBaseType)
+  ) {
+    return { kind: "preserve" }
+  }
+
+  // Cross-platform same base type (e.g. whatsappQuestion → instagramQuestion)
+  // has identical topology.
+  if (oldBaseType === newBaseType) {
+    return { kind: "preserve" }
+  }
+
+  // Figure out the new type's outgoing handles after the update.
+  const newHandles = computeOutgoingHandles(newType, updatedData, platform)
+
+  // Figure out which handles the old edges actually use, and where they go.
+  const oldHandleUsage = new Map<string, string>() // handle → target
+  for (const edge of outgoing) {
+    const handle = edge.sourceHandle || "default"
+    oldHandleUsage.set(handle, edge.target)
+  }
+
+  const uniqueTargets = new Set(Array.from(oldHandleUsage.values()))
+
+  // Expansion (Case C): the old node had a single outgoing edge (typically
+  // on the default handle, e.g. question → msg-N), and the new type exposes
+  // MORE handles than the old node used. Fan out: wire every new handle to
+  // the same target so the flow stays reachable. The user can differentiate
+  // buttons afterwards.
+  // Common case: question (1 default edge → msg-N) → quickReply with 3
+  // choices produces 3 edges: choice-0→msg-N, choice-1→msg-N, choice-2→msg-N.
+  if (outgoing.length === 1 && newHandles.length > 1) {
+    const sharedTarget = Array.from(uniqueTargets)[0]
+    return {
+      kind: "fanout",
+      sharedTarget,
+      newHandles,
+    }
+  }
+
+  // Contraction with all-same-target: collapse to the new default handle.
+  // Common case: quickReply (3 buttons all → msg-N) → question = 1 edge.
+  if (uniqueTargets.size === 1) {
+    const sharedTarget = Array.from(uniqueTargets)[0]
+    return {
+      kind: "collapse",
+      sharedTarget,
+      defaultHandle: newHandles[0], // first handle of the new type
+    }
+  }
+
+  // Multiple distinct targets in the old outgoing edges.
+  // If the new type has fewer handles than the old node used, contraction
+  // is ambiguous because we'd have to drop some targets.
+  if (newHandles.length < oldHandleUsage.size) {
+    return {
+      kind: "ambiguous",
+      reason: `new type "${newType}" has fewer outgoing handles (${newHandles.length}) than the existing node's used handles (${oldHandleUsage.size}), and edges point to different targets`,
+      oldTargets: Array.from(oldHandleUsage.entries()).map(([handle, target]) => ({
+        handle,
+        target,
+      })),
+      newHandles,
+    }
+  }
+
+  // Multiple distinct targets AND enough new handles to fit them — still
+  // ambiguous because we don't know which old target maps to which new
+  // handle. Refuse and ask the user.
+  return {
+    kind: "ambiguous",
+    reason: `cannot determine which old edge should map to which new handle on "${newType}"`,
+    oldTargets: Array.from(oldHandleUsage.entries()).map(([handle, target]) => ({
+      handle,
+      target,
+    })),
+    newHandles,
+  }
+}
+
 // AI models sometimes output shorthand type names — normalize to canonical types
 const COMMON_ALIASES: Record<string, string> = {
   list: "interactiveList",
@@ -146,6 +305,16 @@ export function buildEditFlowFromPlan(
   const warnings: string[] = []
   const positionShiftMap = new Map<string, number>() // nodeId → total dx
 
+  // Map from step.localId → generated node ID, populated as chains are
+  // walked. Resolved in addEdges processing below so the AI can reference
+  // a newly-created chain node by a stable handle before its real ID
+  // has been generated. Valid only within this single apply_edit plan.
+  const localIdMap = new Map<string, string>()
+
+  // Seeded from plan.removeEdges, extended by topology handling below
+  // (e.g. cross-type nodeUpdate collapse).
+  const removeEdges: EdgeReference[] = [...(plan.removeEdges || [])]
+
   // Normalize AI aliases in chain steps
   if (plan.chains) {
     plan = { ...plan, chains: plan.chains.map((c) => ({ ...c, steps: normalizeSteps(c.steps, platform) })) }
@@ -163,9 +332,30 @@ export function buildEditFlowFromPlan(
         continue
       }
 
-      const baseType = existingNode.type || ""
-      const baseNodeType = getBaseNodeType(baseType)
-      const data = contentToNodeData(update.content, baseType)
+      // If the AI supplied newType, treat this as a type change: the target
+      // type is what newType says. Otherwise it's a content-only update,
+      // and the target type is the existing node's type. contentToNodeData
+      // uses the target type to decide which data shape to produce.
+      const targetType = update.newType ?? existingNode.type ?? ""
+      const baseNodeType = getBaseNodeType(targetType)
+      const existingBaseType = getBaseNodeType(existingNode.type || "")
+      const data = contentToNodeData(update.content, targetType)
+
+      // Same-family choice-bearing conversions (quickReply ↔ interactiveList):
+      // if the AI sent listTitle/label without resending choices, backfill
+      // from the existing node so applyNodeUpdates' factory-reset overlay
+      // keeps the user's data. Must run BEFORE the ID-preservation block
+      // below so the existing IDs flow through to the output.
+      const choiceBearingBaseTypes = new Set(["quickReply", "list"])
+      if (
+        choiceBearingBaseTypes.has(existingBaseType) &&
+        choiceBearingBaseTypes.has(baseNodeType)
+      ) {
+        const existingChoices = (existingNode.data as any).choices
+        if (Array.isArray(existingChoices) && !Array.isArray((data as any).choices)) {
+          ;(data as any).choices = existingChoices
+        }
+      }
 
       // Preserve existing choice IDs where possible (match by index)
       if (data.choices && existingNode.data.choices) {
@@ -178,9 +368,100 @@ export function buildEditFlowFromPlan(
         }))
       }
 
+      // Cross-type edge topology handling. When this nodeUpdate crosses
+      // types (AI supplied a newType different from the existing node's
+      // type), classify what to do with the node's outgoing edges:
+      //   • preserve / no-edges → no edge work
+      //   • collapse → drop old outgoing edges and add one new edge on
+      //     the new type's default handle (for same-target contraction)
+      //   • ambiguous → refuse the nodeUpdate, push an
+      //     `ambiguous_type_change` warning so apply_edit fails loud and
+      //     the AI has to ask the user which old targets map to which
+      //     new handles.
+      if (update.newType && update.newType !== existingNode.type) {
+        const classification = classifyTypeChange(
+          existingNode,
+          update.newType,
+          data,
+          platform,
+          existingEdges
+        )
+
+        if (classification.kind === "ambiguous") {
+          warnings.push(
+            `ambiguous_type_change "${update.nodeId}": ${classification.reason}. ` +
+            `Old edges: ${classification.oldTargets.map((t) => `${t.handle}→${t.target}`).join(", ")}. ` +
+            `New handles: ${classification.newHandles.join(", ")}. ` +
+            `Ask the user which old targets should map to which new handles (or which should be dropped), ` +
+            `then retry with the correct addEdges/removeEdges in the same plan.`
+          )
+          continue // skip this nodeUpdate entirely
+        }
+
+        if (classification.kind === "fanout") {
+          // Expansion: drop the old single outgoing edge and wire every new
+          // handle to the same target. Keeps the flow reachable after
+          // question → quickReply-style expansions.
+          const oldOutgoing = existingEdges.filter((e) => e.source === existingNode.id)
+          for (const e of oldOutgoing) {
+            removeEdges.push({
+              source: e.source,
+              target: e.target,
+              sourceHandle: e.sourceHandle || undefined,
+            })
+          }
+          for (const handle of classification.newHandles) {
+            const normalized = normalizeHandle(handle)
+            newEdges.push({
+              id: `e-${existingNode.id}-${classification.sharedTarget}-${normalized || "fanout"}`,
+              source: existingNode.id,
+              sourceHandle: normalized,
+              target: classification.sharedTarget,
+              type: "default",
+              style: DEFAULT_EDGE_STYLE,
+            } as Edge)
+          }
+          warnings.push(
+            `nodeUpdate "${update.nodeId}": type changed ${existingNode.type} → ${update.newType}. ` +
+            `Added ${classification.newHandles.length} new handles — all wired to the same target ${classification.sharedTarget}. ` +
+            `Differentiate them if needed.`
+          )
+        }
+
+        if (classification.kind === "collapse") {
+          // Drop the old handle-specific outgoing edges and add a single
+          // new edge on the new type's default handle pointing to the
+          // shared target.
+          const oldOutgoing = existingEdges.filter((e) => e.source === existingNode.id)
+          for (const e of oldOutgoing) {
+            removeEdges.push({
+              source: e.source,
+              target: e.target,
+              sourceHandle: e.sourceHandle || undefined,
+            })
+          }
+          newEdges.push({
+            id: `e-${existingNode.id}-${classification.sharedTarget}-collapse`,
+            source: existingNode.id,
+            sourceHandle: normalizeHandle(classification.defaultHandle),
+            target: classification.sharedTarget,
+            type: "default",
+            style: DEFAULT_EDGE_STYLE,
+          } as Edge)
+          warnings.push(
+            `nodeUpdate "${update.nodeId}": type changed ${existingNode.type} → ${update.newType}. ` +
+            `Collapsed ${oldOutgoing.length} outgoing edges to a single edge on the new default handle → ${classification.sharedTarget}.`
+          )
+        }
+
+        // kind === 'preserve' or 'no-edges' → no edge work needed
+      }
+
       // Auto-convert quickReply → interactiveList when choices exceed the
       // platform's button limit. Only the node TYPE changes — data.choices
       // is left untouched so handle IDs and labels survive the conversion.
+      // The auto-convert's newType wins over any AI-supplied newType here,
+      // because it's a stricter platform constraint.
       if (baseNodeType === "quickReply" && data.choices) {
         const choices = data.choices as ChoiceData[]
         const conversion = shouldConvertToList(choices.length, platform)
@@ -199,7 +480,11 @@ export function buildEditFlowFromPlan(
         }
       }
 
-      nodeUpdates.push({ nodeId: update.nodeId, data })
+      nodeUpdates.push({
+        nodeId: update.nodeId,
+        data,
+        ...(update.newType ? { newType: update.newType } : {}),
+      })
     }
   }
 
@@ -242,6 +527,7 @@ export function buildEditFlowFromPlan(
       maxBranchX: 0,
       warnings,
       templateResolver,
+      localIdMap,
     }
 
     // If attaching via a button handle, the first step gets that sourceHandle
@@ -269,6 +555,7 @@ export function buildEditFlowFromPlan(
 
         newNodes.push(node)
         nodeOrder.push(nodeId)
+        recordLocalId(firstStep, nodeId, localIdMap, warnings)
 
         // Resolve attachHandle: "button-N" → actual button ID from the anchor node
         let resolvedHandle = chain.attachHandle
@@ -334,6 +621,7 @@ export function buildEditFlowFromPlan(
 
         newNodes.push(node)
         nodeOrder.push(nodeId)
+        recordLocalId(firstStep, nodeId, localIdMap, warnings)
 
         // Resolve to a free button/option handle — never use "sync-next" for multi-output nodes
         const freeHandle = findFreeHandle(anchorNode, existingEdges, newEdges)
@@ -456,27 +744,68 @@ export function buildEditFlowFromPlan(
     const updatedNodeData = new Map(nodeUpdates.map(u => [u.nodeId, u.data]))
 
     for (const newEdge of plan.addEdges) {
+      // Resolve localId:X references to actual node IDs before any
+      // validation runs, so the downstream "source/target not found"
+      // checks operate on real IDs. A `localId:` prefix that doesn't
+      // match any chain step short-circuits this edge with a dedicated
+      // warning — we do NOT fall through to the generic not-found
+      // message, because that one tells the AI a different fix
+      // (use connectTo / newType) that doesn't apply here.
+      let resolvedSource = newEdge.source
+      let resolvedTarget = newEdge.target
+
+      if (resolvedSource.startsWith("localId:")) {
+        const key = resolvedSource.slice("localId:".length)
+        const mapped = localIdMap.get(key)
+        if (mapped) {
+          resolvedSource = mapped
+        } else {
+          warnings.push(
+            `addEdge ${newEdge.source} → ${newEdge.target} skipped: localId "${key}" not found in this plan. ` +
+            `Either the localId was never defined on any chain's step, or it was mistyped. ` +
+            `Make sure the chain step has \`localId: "${key}"\` exactly.`
+          )
+          continue
+        }
+      }
+      if (resolvedTarget.startsWith("localId:")) {
+        const key = resolvedTarget.slice("localId:".length)
+        const mapped = localIdMap.get(key)
+        if (mapped) {
+          resolvedTarget = mapped
+        } else {
+          warnings.push(
+            `addEdge ${newEdge.source} → ${newEdge.target} skipped: localId "${key}" not found in this plan. ` +
+            `Either the localId was never defined on any chain's step, or it was mistyped. ` +
+            `Make sure the chain step has \`localId: "${key}"\` exactly.`
+          )
+          continue
+        }
+      }
+
       // Validate source/target existence and reject self-loops
-      const sourceExists = allNodes.some(n => n.id === newEdge.source)
-      const targetExists = allNodes.some(n => n.id === newEdge.target)
+      const sourceExists = allNodes.some(n => n.id === resolvedSource)
+      const targetExists = allNodes.some(n => n.id === resolvedTarget)
       if (!sourceExists || !targetExists) {
         const missing: string[] = []
-        if (!sourceExists) missing.push(`source "${newEdge.source}"`)
-        if (!targetExists) missing.push(`target "${newEdge.target}"`)
+        if (!sourceExists) missing.push(`source "${resolvedSource}"`)
+        if (!targetExists) missing.push(`target "${resolvedTarget}"`)
         console.warn(`[buildEditFlow] Skipping addEdge: ${missing.join(" and ")} not found`)
         warnings.push(
-          `addEdge ${newEdge.source} → ${newEdge.target} skipped: ${missing.join(" and ")} not found. ` +
+          `addEdge ${resolvedSource} → ${resolvedTarget} skipped: ${missing.join(" and ")} not found. ` +
           `IDs assigned to newly-created nodes (from chains) are NOT derived from removed node IDs — ` +
           `they are generated fresh. To fan-in multiple existing nodes to a new node you CANNOT reference ` +
           `the new node by ID in addEdges until it exists. Use either (a) one chain per fan-in source with ` +
           `attachTo set and connectTo pointing at the shared target, or (b) nodeUpdates with newType to ` +
-          `change an existing node in place so its ID and incoming edges are preserved.`
+          `change an existing node in place so its ID and incoming edges are preserved, or (c) assign a ` +
+          `localId on the chain step that creates the new node and reference it as "localId:<name>" in ` +
+          `this addEdge.`
         )
         continue
       }
-      if (newEdge.source === newEdge.target) {
-        console.warn(`[buildEditFlow] Skipping self-loop addEdge: ${newEdge.source} → ${newEdge.target}`)
-        warnings.push(`addEdge ${newEdge.source} → ${newEdge.target} skipped: self-loops are not allowed.`)
+      if (resolvedSource === resolvedTarget) {
+        console.warn(`[buildEditFlow] Skipping self-loop addEdge: ${resolvedSource} → ${resolvedTarget}`)
+        warnings.push(`addEdge ${resolvedSource} → ${resolvedTarget} skipped: self-loops are not allowed.`)
         continue
       }
 
@@ -484,10 +813,10 @@ export function buildEditFlowFromPlan(
 
       // Resolve buttonIndex → actual button ID
       if (newEdge.sourceButtonIndex !== undefined && !sourceHandle) {
-        const sourceNode = allNodes.find(n => n.id === newEdge.source)
+        const sourceNode = allNodes.find(n => n.id === resolvedSource)
         if (sourceNode) {
           // Check updated data first, then existing node data
-          const updatedData = updatedNodeData.get(newEdge.source)
+          const updatedData = updatedNodeData.get(resolvedSource)
           const choices = (updatedData?.choices ?? readChoices(sourceNode)) as ChoiceData[]
           sourceHandle = choices[newEdge.sourceButtonIndex]?.id
             || `button-${newEdge.sourceButtonIndex}`
@@ -499,9 +828,9 @@ export function buildEditFlowFromPlan(
         const buttonMatch = sourceHandle.match(/^button-(\d+)$/)
         if (buttonMatch) {
           const idx = parseInt(buttonMatch[1], 10)
-          const sourceNode = allNodes.find(n => n.id === newEdge.source)
+          const sourceNode = allNodes.find(n => n.id === resolvedSource)
           if (sourceNode) {
-            const updatedData = updatedNodeData.get(newEdge.source)
+            const updatedData = updatedNodeData.get(resolvedSource)
             const choices = (updatedData?.choices ?? readChoices(sourceNode)) as ChoiceData[]
             const resolved = choices[idx]?.id
             if (resolved) {
@@ -514,9 +843,9 @@ export function buildEditFlowFromPlan(
 
       const normalizedAddHandle = normalizeHandle(sourceHandle)
       newEdges.push({
-        id: `e-${newEdge.source}-${newEdge.target}-${normalizedAddHandle || 'edge'}`,
-        source: newEdge.source,
-        target: newEdge.target,
+        id: `e-${resolvedSource}-${resolvedTarget}-${normalizedAddHandle || 'edge'}`,
+        source: resolvedSource,
+        target: resolvedTarget,
         sourceHandle: normalizedAddHandle,
         type: "default",
         style: DEFAULT_EDGE_STYLE,
@@ -538,7 +867,7 @@ export function buildEditFlowFromPlan(
   if (plan.removeNodeIds && plan.removeNodeIds.length > 0 && existingEdges.length > 0) {
     const removedSet = new Set(plan.removeNodeIds)
     const removedEdgeSet = new Set(
-      (plan.removeEdges || []).map(e => `${e.source}-${e.target}`)
+      removeEdges.map(e => `${e.source}-${e.target}`)
     )
     // Find nodes that were ONLY fed by removed nodes or removed edges
     const allNodeIds = new Set(allNodesForWarnings.map(n => n.id))
@@ -585,7 +914,7 @@ export function buildEditFlowFromPlan(
     nodeOrder,
     nodeUpdates,
     removeNodeIds: plan.removeNodeIds || [],
-    removeEdges: plan.removeEdges || [],
+    removeEdges,
     positionShifts,
     warnings,
   }
@@ -607,6 +936,33 @@ interface WalkContext {
   maxBranchX: number          // rightmost X across all branches (for positioning)
   warnings: string[]
   templateResolver?: TemplateResolver
+  /**
+   * Map from step.localId → generated node ID. Only set by
+   * buildEditFlowFromPlan — buildFlowFromPlan leaves it undefined since
+   * localId is an edit-plan-only feature. Entries are recorded at every
+   * site that creates a new node from a NodeStep with `localId` set.
+   */
+  localIdMap?: Map<string, string>
+}
+
+/**
+ * Record a step.localId → nodeId mapping, warning on duplicates (second
+ * occurrence wins, matching the documented behavior). No-op when the
+ * context has no localIdMap (i.e. called from buildFlowFromPlan).
+ */
+function recordLocalId(
+  step: NodeStep,
+  nodeId: string,
+  localIdMap: Map<string, string> | undefined,
+  warnings: string[]
+): void {
+  if (!localIdMap || !step.localId) return
+  if (localIdMap.has(step.localId)) {
+    warnings.push(
+      `duplicate localId "${step.localId}" — second occurrence on node ${nodeId} overwrites the first`
+    )
+  }
+  localIdMap.set(step.localId, nodeId)
 }
 
 function walkSteps(steps: FlowStep[], ctx: WalkContext): void {
@@ -652,6 +1008,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
 
       ctx.nodes.push(node)
       ctx.nodeOrder.push(nodeId)
+      recordLocalId(step, nodeId, ctx.localIdMap, ctx.warnings)
 
       const edgeId = `e-${ctx.previousNodeId}-${nodeId}`
       ctx.edges.push({
@@ -698,6 +1055,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
 
   ctx.nodes.push(node)
   ctx.nodeOrder.push(nodeId)
+  recordLocalId(step, nodeId, ctx.localIdMap, ctx.warnings)
 
   // Edge from previous node — handle convergence modes
   if (ctx.previousNodeId === ctx.lastMultiOutputNodeId && ctx.branchEndpoints.length > 0) {
@@ -849,6 +1207,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     branchEndpoints: [],
     maxBranchX: 0,
     warnings: ctx.warnings,
+    localIdMap: ctx.localIdMap,
   }
 
   // Process the first step in the branch with a sourceHandle edge
@@ -875,6 +1234,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
 
     ctx.nodes.push(node)
     ctx.nodeOrder.push(nodeId)
+    recordLocalId(firstStep, nodeId, ctx.localIdMap, ctx.warnings)
 
     // Edge from parent with sourceHandle
     // Fixed-handle nodes (apiFetch): use fixed handle IDs (e.g. "success"/"error")

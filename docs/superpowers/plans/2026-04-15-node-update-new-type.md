@@ -31,15 +31,51 @@
 - `newType` field on NodeUpdate (TypeScript + zod)
 - Cross-type data replacement in `applyNodeUpdates` (factory reset + new content)
 - Edge topology decision tree in the cross-type path
-- AI prompt rules and examples
-- Tests for each branch of the decision tree
+- **`localId` on NodeStep in chains** — the "create a new node and reference it from edges in the same plan" feature. Folded into PR #3 to close the entire fan-in loss bug class in one PR instead of two. See "localId design" section below.
+- AI prompt rules and examples for both newType and localId
+- Tests for each branch of the decision tree + localId resolution
 - Updated `apply_edit` error suggestion text
 
 ## What's NOT in scope
 
-- **`localId` in chains** — the "create a new node and reference it from edges in the same plan" feature. Deferred until a real user bug surfaces that localId would fix. newType handles ~95% of fan-in loss cases; localId is the rare 5%. Build what breaks today, not what might break.
 - **Handle taxonomy naming cleanup** (`sync-next` → something clearer). Wire-format breaking, separate concern.
 - **Web node support** — web is out of scope for PR #3. It's unified on `data.choices` as of PR #63 so it theoretically works, but the prompt and tests focus on whatsapp/instagram flows.
+
+---
+
+## localId design
+
+Adds a `localId?: string` field to `NodeStep` (the node-creating step inside a chain). The AI assigns a temporary handle name, and references it in `addEdges` by prefixing with `localId:`:
+
+```json
+{
+  "chains": [{
+    "attachTo": "existing-branch-1",
+    "steps": [{
+      "step": "node",
+      "nodeType": "whatsappMessage",
+      "content": { "text": "Confirmation message" },
+      "localId": "confirm"
+    }]
+  }],
+  "addEdges": [
+    { "source": "existing-branch-2-qr", "target": "localId:confirm", "sourceButtonIndex": 0 },
+    { "source": "existing-branch-3-qr", "target": "localId:confirm", "sourceButtonIndex": 0 }
+  ]
+}
+```
+
+The builder:
+1. Walks chains normally, creating nodes with generated IDs
+2. Maintains a `localIdMap: Map<string, string>` that records `step.localId → generatedId` when a NodeStep with localId is processed
+3. When processing `addEdges`, checks `source` and `target` for the `localId:` prefix and substitutes the generated ID
+4. Validation:
+   - Duplicate `localId` across a single plan → warning (second one wins, first is overwritten)
+   - Reference to an unknown `localId` in addEdges → warning with `addEdge ` prefix (reuses existing fail-loud path)
+
+**What it solves:** the rare case where the AI needs to add a BRAND NEW node that multiple existing nodes should point to (fan-in to a new node). Today this fails because the AI can't reference the new node's ID — it's generated at apply time. With localId, the AI assigns a stable handle and references it.
+
+**Scope is small:** ~40 LOC across schema + builder + tests. The resolver is a trivial string substitution with one Map lookup. No complex edge cases — localId is only valid inside a single `apply_edit` plan (not across plans or tool calls).
 
 ---
 

@@ -7,6 +7,9 @@ import { buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { collectFlowVariablesRich } from "@/utils/flow-variables"
+import { createNode } from "@/utils/node-factory"
+import { getBaseNodeType } from "@/utils/platform-helpers"
+import { normalizeAiNodeType } from "@/utils/ai-data-transform"
 import type { Node, Edge } from "@xyflow/react"
 import type { Platform, TemplateAIMetadata, TemplateResolver } from "@/types"
 import type {
@@ -49,27 +52,88 @@ export function recoverUnvalidatedEdit(
 ): BuildEditFlowResult | null {
   if (!finalEditResult) return null
 
-  const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult)
+  const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult, platform)
   const filteredEdges = buildCurrentEdges(existingEdges, finalEditResult)
   const validation = validateGeneratedFlow(filteredNodes, filteredEdges, platform)
   return validation.isValid ? finalEditResult : null
 }
 
 /**
+ * Merge a single nodeUpdate into an existing node. Shared by applyNodeUpdates
+ * (the commit path) and buildCurrentNodes (the validator path) so both produce
+ * the same shape for the same input.
+ *
+ * Same-type (or same-base-type) update: merges
+ * `{ ...existing.data, ...update.data }` — preserves fields the AI didn't touch.
+ * The AI prompt encourages base-type names like "interactiveList", while
+ * existing nodes use platform-prefixed types like "whatsappInteractiveList".
+ * Base-type normalization prevents false cross-type detection that would
+ * factory-reset and drop user data.
+ *
+ * Cross-type change (base types differ): replaces data with factory defaults
+ * from `createNode(baseType)` and overlays update.data on top. Drops stale
+ * fields from the old type so quickReply → apiFetch leaves no choices
+ * baggage. Node ID and position are preserved so incoming edges stay
+ * connected.
+ *
+ * If createNode throws (unknown newType), falls back to merging data on top of
+ * the EXISTING type — not the garbage newType — so the node doesn't end up
+ * with a type the rest of the app can't render.
+ */
+function mergeNodeUpdate(
+  existing: Node,
+  update: { nodeId: string; data?: Record<string, any>; newType?: string },
+  platform: Platform
+): Node {
+  const newBaseType = update.newType ? getBaseNodeType(update.newType) : undefined
+  const existingBaseType = getBaseNodeType(existing.type || "")
+  const isTypeChange = !!update.newType && newBaseType !== existingBaseType
+
+  if (isTypeChange) {
+    try {
+      // getBaseNodeType normalizes list types to "list", but createNode
+      // registers them as "interactiveList" — normalizeAiNodeType bridges
+      // that mismatch. Use it for any AI-emitted newType.
+      const factoryType = normalizeAiNodeType(update.newType!, platform)
+      const factoryNode = createNode(factoryType, platform, existing.position, existing.id)
+      return {
+        ...existing,
+        type: factoryNode.type,
+        data: { ...factoryNode.data, ...update.data },
+      }
+    } catch {
+      console.warn(
+        `[applyNodeUpdates] createNode failed for newType "${update.newType}" (base "${newBaseType}") on platform "${platform}" — falling back to merge with existing type`
+      )
+      return {
+        ...existing,
+        data: { ...existing.data, ...update.data },
+      }
+    }
+  }
+
+  return {
+    ...existing,
+    data: { ...existing.data, ...update.data },
+  }
+}
+
+/**
  * Convert nodeUpdates (partial updates) to full Node objects by merging with existing nodes.
+ *
+ * Outgoing edge topology (same-topology preserve / fan-out / collapse / refuse)
+ * for cross-type changes is handled upstream in the edit builder; this function
+ * only touches node data.
  */
 export function applyNodeUpdates(
   nodeUpdates: Array<{ nodeId: string; data?: Record<string, any>; newType?: string }>,
-  existingNodes: Node[]
+  existingNodes: Node[],
+  platform: Platform
 ): Node[] {
   return nodeUpdates.map((update) => {
     const existing = existingNodes.find((n) => n.id === update.nodeId)
     if (!existing) return null
-    return {
-      ...existing,
-      type: update.newType || existing.type,
-      data: { ...existing.data, ...update.data },
-    }
+    return mergeNodeUpdate(existing, update, platform)
   }).filter(Boolean) as Node[]
 }
 
@@ -138,7 +202,7 @@ export async function executeEditMode(
     }
   }
 
-  const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes)
+  const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes, request.platform)
 
   return {
     message: aiMessage,
@@ -314,7 +378,7 @@ export async function executeEditModeStreaming(
     return
   }
 
-  const updatedNodes = applyNodeUpdates(validatedEditResult.nodeUpdates, existingNodes)
+  const updatedNodes = applyNodeUpdates(validatedEditResult.nodeUpdates, existingNodes, request.platform)
 
   emit({
     type: 'result',
@@ -347,22 +411,21 @@ interface EditToolCallbacks {
 
 /**
  * Build the current flow state by merging existing nodes with applied edits.
- * Shared by validate_result and list_variables tools.
+ * Shared by validate_result and list_variables tools. Uses the same
+ * mergeNodeUpdate helper as applyNodeUpdates so the validator sees the exact
+ * shape that will eventually be committed.
  */
 function buildCurrentNodes(
   existingNodes: Node[],
   editResult: BuildEditFlowResult | null,
+  platform: Platform,
 ): Node[] {
   if (!editResult) return [...existingNodes]
   const nodes = [...existingNodes, ...editResult.newNodes]
   for (const update of editResult.nodeUpdates) {
     const idx = nodes.findIndex(n => n.id === update.nodeId)
     if (idx !== -1) {
-      nodes[idx] = {
-        ...nodes[idx],
-        type: update.newType || nodes[idx].type,
-        data: { ...nodes[idx].data, ...update.data },
-      }
+      nodes[idx] = mergeNodeUpdate(nodes[idx], update, platform)
     }
   }
   const removeIds = new Set(editResult.removeNodeIds)
@@ -482,7 +545,10 @@ function createEditTools(
           // through as non-fatal. Only the "target not found — skipped"
           // case is a hard skip that must roll back.
           const skipWarnings = editResult.warnings.filter(
-            (w) => w.startsWith("addEdge ") || w.startsWith("nodeUpdate target ")
+            (w) =>
+              w.startsWith("addEdge ") ||
+              w.startsWith("nodeUpdate target ") ||
+              w.startsWith("ambiguous_type_change ")
           )
           if (skipWarnings.length > 0) {
             // Roll back: don't store this editResult as the canonical one.
@@ -494,7 +560,7 @@ function createEditTools(
               success: false,
               error: `apply_edit plan was malformed — ${skipWarnings.length} operation(s) could not be applied`,
               skippedOperations: skipWarnings,
-              suggestion: "Fix the plan and call apply_edit again. Common causes: (1) referencing a newly-created node by a made-up ID in addEdges (new node IDs are generated by the builder, not derived from removed node IDs); (2) referencing a node that was removed in the same plan; (3) self-referencing edges; (4) nodeUpdate targeting an ID that does not exist — call get_node_details first to confirm the node is still present. To change a node's type while preserving its incoming edges, consider updating content in place via nodeUpdates rather than remove + chain.",
+              suggestion: "Fix the plan and call apply_edit again. Common causes: (1) referencing a newly-created node by a made-up ID in addEdges — use nodeUpdate with newType to change an existing node's type in place instead; (2) referencing a node that was removed in the same plan; (3) self-referencing edges; (4) nodeUpdate target not found — call get_node_details first to confirm; (5) ambiguous_type_change — the new type has different outgoing handles than the old, and the edge mapping isn't unique. Ask the user which old targets should map to which new handles, then retry with explicit addEdges/removeEdges.",
             }
           }
 
@@ -571,7 +637,7 @@ function createEditTools(
           }
         }
 
-        const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult)
+        const filteredNodes = buildCurrentNodes(existingNodes, finalEditResult, request.platform)
         const filteredEdges = buildCurrentEdges(existingEdges, finalEditResult)
 
         const validation = validateGeneratedFlow(filteredNodes, filteredEdges, request.platform)
@@ -596,7 +662,7 @@ function createEditTools(
           callbacks.setValidatedEditResult?.(finalEditResult)
           const alreadyEmitted = callbacks.hasFlowReadyBeenEmittedFor?.(finalEditResult) ?? false
           if (emit && !alreadyEmitted) {
-            const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes)
+            const updatedNodes = applyNodeUpdates(finalEditResult.nodeUpdates, existingNodes, request.platform)
             emit({
               type: 'flow_ready',
               updates: {
@@ -693,7 +759,7 @@ function createEditTools(
       description: 'List all available variables in the current flow, including any created by recent apply_edit calls. Returns flow variables (from storeAs, API response mapping, action nodes), system variables, and global variables. Use this AFTER apply_edit to check what new variables are available — the initial prompt already lists variables at conversation start.',
       inputSchema: z.object({}),
       execute: async () => {
-        const currentNodes = buildCurrentNodes(existingNodes, callbacks.getEditResult())
+        const currentNodes = buildCurrentNodes(existingNodes, callbacks.getEditResult(), request.platform)
         const flowVars = collectFlowVariablesRich(currentNodes)
 
         return {

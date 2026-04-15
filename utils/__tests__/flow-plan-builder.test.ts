@@ -1051,6 +1051,270 @@ describe("buildFlowFromPlan — quickReply auto-conversion", () => {
   })
 })
 
+// ─── buildEditFlowFromPlan — newType edge topology ──
+
+describe("buildEditFlowFromPlan — newType (type changes)", () => {
+  it("preserves outgoing edges on quickReply → interactiveList (same-family)", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick",
+          choices: [
+            { id: "c1", text: "A" },
+            { id: "c2", text: "B" },
+          ],
+        },
+      },
+    ] as any[]
+    const existingEdges = [
+      { id: "e1", source: "qr-1", target: "msg-A", sourceHandle: "c1" },
+      { id: "e2", source: "qr-1", target: "msg-B", sourceHandle: "c2" },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "convert to list",
+      nodeUpdates: [{
+        nodeId: "qr-1",
+        newType: "whatsappInteractiveList",
+        content: { choices: ["A", "B"] },
+      }],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, existingEdges)
+    // No ambiguous warning
+    expect(result.warnings.find(w => w.startsWith("ambiguous_type_change"))).toBeUndefined()
+    // The nodeUpdate was applied
+    expect(result.nodeUpdates).toHaveLength(1)
+    expect(result.nodeUpdates[0].newType).toBe("whatsappInteractiveList")
+    // No new edges added and no edges removed (preserved as-is)
+    expect(result.newEdges).toHaveLength(0)
+    expect(result.removeEdges).toHaveLength(0)
+  })
+
+  it("collapses quickReply → whatsappMessage when all buttons point to the same target", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick",
+          choices: [
+            { id: "c1", text: "A" },
+            { id: "c2", text: "B" },
+          ],
+        },
+      },
+    ] as any[]
+    const existingEdges = [
+      { id: "e1", source: "qr-1", target: "msg-shared", sourceHandle: "c1" },
+      { id: "e2", source: "qr-1", target: "msg-shared", sourceHandle: "c2" },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "convert to message",
+      nodeUpdates: [{
+        nodeId: "qr-1",
+        newType: "whatsappMessage",
+        content: { text: "Thanks for picking" },
+      }],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, existingEdges)
+    // Not ambiguous
+    expect(result.warnings.find(w => w.startsWith("ambiguous_type_change"))).toBeUndefined()
+    // The nodeUpdate was still applied (only edge topology was rewritten)
+    expect(result.nodeUpdates).toHaveLength(1)
+    expect(result.nodeUpdates[0].newType).toBe("whatsappMessage")
+    // Both old edges scheduled for removal
+    expect(result.removeEdges).toHaveLength(2)
+    // One new edge added pointing to the shared target
+    expect(result.newEdges).toHaveLength(1)
+    expect(result.newEdges[0].target).toBe("msg-shared")
+    expect(result.newEdges[0].source).toBe("qr-1")
+    // New edge uses the new default handle (normalized to undefined for
+    // single-output nodes per ReactFlow convention).
+    expect(result.newEdges[0].sourceHandle).toBeUndefined()
+    // Collapse warning emitted
+    expect(result.warnings.find(w => w.includes("Collapsed 2 outgoing edges"))).toBeDefined()
+  })
+
+  it("refuses quickReply → whatsappMessage when buttons point to different targets (ambiguous)", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick",
+          choices: [
+            { id: "c1", text: "A" },
+            { id: "c2", text: "B" },
+          ],
+        },
+      },
+    ] as any[]
+    const existingEdges = [
+      { id: "e1", source: "qr-1", target: "msg-A", sourceHandle: "c1" },
+      { id: "e2", source: "qr-1", target: "msg-B", sourceHandle: "c2" },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "convert to message",
+      nodeUpdates: [{
+        nodeId: "qr-1",
+        newType: "whatsappMessage",
+        content: { text: "Thanks" },
+      }],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, existingEdges)
+    // ambiguous_type_change warning present
+    const ambiguous = result.warnings.find(w => w.startsWith("ambiguous_type_change"))
+    expect(ambiguous).toBeDefined()
+    expect(ambiguous).toContain("qr-1")
+    // The nodeUpdate was SKIPPED (not pushed to result.nodeUpdates)
+    expect(result.nodeUpdates).toHaveLength(0)
+  })
+
+  it("no edge work when the old node had no outgoing edges", () => {
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: { platform: "whatsapp", question: "Pick", choices: [] },
+      },
+    ] as any[]
+    const existingEdges = [] as any[]
+    const plan: EditFlowPlan = {
+      message: "convert",
+      nodeUpdates: [{
+        nodeId: "qr-1",
+        newType: "whatsappMessage",
+        content: { text: "Hi" },
+      }],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, existingEdges)
+    expect(result.warnings.find(w => w.startsWith("ambiguous_type_change"))).toBeUndefined()
+    expect(result.nodeUpdates).toHaveLength(1)
+    expect(result.nodeUpdates[0].newType).toBe("whatsappMessage")
+  })
+
+  it("preserves existing choices when newType converts quickReply → interactiveList without choice content", () => {
+    // Same-family conversion where the AI sends listTitle/label but doesn't
+    // resend choices. Without backfill, applyNodeUpdates factory-resets (base
+    // types differ: quickReply vs list) and drops the user's 3 choices.
+    const existingNodes = [
+      {
+        id: "qr1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          question: "Pick one",
+          choices: [
+            { id: "old-c1", text: "A" },
+            { id: "old-c2", text: "B" },
+            { id: "old-c3", text: "C" },
+          ],
+        },
+      },
+    ] as any[]
+
+    const result = buildEditFlowFromPlan(
+      {
+        message: "convert to list",
+        nodeUpdates: [
+          { nodeId: "qr1", newType: "interactiveList", content: { listTitle: "Pick one please" } },
+        ],
+      } as any,
+      "whatsapp",
+      existingNodes,
+      [],
+    )
+
+    expect(result.nodeUpdates.length).toBe(1)
+    const updated = result.nodeUpdates[0]
+    expect(updated.newType).toBe("interactiveList")
+    const choices = (updated.data as any).choices
+    expect(choices).toHaveLength(3)
+    // Existing IDs should be preserved by the ID-preservation block
+    expect(choices[0].id).toBe("old-c1")
+    expect(choices[1].id).toBe("old-c2")
+    expect(choices[2].id).toBe("old-c3")
+  })
+
+  it("fans out single default edge when question → quickReply adds N handles", () => {
+    // Expansion case: question has one default edge → msg. Converting to
+    // quickReply with 3 buttons should produce 3 edges, one per new handle,
+    // all pointing at the same target. The old default edge is dropped.
+    const existingNodes = [
+      {
+        id: "q1",
+        type: "whatsappQuestion",
+        position: { x: 0, y: 0 },
+        data: { platform: "whatsapp", question: "What's your name?", storeAs: "name" },
+      },
+      {
+        id: "m1",
+        type: "whatsappMessage",
+        position: { x: 100, y: 0 },
+        data: { platform: "whatsapp", text: "Thanks!" },
+      },
+    ] as any[]
+
+    const existingEdges = [
+      { id: "e1", source: "q1", target: "m1" }, // default edge (no sourceHandle)
+    ] as any[]
+
+    const result = buildEditFlowFromPlan(
+      {
+        message: "convert question to quickReply",
+        nodeUpdates: [
+          {
+            nodeId: "q1",
+            newType: "quickReply",
+            content: {
+              question: "What's your name?",
+              choices: ["Alice", "Bob", "Carol"],
+            },
+          },
+        ],
+      } as any,
+      "whatsapp",
+      existingNodes,
+      existingEdges,
+    )
+
+    // The nodeUpdate was applied (not refused as ambiguous)
+    expect(result.warnings.find(w => w.startsWith("ambiguous_type_change"))).toBeUndefined()
+    expect(result.nodeUpdates).toHaveLength(1)
+    expect(result.nodeUpdates[0].newType).toBe("quickReply")
+
+    // Expect 3 edges from q1 to m1, one per button handle
+    const fanoutEdges = result.newEdges.filter(e => e.source === "q1" && e.target === "m1")
+    expect(fanoutEdges).toHaveLength(3)
+    // Each edge should have a distinct sourceHandle (one per new choice)
+    const handles = new Set(fanoutEdges.map(e => e.sourceHandle))
+    expect(handles.size).toBe(3)
+    // None of them should be undefined — they're all choice handles
+    for (const handle of handles) {
+      expect(handle).toBeDefined()
+    }
+
+    // Old default edge is scheduled for removal
+    const removed = result.removeEdges.find(e => e.source === "q1" && e.target === "m1")
+    expect(removed).toBeDefined()
+
+    // Fanout warning (informational, not ambiguous)
+    const warning = result.warnings.find(w =>
+      w.includes("q1") && w.includes("Added 3 new handles") && w.includes("m1")
+    )
+    expect(warning).toBeDefined()
+  })
+})
+
 // ─── addEdges validation ────────────────────────────
 
 describe("buildEditFlowFromPlan — addEdges validation", () => {
@@ -1749,5 +2013,183 @@ describe("buildEditFlowFromPlan with templateResolver", () => {
     expect(result.newNodes.length).toBe(1)
     expect(result.newNodes[0].type).toBe("flowTemplate")
     expect((result.newNodes[0].data as any).internalNodes.length).toBe(1)
+  })
+})
+
+describe("buildEditFlowFromPlan — localId in chains", () => {
+  it("resolves localId:X in addEdges to the generated node ID", () => {
+    const existingNodes = [
+      { id: "qr-1", type: "whatsappQuickReply", position: { x: 0, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c1", text: "A" }, { id: "c2", text: "B" }] } },
+      { id: "qr-2", type: "whatsappQuickReply", position: { x: 100, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c3", text: "X" }] } },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "fan-in to a new confirmation",
+      chains: [{
+        attachTo: "qr-1",
+        attachHandle: "c1",
+        steps: [{
+          step: "node",
+          nodeType: "whatsappMessage",
+          content: { text: "Confirmed!" },
+          localId: "confirm",
+        }],
+      }],
+      addEdges: [
+        { source: "qr-2", target: "localId:confirm", sourceButtonIndex: 0 },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    // Chain created the new message
+    expect(result.newNodes).toHaveLength(1)
+    const newNode = result.newNodes[0]
+    expect(newNode.type).toBe("whatsappMessage")
+    // addEdge resolved localId:confirm to the new node's ID
+    const fanIn = result.newEdges.find(e => e.source === "qr-2" && e.target === newNode.id)
+    expect(fanIn).toBeDefined()
+  })
+
+  it("emits a warning and skips the edge when localId is not found", () => {
+    const existingNodes = [
+      { id: "qr-1", type: "whatsappQuickReply", position: { x: 0, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c1", text: "A" }] } },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "bad localId reference",
+      chains: [],
+      addEdges: [
+        { source: "qr-1", target: "localId:typo-name", sourceButtonIndex: 0 },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    expect(result.newEdges).toHaveLength(0)
+    const skipWarning = result.warnings.find(w => w.startsWith("addEdge ") && w.includes("typo-name"))
+    expect(skipWarning).toBeDefined()
+  })
+
+  it("warns on duplicate localId and uses the second one", () => {
+    const existingNodes = [
+      { id: "qr-1", type: "whatsappQuickReply", position: { x: 0, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c1", text: "A" }] } },
+      { id: "qr-2", type: "whatsappQuickReply", position: { x: 100, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c2", text: "B" }] } },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "duplicate localId",
+      chains: [
+        {
+          attachTo: "qr-1",
+          attachHandle: "c1",
+          steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "First" }, localId: "shared" }],
+        },
+        {
+          attachTo: "qr-2",
+          attachHandle: "c2",
+          steps: [{ step: "node", nodeType: "whatsappMessage", content: { text: "Second" }, localId: "shared" }],
+        },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    expect(result.newNodes).toHaveLength(2)
+    const dupWarning = result.warnings.find(w => w.startsWith("duplicate localId"))
+    expect(dupWarning).toBeDefined()
+  })
+
+  it("passes through non-localId source/target unchanged", () => {
+    const existingNodes = [
+      { id: "qr-1", type: "whatsappQuickReply", position: { x: 0, y: 0 }, data: { platform: "whatsapp", choices: [{ id: "c1", text: "A" }, { id: "c2", text: "B" }] } },
+      { id: "msg-1", type: "whatsappMessage", position: { x: 100, y: 0 }, data: { platform: "whatsapp", text: "Target" } },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "normal addEdge with no localId",
+      chains: [],
+      addEdges: [
+        { source: "qr-1", target: "msg-1", sourceButtonIndex: 0 },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    expect(result.newEdges).toHaveLength(1)
+    expect(result.newEdges[0].source).toBe("qr-1")
+    expect(result.newEdges[0].target).toBe("msg-1")
+  })
+
+  it("resolves target:localId + sourceButtonIndex to both target and sourceHandle", () => {
+    // Combines localId target resolution with sourceButtonIndex → button ID
+    // resolution. Both should run in the same addEdge: the target maps to
+    // the chain-created node, and sourceHandle resolves to the source
+    // node's second button id ("c2").
+    const existingNodes = [
+      {
+        id: "qr-2",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: {
+          platform: "whatsapp",
+          choices: [
+            { id: "c1", text: "A" },
+            { id: "c2", text: "B" },
+          ],
+        },
+      },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "target localId with sourceButtonIndex",
+      chains: [{
+        attachTo: "qr-2",
+        attachHandle: "c1",
+        steps: [{
+          step: "node",
+          nodeType: "whatsappMessage",
+          content: { text: "Confirmed!" },
+          localId: "confirm",
+        }],
+      }],
+      addEdges: [
+        { source: "qr-2", target: "localId:confirm", sourceButtonIndex: 1 },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    const newNode = result.newNodes[0]
+    const fanIn = result.newEdges.find(
+      e => e.source === "qr-2" && e.target === newNode.id && e.sourceHandle === "c2"
+    )
+    expect(fanIn).toBeDefined()
+  })
+
+  it("resolves source:localId to the chain-created node ID", () => {
+    // Reverse direction: source uses localId, target is an existing node.
+    // The localId-created node is the source of a new edge pointing into an
+    // existing message node.
+    const existingNodes = [
+      {
+        id: "qr-1",
+        type: "whatsappQuickReply",
+        position: { x: 0, y: 0 },
+        data: { platform: "whatsapp", choices: [{ id: "c1", text: "A" }] },
+      },
+      {
+        id: "target-msg",
+        type: "whatsappMessage",
+        position: { x: 200, y: 0 },
+        data: { platform: "whatsapp", text: "Final" },
+      },
+    ] as any[]
+    const plan: EditFlowPlan = {
+      message: "source localId",
+      chains: [{
+        attachTo: "qr-1",
+        attachHandle: "c1",
+        steps: [{
+          step: "node",
+          nodeType: "whatsappMessage",
+          content: { text: "Intermediate" },
+          localId: "mid",
+        }],
+      }],
+      addEdges: [
+        { source: "localId:mid", target: "target-msg" },
+      ],
+    }
+    const result = buildEditFlowFromPlan(plan, "whatsapp", existingNodes, [])
+    const newNode = result.newNodes.find(n => (n.data as any).text === "Intermediate")
+    expect(newNode).toBeDefined()
+    const edge = result.newEdges.find(e => e.source === newNode!.id && e.target === "target-msg")
+    expect(edge).toBeDefined()
   })
 })

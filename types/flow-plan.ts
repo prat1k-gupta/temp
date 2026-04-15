@@ -74,6 +74,13 @@ export interface NodeStep {
   step: "node"
   nodeType: string
   content?: NodeContent
+  /**
+   * Optional temporary handle for this newly-created node, usable as
+   * `localId:<name>` in the same plan's addEdges `source`/`target`
+   * fields to reference this node before its real ID is generated.
+   * Valid only within a single apply_edit plan.
+   */
+  localId?: string
 }
 
 export interface BranchStep {
@@ -119,6 +126,7 @@ export const nodeStepSchema = z.object({
   step: z.literal("node"),
   nodeType: z.string(),
   content: nodeContentSchema.optional(),
+  localId: z.string().optional(),
 })
 
 // Non-recursive schema: branches contain only node steps (no nested branches).
@@ -145,6 +153,17 @@ export const flowPlanSchema = z.object({
 export interface NodeUpdate {
   nodeId: string
   content: NodeContent
+  /**
+   * Optional: change the node's type in place. When set, the builder
+   * treats this as a cross-type update — the node's ID and incoming
+   * edges are preserved, but its data shape is replaced with factory
+   * defaults for the new type + the content supplied. Outgoing edges
+   * are remapped according to the handle topology of the new type
+   * (same → preserve, expansion → fan out, contraction (all same
+   * target) → collapse, contraction (different targets) or structural
+   * mismatch → refuse with ambiguous_type_change error).
+   */
+  newType?: string
 }
 
 export interface EdgeReference {
@@ -182,6 +201,7 @@ export interface EditFlowPlan {
 export const nodeUpdateSchema = z.object({
   nodeId: z.string(),
   content: nodeContentSchema,
+  newType: z.string().optional(),
 })
 
 export const edgeReferenceSchema = z.object({

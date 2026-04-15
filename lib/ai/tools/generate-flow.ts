@@ -304,7 +304,7 @@ async function handleFallback(
           existingEdgesFallback,
           templateResolver
         )
-        const updatedNodes = applyNodeUpdates(nodeUpdates, existingNodes)
+        const updatedNodes = applyNodeUpdates(nodeUpdates, existingNodes, request.platform)
 
         return {
           message: editPlan.message || "Flow updated successfully",

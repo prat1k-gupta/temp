@@ -1,8 +1,17 @@
 /**
  * URL for the fs-whatsapp backend. Read once at module load.
- * Uses the same env var as lib/api-client.ts so dev config stays consistent.
+ *
+ * This is SERVER-SIDE code (runs inside the Next.js Node runtime), so when
+ * we run in the docker-compose dev stack, "localhost" inside the container
+ * means the container itself — not the host. The compose file exposes the
+ * correct server-side URL as `FS_WHATSAPP_API_URL` (pointing at
+ * `host.docker.internal:8080`), which we use first. Falls back to the
+ * client-side env var and finally to localhost for local-machine dev.
  */
-export const FS_WHATSAPP_URL = process.env.NEXT_PUBLIC_FS_WHATSAPP_URL || "http://localhost:8080"
+export const FS_WHATSAPP_URL =
+  process.env.FS_WHATSAPP_API_URL ||
+  process.env.NEXT_PUBLIC_FS_WHATSAPP_URL ||
+  "http://localhost:8080"
 
 /** Prefix that every general API key carries. Used for fast-fail auth rejection. */
 export const AGENT_API_KEY_PREFIX = "whm_"

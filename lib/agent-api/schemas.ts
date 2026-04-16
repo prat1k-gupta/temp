@@ -1,13 +1,6 @@
 import { z } from "zod"
 import { FIND_FLOW_DEFAULT_LIMIT, FIND_FLOW_MAX_LIMIT } from "./constants"
 
-/**
- * Trigger keyword validation — lowercase alphanumeric, dash, underscore.
- * 1-50 chars. Must be applied AFTER the caller normalizes to lowercase.
- * See spec "Section 2" validation rules.
- */
-export const TRIGGER_KEYWORD_REGEX = /^[a-z0-9_-]{1,50}$/
-
 /** GET /v1/agent/flows query params. */
 export const findFlowQuerySchema = z.object({
   query: z.string().optional(),
@@ -24,11 +17,10 @@ export type FindFlowQuery = z.infer<typeof findFlowQuerySchema>
 
 /** POST /v1/agent/flows request body. */
 export const createFlowBodySchema = z.object({
+  name: z.string().min(1).max(100),
   instruction: z.string().min(1).max(4000),
   channel: z.enum(["whatsapp", "instagram", "web"]),
-  trigger_keyword: z.string().regex(TRIGGER_KEYWORD_REGEX, {
-    message: "Trigger keyword must be 1-50 chars, lowercase alphanumeric + dash + underscore",
-  }),
+  trigger_keyword: z.string().min(1).max(50),
 })
 
 export type CreateFlowBody = z.infer<typeof createFlowBodySchema>

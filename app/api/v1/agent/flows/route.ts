@@ -84,7 +84,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
     })
   }
 
-  const { instruction, channel, trigger_keyword: rawKeyword } = parsed.data
+  const { name: flowName, instruction, channel, trigger_keyword: rawKeyword } = parsed.data
   const normalizedKeyword = rawKeyword.toLowerCase()
 
   // Channel check
@@ -112,7 +112,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
 
       // Step 1: Create project
       const project = await createProject(ctx, {
-        name: instruction.slice(0, 100),
+        name: flowName,
         platform: channel,
         triggerKeywords: [normalizedKeyword],
         triggerMatchType: "exact",
@@ -271,7 +271,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
       const converted = convertToFsWhatsApp(
         flat.nodes,
         flat.edges,
-        instruction.slice(0, 100),        // flowName
+        flowName,        // flowName
         undefined,                          // flowDescription
         [triggerId],                        // triggerIds
         [normalizedKeyword],                // triggerKeywords
@@ -296,7 +296,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
       writer.result({
         flow_id: projectId,
         version: version.version_number,
-        name: instruction.slice(0, 100),
+        name: flowName,
         summary: captured.message || "Flow created successfully",
         node_count: allNodes.length,
         magic_flow_url: `${appUrl}/flow/${projectId}`,

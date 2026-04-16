@@ -295,13 +295,15 @@ describe("POST /v1/agent/flows", () => {
   }
 
   function makePostRequest(body: Record<string, unknown>) {
+    // Inject a default name if not provided (required field)
+    const withDefaults = { name: "Test Flow", ...body }
     return new Request("https://example.com/api/v1/agent/flows", {
       method: "POST",
       headers: {
         "x-api-key": "whm_abc",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(withDefaults),
     })
   }
 

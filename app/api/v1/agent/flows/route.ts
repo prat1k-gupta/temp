@@ -15,6 +15,7 @@ import { generateFlowStreaming } from "@/lib/ai/tools/generate-flow"
 import type { StreamEvent, GenerateFlowResponse } from "@/lib/ai/tools/generate-flow"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import { flattenFlow } from "@/utils/flow-flattener"
+import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import type { Node, Edge } from "@xyflow/react"
 
 /** Subset of GenerateFlowResponse["flowData"] that we need after AI generation. */
@@ -132,6 +133,17 @@ export const POST = withAgentAuth(async (ctx, req) => {
         error: string | null
       } = { flowData: null, message: "", error: null }
 
+      // Pass default templates so the AI can use flowTemplate nodes (Name, Email,
+      // DOB, Address) and buildFlowFromPlan's templateResolver can expand them
+      // into their internal sub-nodes. Without this, flowTemplate nodes get empty
+      // internals and the converter/flattener produces 0 steps.
+      const userTemplates = DEFAULT_TEMPLATES.map(t => ({
+        id: t.id, name: t.name, aiMetadata: t.aiMetadata,
+      }))
+      const userTemplateData = DEFAULT_TEMPLATES.map(t => ({
+        id: t.id, name: t.name, nodes: t.nodes, edges: t.edges,
+      }))
+
       await generateFlowStreaming(
         {
           prompt: instruction,
@@ -141,6 +153,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
             edges: [],
           },
           context: { source: "agent_api" },
+          userTemplates,
+          userTemplateData,
         },
         (event: StreamEvent) => {
           switch (event.type) {

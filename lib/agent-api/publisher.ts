@@ -104,6 +104,8 @@ export interface CreateProjectOpts {
   platform: string
   triggerKeywords?: string[]
   triggerMatchType?: string
+  waAccountId?: string
+  waPhoneNumber?: string
 }
 
 export async function createProject(
@@ -125,6 +127,8 @@ export async function createProject(
         platform: opts.platform,
         trigger_keywords: opts.triggerKeywords,
         trigger_match_type: opts.triggerMatchType,
+        ...(opts.waAccountId ? { wa_account_id: opts.waAccountId } : {}),
+        ...(opts.waPhoneNumber ? { wa_phone_number: opts.waPhoneNumber } : {}),
       }),
     })
   } catch (err) {

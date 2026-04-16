@@ -113,6 +113,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         platform: channel,
         triggerKeywords: [normalizedKeyword],
         triggerMatchType: "exact",
+        waAccountId: ctx.account.id,
+        waPhoneNumber: ctx.account.phone_number,
       })
       projectId = project.id
 

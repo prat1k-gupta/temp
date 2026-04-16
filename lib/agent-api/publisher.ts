@@ -491,7 +491,9 @@ export async function publishRuntimeFlow(
     throw new AgentError("publish_failed", "fs-whatsapp returned unparseable runtime flow response")
   }
 
-  const runtimeFlowId = body.data?.id
+  // On create, the response includes the new ID. On update, the response
+  // may not — fall back to the ID we already have.
+  const runtimeFlowId = body.data?.id || opts.existingRuntimeFlowId
   if (!runtimeFlowId) {
     throw new AgentError("publish_failed", "fs-whatsapp did not return a runtime flow ID")
   }

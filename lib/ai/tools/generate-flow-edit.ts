@@ -21,6 +21,7 @@ import type {
   UpdateBrief,
 } from "./generate-flow"
 import { buildToolStepPayload, nodeBrief } from "./generate-flow"
+import { createListApprovedTemplatesTool } from "./list-approved-templates"
 
 /**
  * Max tool-use steps the edit-mode agent may take before the runtime forces
@@ -788,10 +789,20 @@ function createEditTools(
 
   const apiUrl = process.env.FS_WHATSAPP_API_URL
 
+  // list_approved_templates: available whenever the user is on WhatsApp AND
+  // authenticated. Factory returns null otherwise, so we skip spread.
+  const listTemplatesTool =
+    request.platform === 'whatsapp'
+      ? createListApprovedTemplatesTool(toolContext)
+      : null
+  const toolsWithTemplates = listTemplatesTool
+    ? { ...baseTools, list_approved_templates: listTemplatesTool }
+    : baseTools
+
   if (toolContext?.publishedFlowId && request.platform === 'whatsapp' && apiUrl && toolContext.authHeader) {
     const { publishedFlowId, waAccountName, authHeader } = toolContext
     return {
-      ...baseTools,
+      ...toolsWithTemplates,
       trigger_flow: tool({
         description: 'Trigger a test run of the published flow by sending it to a phone number via WhatsApp. Only use when the user asks to test the flow or you have just finished a significant edit.',
         inputSchema: z.object({
@@ -828,5 +839,5 @@ function createEditTools(
     }
   }
 
-  return baseTools
+  return toolsWithTemplates
 }

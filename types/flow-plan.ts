@@ -27,6 +27,7 @@ export const VALID_BASE_NODE_TYPES = [
   // Action
   "apiFetch",
   "action",
+  "templateMessage",
   // Flow terminator
   "flowComplete",
   // Integration
@@ -68,6 +69,15 @@ export interface NodeContent {
   variables?: Array<{ name: string; value: string }>
   tags?: string[]
   tagAction?: "add" | "remove"
+  // templateMessage fields (Meta-approved WhatsApp templates)
+  templateName?: string
+  displayName?: string
+  language?: string
+  category?: string
+  headerType?: string
+  bodyPreview?: string
+  parameterMappings?: Array<{ templateVar: string; flowValue: string }>
+  templateButtons?: Array<{ type: string; text: string; url?: string; id?: string }>
 }
 
 export interface NodeStep {
@@ -120,6 +130,15 @@ export const nodeContentSchema = z.object({
   variables: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
   tags: z.array(z.string()).optional(),
   tagAction: z.enum(["add", "remove"]).optional(),
+  // templateMessage fields (Meta-approved WhatsApp templates)
+  templateName: z.string().optional(),
+  displayName: z.string().optional(),
+  language: z.string().optional(),
+  category: z.string().optional(),
+  headerType: z.string().optional(),
+  bodyPreview: z.string().optional(),
+  parameterMappings: z.array(z.object({ templateVar: z.string(), flowValue: z.string() })).optional(),
+  templateButtons: z.array(z.object({ type: z.string(), text: z.string(), url: z.string().optional(), id: z.string().optional() })).optional(),
 })
 
 export const nodeStepSchema = z.object({

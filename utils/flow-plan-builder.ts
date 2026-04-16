@@ -25,11 +25,23 @@ function normalizeHandle(handle: string | undefined | null): string | undefined 
 }
 
 /**
- * Read a node's choice items from the canonical `data.choices` field.
+ * Read a node's choice items from `data.choices`, falling back to
+ * `data.buttons` for templateMessage nodes (which were intentionally
+ * excluded from the data.choices unification — different schema).
+ * Only quick_reply buttons get output handles, so we filter to those.
  */
 function readChoices(node: { data?: any } | undefined | null): ChoiceData[] {
   if (!node?.data) return []
-  return (node.data as { choices?: ChoiceData[] }).choices ?? []
+  if (node.data.choices?.length) return node.data.choices
+  if (node.data.buttons?.length) {
+    return node.data.buttons
+      .filter((btn: any) => btn.type === "quick_reply")
+      .map((btn: any, idx: number) => ({
+        id: btn.id || `btn-${idx}`,
+        text: btn.text || "",
+      }))
+  }
+  return []
 }
 import { createNode, createFlowTemplateNode } from "./node-factory"
 import { createChoiceData, shouldConvertToList } from "./node-operations"
@@ -39,6 +51,7 @@ import { NODE_TEMPLATES } from "@/constants/node-categories"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import { isMultiOutputType, getFixedHandles, getBaseNodeType } from "./platform-helpers"
 import { autoStoreAs, collectFlowVariables } from "./flow-variables"
+import { extractTemplateVariables } from "./template-helpers"
 
 /**
  * Compute the outgoing handle IDs a node of `nodeType` will expose AFTER
@@ -1337,6 +1350,32 @@ export function contentToNodeData(
   if (content.body) data.body = content.body
   if (content.responseMapping) data.responseMapping = content.responseMapping
   if (content.fallbackMessage) data.fallbackMessage = content.fallbackMessage
+
+  // templateMessage — Meta-approved WhatsApp templates
+  if (nodeType === "templateMessage") {
+    if (content.templateId) data.templateId = content.templateId
+    if (content.templateName) data.templateName = content.templateName
+    if (content.displayName) data.displayName = content.displayName
+    if (content.language) data.language = content.language
+    if (content.category) data.category = content.category
+    if (content.headerType) data.headerType = content.headerType
+    if (content.bodyPreview) data.bodyPreview = content.bodyPreview
+
+    if (content.templateButtons) {
+      data.buttons = content.templateButtons.map((b, i) => ({
+        ...b,
+        type: String(b.type || "").toLowerCase(),
+        id: b.id || `btn-${i}`,
+      }))
+    }
+
+    if (content.parameterMappings) {
+      data.parameterMappings = content.parameterMappings
+    } else if (content.bodyPreview) {
+      data.parameterMappings = extractTemplateVariables(content.bodyPreview)
+        .map((v) => ({ templateVar: v, flowValue: "" }))
+    }
+  }
 
   return data
 }

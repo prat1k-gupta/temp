@@ -10,6 +10,7 @@ import type { Platform, TemplateResolver } from "@/types"
 import type { GenerateFlowRequest, GenerateFlowResponse, NodeBrief } from "./generate-flow"
 import type { StreamEvent } from "./generate-flow"
 import { buildToolStepPayload, nodeBrief } from "./generate-flow"
+import { createListApprovedTemplatesTool } from "./list-approved-templates"
 
 /**
  * Streaming create mode: uses streamText() with a build_and_validate tool.
@@ -28,11 +29,23 @@ export async function executeCreateModeStreaming(
   let finalWarnings: string[] = []
   let finalDebugData: Record<string, unknown> = {}
 
+  // list_approved_templates: available whenever the user is on WhatsApp AND
+  // authenticated. Factory returns null otherwise, so we skip the spread.
+  const listTemplatesTool =
+    request.platform === 'whatsapp'
+      ? createListApprovedTemplatesTool(request.toolContext)
+      : null
+
   const result = streamText({
     model: getModel('claude-sonnet'),
-    system: systemPrompt + `\n\n**IMPORTANT:** You have a \`build_and_validate\` tool. After describing your plan, call it with your flow plan JSON. The tool will build the flow and validate it. If there are issues, fix them and call the tool again. Do NOT output raw JSON — always use the tool.`,
+    system: systemPrompt + `\n\n**IMPORTANT:** You have a \`build_and_validate\` tool. After describing your plan, call it with your flow plan JSON. The tool will build the flow and validate it. If there are issues, fix them and call the tool again. Do NOT output raw JSON — always use the tool.${
+      listTemplatesTool
+        ? "\n\nIf the user mentions a WhatsApp template by name or asks for a template message, FIRST call `list_approved_templates` to see what's available, THEN call `build_and_validate` with real template data."
+        : ""
+    }`,
     prompt: userPrompt,
     tools: {
+      ...(listTemplatesTool ? { list_approved_templates: listTemplatesTool } : {}),
       build_and_validate: tool({
         description: 'Build and validate a flow plan. Pass your complete flow plan as the argument. Returns validation results — if issues are found, fix the plan and call again.',
         inputSchema: z.object({
@@ -121,9 +134,11 @@ export async function executeCreateModeStreaming(
     }),
 
     experimental_onToolCallStart: ({ toolCall }) => {
+      if (!toolCall) return
       emit({ type: 'tool_step', tool: toolCall.toolName, status: 'running' })
     },
     experimental_onToolCallFinish: ({ toolCall, ...rest }) => {
+      if (!toolCall) return
       const output = 'output' in rest && rest.success ? rest.output : undefined
       const payload = buildToolStepPayload(toolCall.toolName, output)
       emit({

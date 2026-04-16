@@ -44,7 +44,7 @@ ${isEdit && request.toolContext?.authHeader ? `
 - \`list_flows\` — list published flows to find flow IDs. Use when you don't have the current flow's published ID.
 - \`list_accounts\` — list WhatsApp accounts to find account names. Use when you don't have the account name.
 - \`get_flow_variables\` — get variables used by a flow. Use to understand what data a flow collects before broadcasting.
-- \`preview_audience\` — preview how many contacts match a filter. ALWAYS call this before create_campaign. Show the user BOTH the exact filter you applied (in readable form, e.g. "Tag is delhi") AND the matching count so they can verify the right contacts were selected.
+- \`preview_audience\` — preview how many contacts match a filter. ALWAYS call this before create_campaign. Show the user BOTH the exact filter you applied (in readable form, e.g. "Tag is delhi") AND the matching count so they can verify the right contacts were selected. Note: preview_audience takes filter/search/channel as top-level params; create_campaign wraps them inside audience_config.
 - \`create_campaign\` — creates a draft campaign (does NOT send). Always call preview_audience first, then confirm details with the user (name, audience count). Use the current flow ID and account name by default.
 - \`start_campaign\` — starts sending. NEVER call this without explicit user confirmation.
 - \`get_campaign_status\` — check progress of a campaign (sent/delivered/read/failed counts).

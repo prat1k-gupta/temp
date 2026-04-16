@@ -49,11 +49,21 @@ export function buildFlowGraphString(nodes: Node[], edges: Edge[]): string {
   }
 
   /**
-   * Read the unified `data.choices` for a choice-bearing node.
+   * Read the unified `data.choices` for a choice-bearing node,
+   * falling back to `data.buttons` (quick_reply only) for templateMessage.
    */
   function readChoices(node: Node): Array<{ text?: string; label?: string; id?: string }> {
     const data = node.data as any
-    return data?.choices ?? []
+    if (data?.choices?.length) return data.choices
+    if (data?.buttons?.length) {
+      return data.buttons
+        .filter((btn: any) => btn.type === "quick_reply")
+        .map((btn: any, idx: number) => ({
+          id: btn.id || `btn-${idx}`,
+          text: btn.text || "",
+        }))
+    }
+    return []
   }
 
   function getButtonLabel(node: Node, sourceHandle: string | undefined): string | null {

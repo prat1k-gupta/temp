@@ -901,7 +901,7 @@ function createEditTools(
     actionTools.get_flow_variables = tool({
       description: 'Get the list of variables used by a published flow. Useful to understand what data a flow collects or requires before broadcasting it.',
       inputSchema: z.object({
-        flow_id: z.string().describe('UUID of the published flow'),
+        flow_id: z.string().uuid().describe('UUID of the published flow'),
       }),
       execute: async ({ flow_id }) => {
         try {
@@ -966,7 +966,7 @@ function createEditTools(
       description: 'Create a draft broadcast campaign. Does NOT start sending. Always confirm details with user first.',
       inputSchema: z.object({
         name: z.string().describe('Campaign name'),
-        flow_id: z.string().describe('ID of the flow to broadcast'),
+        flow_id: z.string().uuid().describe('UUID of the flow to broadcast'),
         account_name: z.string().describe('WhatsApp account name to send from'),
         audience_source: z.literal('contacts').describe('Audience source type'),
         audience_config: z.object({
@@ -1014,7 +1014,7 @@ function createEditTools(
     actionTools.start_campaign = tool({
       description: 'Start sending a draft campaign. Only call after user explicitly confirms.',
       inputSchema: z.object({
-        campaign_id: z.string().describe('ID of the campaign to start'),
+        campaign_id: z.string().uuid().describe('UUID of the campaign to start'),
       }),
       execute: async ({ campaign_id }) => {
         try {
@@ -1039,7 +1039,7 @@ function createEditTools(
     actionTools.get_campaign_status = tool({
       description: 'Get current status and progress of a campaign.',
       inputSchema: z.object({
-        campaign_id: z.string().describe('ID of the campaign to check'),
+        campaign_id: z.string().uuid().describe('UUID of the campaign to check'),
       }),
       execute: async ({ campaign_id }) => {
         try {
@@ -1105,7 +1105,7 @@ function createEditTools(
     actionTools.pause_campaign = tool({
       description: 'Pause a running campaign. Confirm with user first.',
       inputSchema: z.object({
-        campaign_id: z.string().describe('ID of the campaign to pause'),
+        campaign_id: z.string().uuid().describe('UUID of the campaign to pause'),
       }),
       execute: async ({ campaign_id }) => {
         try {
@@ -1130,7 +1130,7 @@ function createEditTools(
     actionTools.cancel_campaign = tool({
       description: 'Cancel a campaign permanently. Confirm with user first.',
       inputSchema: z.object({
-        campaign_id: z.string().describe('ID of the campaign to cancel'),
+        campaign_id: z.string().uuid().describe('UUID of the campaign to cancel'),
       }),
       execute: async ({ campaign_id }) => {
         try {

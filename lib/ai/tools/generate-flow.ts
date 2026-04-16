@@ -194,6 +194,10 @@ export function buildToolStepPayload(
           : undefined,
         details,
       }
+    case 'publish_flow':
+      if (r.error) return { summary: `Error: ${r.error}`, details }
+      if (r.already_published) return { summary: `Already published (v${r.version})`, details }
+      return { summary: r.message || `Published v${r.version}`, details }
     default:
       return { details }
   }

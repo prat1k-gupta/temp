@@ -1025,6 +1025,16 @@ function createEditTools(
           }).catch(() => {})
         }
 
+        // Step 7: Delete the draft — the draft represented unpublished
+        // changes, and we just published them. Leaving the draft in place
+        // causes the UI to reload old state on refresh and show stale
+        // "unsaved changes" in the changes modal. Same behavior as the
+        // normal publish-button flow (see use-version-manager.ts).
+        await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
+          method: 'DELETE',
+          headers: authHeaders,
+        }).catch(() => {})
+
         console.log("[generate-flow] Tool publish_flow: published version", latest.version_number, "for project", projectId)
         return {
           success: true,

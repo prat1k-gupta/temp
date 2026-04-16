@@ -68,7 +68,11 @@ describe("loadFlowForEdit", () => {
     expect(result.version).toBe(project.latestVersion)
     expect(result.existingFlow.nodes).toEqual(project.latestVersion!.nodes)
     expect(result.existingFlow.edges).toEqual(project.latestVersion!.edges)
-    expect(result.toolContext).toEqual({ authHeader: "whm_test123" })
+    expect(result.toolContext.authHeader).toBe("whm_test123")
+    expect(result.toolContext.projectId).toBe("proj_1")
+    expect(result.toolContext.projectName).toBe("iPhone 11 Flow")
+    expect(result.toolContext.triggerKeywords).toEqual(["iphone11"])
+    expect(result.toolContext.publishedFlowId).toBe("rtf_99")
   })
 
   it("toolContext.authHeader is the raw whm_* key from ctx.apiKey", async () => {

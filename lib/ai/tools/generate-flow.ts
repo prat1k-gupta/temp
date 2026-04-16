@@ -26,6 +26,14 @@ export interface GenerateFlowRequest {
     publishedFlowId?: string
     waAccountName?: string
     authHeader?: string
+    /** Project metadata for publish_flow tool. All optional — tool only appears when projectId + authHeader are present. */
+    projectId?: string
+    projectName?: string
+    triggerKeywords?: string[]
+    triggerMatchType?: string
+    flowSlug?: string
+    waAccountId?: string
+    waPhoneNumber?: string
   }
   /** Agent API context. When source is "agent_api", downstream code may skip UI-specific fields. */
   context?: { source: "agent_api" | "ui" }

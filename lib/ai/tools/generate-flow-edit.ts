@@ -22,6 +22,8 @@ import type {
 } from "./generate-flow"
 import { buildToolStepPayload, nodeBrief } from "./generate-flow"
 import { createListApprovedTemplatesTool } from "./list-approved-templates"
+import { flattenFlow } from "@/utils/flow-flattener"
+import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 
 /**
  * Max tool-use steps the edit-mode agent may take before the runtime forces
@@ -842,6 +844,129 @@ function createEditTools(
         },
       }),
     }
+  }
+
+  // publish_flow: available when we have project metadata + auth.
+  // Both internal UI ("publish this") and agent API get it.
+  if (toolContext?.projectId && toolContext.authHeader && apiUrl) {
+    const { projectId, authHeader } = toolContext
+    const authHeaders: Record<string, string> = authHeader.startsWith('whm_')
+      ? { 'X-API-Key': authHeader }
+      : { 'Authorization': authHeader }
+
+    const publishTool = tool({
+      description: 'Publish the current flow edits to make them live. This saves a new version, deploys it to the runtime, and makes the flow active for users. Call this after validate_result confirms no issues, and only when the user explicitly asks to publish or you are confident the edits are complete.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const editResult = callbacks.getEditResult()
+        if (!editResult) {
+          return { success: false, error: 'No edits to publish — call apply_edit and validate_result first.' }
+        }
+
+        try {
+          // 1. Merge edit result with existing flow to get full state
+          const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
+          const mergedEdges = buildCurrentEdges(existingEdges, editResult)
+
+          // 2. Create version
+          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'AI publish',
+              nodes: mergedNodes,
+              edges: mergedEdges,
+              changes: {},
+              platform: request.platform,
+            }),
+          })
+          if (!versionRes.ok) {
+            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+          }
+          const versionBody = await versionRes.json()
+          const versionId = versionBody.data?.version?.id
+          const versionNumber = versionBody.data?.version?.version_number
+          if (!versionId) {
+            return { success: false, error: 'Failed to save version: no version ID returned' }
+          }
+
+          // 3. Publish version (mark as published in DB)
+          const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${versionId}/publish`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+          if (!publishRes.ok) {
+            return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
+          }
+
+          // 4. Flatten + convert + deploy to runtime
+          const flat = flattenFlow(mergedNodes, mergedEdges)
+          const converted = convertToFsWhatsApp(
+            flat.nodes,
+            flat.edges,
+            toolContext.projectName || 'Flow',
+            undefined,
+            [],
+            toolContext.triggerKeywords || [],
+            toolContext.triggerMatchType || 'exact',
+            undefined,
+            toolContext.flowSlug,
+            toolContext.waAccountId,
+          )
+
+          const existingRuntimeId = toolContext.publishedFlowId
+          const runtimeUrl = existingRuntimeId
+            ? `${apiUrl}/api/chatbot/flows/${existingRuntimeId}`
+            : `${apiUrl}/api/chatbot/flows`
+          const runtimeMethod = existingRuntimeId ? 'PUT' : 'POST'
+
+          const runtimeRes = await fetch(runtimeUrl, {
+            method: runtimeMethod,
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...converted,
+              trigger_keywords: toolContext.triggerKeywords || [],
+              trigger_match_type: toolContext.triggerMatchType || 'exact',
+            }),
+          })
+          if (!runtimeRes.ok) {
+            return { success: false, error: `Failed to deploy to runtime: HTTP ${runtimeRes.status}` }
+          }
+
+          const runtimeBody = await runtimeRes.json()
+          const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
+
+          // 5. Save published_flow_id back to project
+          if (runtimeFlowId) {
+            await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
+              method: 'PUT',
+              headers: { ...authHeaders, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ published_flow_id: runtimeFlowId }),
+            }).catch(() => {}) // best-effort
+          }
+
+          // Build test URL
+          const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
+          const firstKeyword = (toolContext.triggerKeywords || [])[0]
+          const testUrl = phoneDigits && firstKeyword
+            ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
+            : undefined
+
+          console.log("[generate-flow] Tool publish_flow: published version", versionNumber, "for project", projectId)
+          return {
+            success: true,
+            message: `Flow published! Version ${versionNumber} is now live.`,
+            version: versionNumber,
+            ...(testUrl ? { test_url: testUrl } : {}),
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Publish failed' }
+        }
+      },
+    })
+
+    return { ...toolsWithTemplates, publish_flow: publishTool }
   }
 
   return toolsWithTemplates

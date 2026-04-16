@@ -100,6 +100,11 @@ interface AIAssistantProps {
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   publishedFlowId?: string
   waAccountId?: string
+  waPhoneNumber?: string
+  projectName?: string
+  triggerKeywords?: string[]
+  triggerMatchType?: string
+  flowSlug?: string
   isPanelOpen?: boolean
 }
 
@@ -148,6 +153,11 @@ export function AIAssistant({
   onUpdateFlow,
   publishedFlowId,
   waAccountId,
+  waPhoneNumber,
+  projectName,
+  triggerKeywords,
+  triggerMatchType,
+  flowSlug,
   isPanelOpen,
 }: AIAssistantProps) {
   // Resolve waAccountId → account name for trigger_flow (backend expects name, not UUID)
@@ -315,6 +325,13 @@ export function AIAssistant({
           userTemplateData,
           publishedFlowId,
           waAccountName,
+          projectId: flowId,
+          projectName,
+          triggerKeywords,
+          triggerMatchType,
+          flowSlug,
+          waAccountId,
+          waPhoneNumber,
         }),
       })
 

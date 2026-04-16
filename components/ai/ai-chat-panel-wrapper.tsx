@@ -37,6 +37,11 @@ interface AIChatPanelWrapperProps {
   ) => void
   publishedFlowId?: string
   waAccountId?: string
+  waPhoneNumber?: string
+  projectName?: string
+  triggerKeywords?: string[]
+  triggerMatchType?: string
+  flowSlug?: string
 }
 
 export function AIChatPanelWrapper({
@@ -51,6 +56,11 @@ export function AIChatPanelWrapper({
   onUpdateFlow,
   publishedFlowId,
   waAccountId,
+  waPhoneNumber,
+  projectName,
+  triggerKeywords,
+  triggerMatchType,
+  flowSlug,
 }: AIChatPanelWrapperProps) {
   const [panelWidth, setPanelWidth] = useState<number>(DEFAULT_WIDTH)
   // Hydrate width from localStorage post-mount (avoids SSR mismatch on width style)
@@ -149,6 +159,11 @@ export function AIChatPanelWrapper({
             onUpdateFlow={onUpdateFlow}
             publishedFlowId={publishedFlowId}
             waAccountId={waAccountId}
+            waPhoneNumber={waPhoneNumber}
+            projectName={projectName}
+            triggerKeywords={triggerKeywords}
+            triggerMatchType={triggerMatchType}
+            flowSlug={flowSlug}
             isPanelOpen={isOpen}
           />
         </div>

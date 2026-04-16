@@ -11,9 +11,17 @@ export interface FlowEditContext {
     nodes: Node[]
     edges: Edge[]
   }
-  /** toolContext to pass to generateFlowStreaming — carries the API key as authHeader */
+  /** toolContext to pass to generateFlowStreaming */
   toolContext: {
     authHeader: string
+    projectId: string
+    projectName: string
+    publishedFlowId?: string
+    triggerKeywords: string[]
+    triggerMatchType: string
+    flowSlug: string
+    waAccountId: string
+    waPhoneNumber?: string
   }
 }
 
@@ -40,7 +48,15 @@ export async function loadFlowForEdit(
       edges: version.edges as Edge[],
     },
     toolContext: {
-      authHeader: ctx.apiKey, // raw whm_* key — list_approved_templates detects prefix
+      authHeader: ctx.apiKey,
+      projectId: project.id,
+      projectName: project.name,
+      publishedFlowId: project.publishedFlowId,
+      triggerKeywords: project.triggerKeywords,
+      triggerMatchType: project.triggerMatchType,
+      flowSlug: project.flowSlug,
+      waAccountId: project.waAccountId,
+      waPhoneNumber: ctx.account.phone_number,
     },
   }
 }

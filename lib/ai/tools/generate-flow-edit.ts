@@ -1028,15 +1028,23 @@ function createEditTools(
 
         const runtimeBody = await runtimeRes.json()
         const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
+        const runtimeFlowSlug: string | undefined = runtimeBody.data?.flow_slug
 
-        // Step 6: Save published_flow_id back + update toolContext so
-        // trigger_flow can use it in the same session.
+        // Step 6: Save published_flow_id (and first-time flow_slug) back
+        // to the project + update toolContext so trigger_flow can use
+        // publishedFlowId in the same session. flow_slug is immutable —
+        // only write on first publish (matches UI onPublished behavior).
         if (runtimeFlowId) {
           toolContext.publishedFlowId = runtimeFlowId
+          const projectUpdates: Record<string, unknown> = { published_flow_id: runtimeFlowId }
+          if (runtimeFlowSlug && !toolContext.flowSlug) {
+            projectUpdates.flow_slug = runtimeFlowSlug
+            toolContext.flowSlug = runtimeFlowSlug
+          }
           await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
             method: 'PUT',
             headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ published_flow_id: runtimeFlowId }),
+            body: JSON.stringify(projectUpdates),
           }).catch(() => {})
         }
 

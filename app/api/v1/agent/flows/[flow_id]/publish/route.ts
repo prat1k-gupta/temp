@@ -98,9 +98,12 @@ export const POST = withAgentAuth(async (ctx, req) => {
     existingRuntimeFlowId: project.publishedFlowId, // undefined = create, string = update
   })
 
-  // 4. Save the runtime flow ID back to the project so subsequent publishes
-  //    update the same runtime flow instead of creating duplicates.
-  await updateProject(ctx, flowId, { published_flow_id: runtime.runtimeFlowId })
+  // 4. Save the runtime flow ID (and first-time flow_slug) back to the
+  //    project. flow_slug is only set once — matches UI onPublished.
+  await updateProject(ctx, flowId, {
+    published_flow_id: runtime.runtimeFlowId,
+    ...(runtime.flowSlug && !project.flowSlug ? { flow_slug: runtime.flowSlug } : {}),
+  })
 
   return Response.json(
     {

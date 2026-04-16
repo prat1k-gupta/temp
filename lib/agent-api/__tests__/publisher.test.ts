@@ -398,7 +398,7 @@ describe("publishRuntimeFlow", () => {
       triggerKeywords: ["iphone11"],
       triggerMatchType: "exact",
     })
-    expect(result).toEqual({ runtimeFlowId: "rtf_1" })
+    expect(result).toEqual({ runtimeFlowId: "rtf_1", flowSlug: "iphone11" })
 
     const [url, init] = (global.fetch as any).mock.calls[0]
     expect(url).toContain("/api/chatbot/flows")

@@ -470,7 +470,7 @@ export interface PublishRuntimeFlowOpts {
 export async function publishRuntimeFlow(
   ctx: AgentContext,
   opts: PublishRuntimeFlowOpts,
-): Promise<{ runtimeFlowId: string }> {
+): Promise<{ runtimeFlowId: string; flowSlug?: string }> {
   const isUpdate = Boolean(opts.existingRuntimeFlowId)
   const url = isUpdate
     ? `${FS_WHATSAPP_URL}/api/chatbot/flows/${encodeURIComponent(opts.existingRuntimeFlowId!)}`
@@ -515,7 +515,7 @@ export async function publishRuntimeFlow(
     throw new AgentError("publish_failed", "fs-whatsapp did not return a runtime flow ID")
   }
 
-  return { runtimeFlowId }
+  return { runtimeFlowId, flowSlug: body.data?.flow_slug }
 }
 
 // ---------------------------------------------------------------------------

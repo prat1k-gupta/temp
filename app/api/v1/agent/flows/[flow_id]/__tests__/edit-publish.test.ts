@@ -340,6 +340,12 @@ describe("POST /v1/agent/flows/[flow_id]/publish", () => {
           ),
         )
       }
+      // updateProject: PUT /api/magic-flow/projects/:id (save published_flow_id)
+      if (url.includes("/api/magic-flow/projects/") && init?.method === "PUT") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: "success" }), { status: 200 }),
+        )
+      }
       return Promise.resolve(new Response("not found", { status: 404 }))
     })
 

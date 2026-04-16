@@ -157,6 +157,35 @@ export async function createProject(
   return { id: projectId }
 }
 
+export async function updateProject(
+  ctx: AgentContext,
+  projectId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when updating project ${projectId}`)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Project + version read (Phase 3)
 // ---------------------------------------------------------------------------

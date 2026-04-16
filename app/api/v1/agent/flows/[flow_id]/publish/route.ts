@@ -1,7 +1,7 @@
 import { withAgentAuth } from "@/lib/agent-api/auth"
 import { AgentError } from "@/lib/agent-api/errors"
 import { publishFlowBodySchema } from "@/lib/agent-api/schemas"
-import { getProject, listVersions, publishVersion, publishRuntimeFlow } from "@/lib/agent-api/publisher"
+import { getProject, listVersions, publishVersion, publishRuntimeFlow, updateProject } from "@/lib/agent-api/publisher"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import { flattenFlow } from "@/utils/flow-flattener"
 
@@ -91,12 +91,16 @@ export const POST = withAgentAuth(async (ctx, req) => {
   )
 
   // 3. Deploy to runtime (create or update based on publishedFlowId)
-  await publishRuntimeFlow(ctx, {
+  const runtime = await publishRuntimeFlow(ctx, {
     flowData: converted as unknown as Record<string, unknown>,
     triggerKeywords: project.triggerKeywords,
     triggerMatchType: project.triggerMatchType,
     existingRuntimeFlowId: project.publishedFlowId, // undefined = create, string = update
   })
+
+  // 4. Save the runtime flow ID back to the project so subsequent publishes
+  //    update the same runtime flow instead of creating duplicates.
+  await updateProject(ctx, flowId, { published_flow_id: runtime.runtimeFlowId })
 
   return Response.json(
     {

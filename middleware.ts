@@ -2,8 +2,10 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify } from "jose"
 
-// Routes that don't require authentication
-const PUBLIC_ROUTES = ["/login", "/register", "/api/auth"]
+// Routes that bypass the JWT cookie auth.
+// `/api/v1/agent/*` is auth-protected too, but via X-API-Key + withAgentAuth,
+// not the mf_access_token cookie. Those routes handle their own rejection.
+const PUBLIC_ROUTES = ["/login", "/register", "/api/auth", "/api/v1/agent"]
 const STATIC_PREFIXES = ["/_next", "/app/_next", "/favicon.ico"]
 
 // API routes get JSON 401 instead of an HTML redirect so client-side fetch

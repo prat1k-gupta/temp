@@ -174,12 +174,19 @@ export const POST = withAgentAuth(async (ctx, req) => {
 
       const flowData = captured.flowData
 
+      // buildFlowFromPlan assumes a start node (id="1") already exists on the
+      // canvas and wires the first generated node FROM it — but never creates
+      // the start node itself. The internal UI has it on the canvas already;
+      // we must prepend it before saving so the version is complete.
+      const START_NODE = { id: "1", type: "start", position: { x: 0, y: 0 }, data: {} }
+      const allNodes = [START_NODE, ...flowData.nodes]
+
       // Step 3: Create version
       writer.progress("saving", "Saving flow version")
       const version = await createVersion(
         ctx,
         projectId,
-        flowData.nodes,
+        allNodes,
         flowData.edges,
         { source: "agent_api", instruction },
       )
@@ -207,7 +214,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         version: version.version_number,
         name: instruction.slice(0, 100),
         summary: captured.message || "Flow created successfully",
-        node_count: flowData.nodes.length,
+        node_count: allNodes.length,
         magic_flow_url: `${appUrl}/flow/${projectId}`,
         test_url: testUrl,
         trigger_keyword: normalizedKeyword,

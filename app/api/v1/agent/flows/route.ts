@@ -178,8 +178,26 @@ export const POST = withAgentAuth(async (ctx, req) => {
       // canvas and wires the first generated node FROM it — but never creates
       // the start node itself. The internal UI has it on the canvas already;
       // we must prepend it before saving so the version is complete.
-      const START_NODE = { id: "1", type: "start", position: { x: 0, y: 0 }, data: {} }
-      const allNodes = [START_NODE, ...flowData.nodes]
+      //
+      // The start node shape must match what flow-storage.ts:370 creates —
+      // it's platform-dependent (controls the trigger config panel in the UI)
+      // and carries trigger keywords so the publish modal can read them.
+      const startNode = {
+        id: "1",
+        type: "start",
+        position: { x: 250, y: 25 },
+        data: {
+          label: "Start",
+          platform: channel,
+          triggerIds: [],
+          triggerKeywords: [normalizedKeyword],
+          triggerMatchType: "exact",
+          triggerRef: "",
+        },
+        draggable: true,
+        selectable: true,
+      }
+      const allNodes = [startNode, ...flowData.nodes]
 
       // Step 3: Create version
       writer.progress("saving", "Saving flow version")

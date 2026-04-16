@@ -165,7 +165,10 @@ data: {
   "published": false,
   "name": "Product Inquiry",
   "summary": "Added a phone number question before the thank-you message",
-  "changes": ["Added 'ask for phone number' step before closing message"],
+  "changes": [
+    {"type": "node_add", "node_id": "plan-question-3-k9m2", "description": "Added whatsappQuestion: What's your phone number?"},
+    {"type": "node_update", "node_id": "plan-message-4-r1s5", "description": "Updated whatsappMessage: Thank you!"}
+  ],
   "node_count": 5,
   "magic_flow_url": "https://your-app/flow/uuid",
   "next_action": "Call /publish to make this live",

@@ -674,7 +674,7 @@ describe("getProject", () => {
 
   it("returns latestVersion as undefined when latest_version is absent", async () => {
     const body = makeProjectResponse()
-    delete body.data.project.latest_version
+    body.data.project.latest_version = undefined as any
     ;(global.fetch as any).mockResolvedValue(
       new Response(JSON.stringify(body), { status: 200 }),
     )

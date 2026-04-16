@@ -789,6 +789,15 @@ function createEditTools(
 
   const apiUrl = process.env.FS_WHATSAPP_API_URL
 
+  // Agent API edit path: strip UI-only tools that are meaningless without a
+  // human in the loop. save_as_template requires a confirmation dialog,
+  // undo_last is for interactive undo/redo stacks. Keeping them wastes AI
+  // context tokens and risks confusing tool calls.
+  const isAgentApi = request.context?.source === 'agent_api'
+  const filteredBaseTools = isAgentApi
+    ? (({ save_as_template, undo_last, ...rest }) => rest)(baseTools)
+    : baseTools
+
   // list_approved_templates: available whenever the user is on WhatsApp AND
   // authenticated. Factory returns null otherwise, so we skip spread.
   const listTemplatesTool =
@@ -796,8 +805,8 @@ function createEditTools(
       ? createListApprovedTemplatesTool(toolContext)
       : null
   const toolsWithTemplates = listTemplatesTool
-    ? { ...baseTools, list_approved_templates: listTemplatesTool }
-    : baseTools
+    ? { ...filteredBaseTools, list_approved_templates: listTemplatesTool }
+    : filteredBaseTools
 
   if (toolContext?.publishedFlowId && request.platform === 'whatsapp' && apiUrl && toolContext.authHeader) {
     const { publishedFlowId, waAccountName, authHeader } = toolContext

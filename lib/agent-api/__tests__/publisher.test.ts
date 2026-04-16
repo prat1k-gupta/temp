@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { listFlows, createProject, deleteProject } from "@/lib/agent-api/publisher"
+import {
+  listFlows,
+  createProject,
+  deleteProject,
+  createVersion,
+  publishVersion,
+  publishRuntimeFlow,
+  checkKeywordConflict,
+} from "@/lib/agent-api/publisher"
 import type { AgentContext } from "@/lib/agent-api/types"
 
 function mockCtx(): AgentContext {
@@ -254,5 +262,343 @@ describe("deleteProject", () => {
     await expect(deleteProject(mockCtx(), "proj_1")).rejects.toMatchObject({
       code: "internal_error",
     })
+  })
+})
+
+describe("createVersion", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("POSTs to the correct URL and returns id and version_number from envelope", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            version: { id: "ver_1", version_number: 2, name: "Agent API edit" },
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await createVersion(mockCtx(), "proj_1", [{ id: "n1" }], [{ id: "e1" }], { summary: "test" })
+    expect(result).toEqual({ id: "ver_1", version_number: 2 })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects/proj_1/versions")
+    expect(init.method).toBe("POST")
+  })
+
+  it("forwards X-API-Key in the fetch headers", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { version: { id: "v1", version_number: 1 } } }),
+        { status: 200 },
+      ),
+    )
+    await createVersion(mockCtx(), "proj_1", [], [], {})
+    const [, init] = (global.fetch as any).mock.calls[0]
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+  })
+
+  it("passes nodes, edges, changes and platform in the request body", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { version: { id: "v1", version_number: 1 } } }),
+        { status: 200 },
+      ),
+    )
+    const nodes = [{ id: "n1", type: "message" }]
+    const edges = [{ id: "e1", source: "n1", target: "n2" }]
+    const changes = { added: 1 }
+    await createVersion(mockCtx(), "proj_1", nodes, edges, changes)
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.nodes).toEqual(nodes)
+    expect(body.edges).toEqual(edges)
+    expect(body.changes).toEqual(changes)
+    expect(body.platform).toBe("whatsapp")
+    expect(body.name).toBe("Agent API edit")
+  })
+
+  it("uses empty object for changes when not provided", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { version: { id: "v1", version_number: 1 } } }),
+        { status: 200 },
+      ),
+    )
+    await createVersion(mockCtx(), "proj_1", [], [])
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.changes).toEqual({})
+  })
+
+  it("throws internal_error on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 500 }))
+    await expect(
+      createVersion(mockCtx(), "proj_1", [], []),
+    ).rejects.toMatchObject({ code: "internal_error" })
+  })
+
+  it("throws internal_error on network failure", async () => {
+    ;(global.fetch as any).mockRejectedValue(new Error("ECONNREFUSED"))
+    await expect(
+      createVersion(mockCtx(), "proj_1", [], []),
+    ).rejects.toMatchObject({ code: "internal_error" })
+  })
+})
+
+describe("publishVersion", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("POSTs to projects/{projectId}/versions/{versionId}/publish and returns void", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { version: { id: "ver_1", version_number: 2 } } }),
+        { status: 200 },
+      ),
+    )
+    await expect(publishVersion(mockCtx(), "proj_1", "ver_1")).resolves.toBeUndefined()
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects/proj_1/versions/ver_1/publish")
+    expect(init.method).toBe("POST")
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+  })
+
+  it("throws internal_error on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 422 }))
+    await expect(
+      publishVersion(mockCtx(), "proj_1", "ver_1"),
+    ).rejects.toMatchObject({ code: "internal_error" })
+  })
+})
+
+describe("publishRuntimeFlow", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("POSTs to /api/chatbot/flows when no existingRuntimeFlowId is given", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { id: "rtf_1", flow_slug: "iphone11" } }),
+        { status: 200 },
+      ),
+    )
+    const result = await publishRuntimeFlow(mockCtx(), {
+      flowData: { name: "iPhone 11" },
+      triggerKeywords: ["iphone11"],
+      triggerMatchType: "exact",
+    })
+    expect(result).toEqual({ runtimeFlowId: "rtf_1" })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/chatbot/flows")
+    expect(init.method).toBe("POST")
+  })
+
+  it("PUTs to /api/chatbot/flows/{id} when existingRuntimeFlowId is given", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { id: "rtf_99", flow_slug: "iphone11" } }),
+        { status: 200 },
+      ),
+    )
+    await publishRuntimeFlow(mockCtx(), {
+      flowData: { name: "iPhone 11" },
+      triggerKeywords: ["iphone11"],
+      triggerMatchType: "exact",
+      existingRuntimeFlowId: "rtf_99",
+    })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/chatbot/flows/rtf_99")
+    expect(init.method).toBe("PUT")
+  })
+
+  it("includes trigger_keywords and trigger_match_type in the request body", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { id: "rtf_1", flow_slug: "kw1" } }),
+        { status: 200 },
+      ),
+    )
+    await publishRuntimeFlow(mockCtx(), {
+      flowData: { name: "Promo" },
+      triggerKeywords: ["kw1", "kw2"],
+      triggerMatchType: "contains",
+    })
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.trigger_keywords).toEqual(["kw1", "kw2"])
+    expect(body.trigger_match_type).toBe("contains")
+    expect(body.name).toBe("Promo")
+  })
+
+  it("returns runtimeFlowId from the envelope", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { id: "rtf_42", flow_slug: "test" } }),
+        { status: 200 },
+      ),
+    )
+    const result = await publishRuntimeFlow(mockCtx(), {
+      flowData: {},
+      triggerKeywords: [],
+      triggerMatchType: "exact",
+    })
+    expect(result.runtimeFlowId).toBe("rtf_42")
+  })
+
+  it("throws publish_failed (not internal_error) on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("bad gateway", { status: 502 }))
+    await expect(
+      publishRuntimeFlow(mockCtx(), { flowData: {}, triggerKeywords: [], triggerMatchType: "exact" }),
+    ).rejects.toMatchObject({ code: "publish_failed" })
+  })
+})
+
+describe("checkKeywordConflict", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("returns null when no flows exist", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { projects: [], total: 0 } }),
+        { status: 200 },
+      ),
+    )
+    const result = await checkKeywordConflict(mockCtx(), "hello")
+    expect(result).toBeNull()
+  })
+
+  it("returns null when no keyword matches", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "Flow A",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["iphone11"],
+                node_count: 2,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await checkKeywordConflict(mockCtx(), "galaxy")
+    expect(result).toBeNull()
+  })
+
+  it("returns matching flow info when keyword matches exactly", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "iPhone 11 Flow",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["iphone11"],
+                node_count: 3,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await checkKeywordConflict(mockCtx(), "iphone11")
+    expect(result).toEqual({
+      id: "mf_1",
+      name: "iPhone 11 Flow",
+      magic_flow_url: expect.stringContaining("/flow/mf_1"),
+    })
+  })
+
+  it("returns matching flow info case-insensitively", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_2",
+                name: "Sale Flow",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["SALE"],
+                node_count: 1,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await checkKeywordConflict(mockCtx(), "sale")
+    expect(result).not.toBeNull()
+    expect(result?.id).toBe("mf_2")
+  })
+
+  it("returns the first match when multiple flows have the same keyword", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "Flow 1",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["promo"],
+                node_count: 1,
+                latest_version: 1,
+              },
+              {
+                id: "mf_2",
+                name: "Flow 2",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z",
+                trigger_keywords: ["promo"],
+                node_count: 1,
+                latest_version: 1,
+              },
+            ],
+            total: 2,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await checkKeywordConflict(mockCtx(), "promo")
+    expect(result?.id).toBe("mf_1")
   })
 })

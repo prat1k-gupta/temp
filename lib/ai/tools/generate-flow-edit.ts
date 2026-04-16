@@ -791,183 +791,203 @@ function createEditTools(
 
   const apiUrl = process.env.FS_WHATSAPP_API_URL
 
-  // list_approved_templates: available whenever the user is on WhatsApp AND
-  // authenticated. Factory returns null otherwise, so we skip spread.
-  const listTemplatesTool =
-    request.platform === 'whatsapp'
-      ? createListApprovedTemplatesTool(toolContext)
-      : null
-  const toolsWithTemplates = listTemplatesTool
-    ? { ...baseTools, list_approved_templates: listTemplatesTool }
-    : baseTools
+  // --- Always-registered tools with runtime precondition checks ---
+  // All tools are visible to the AI so it can reason about them.
+  // Missing preconditions return actionable errors, not invisible absence.
 
-  if (toolContext?.publishedFlowId && request.platform === 'whatsapp' && apiUrl && toolContext.authHeader) {
-    const { publishedFlowId, waAccountName, authHeader } = toolContext
-    return {
-      ...toolsWithTemplates,
-      trigger_flow: tool({
-        description: 'Trigger a test run of the published flow by sending it to a phone number via WhatsApp. Only use when the user asks to test the flow or you have just finished a significant edit.',
-        inputSchema: z.object({
-          phone_number: z.string().describe('Phone number in E.164 format (e.g. "+919876543210")'),
-          variables: z.record(z.string()).optional().describe('Template parameter values if the flow starts with a template message'),
-        }),
-        execute: async ({ phone_number, variables }) => {
-          const body: Record<string, any> = { phone_number }
-          if (waAccountName) body.whatsapp_account = waAccountName
-          if (variables && Object.keys(variables).length > 0) body.variables = variables
+  const authHeader = toolContext?.authHeader
+  const authHeaders: Record<string, string> | undefined = authHeader
+    ? (authHeader.startsWith('whm_')
+        ? { 'X-API-Key': authHeader }
+        : { 'Authorization': authHeader })
+    : undefined
 
-          try {
-            const response = await fetch(`${apiUrl}/api/chatbot/flows/${publishedFlowId}/send`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(authHeader.startsWith('whm_')
-                  ? { 'X-API-Key': authHeader }
-                  : { 'Authorization': authHeader }),
-              },
-              body: JSON.stringify(body),
-            })
-            const data = await response.json()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extraTools: Record<string, any> = {}
 
-            if (!response.ok) {
-              const msg = data?.message || data?.error || `HTTP ${response.status}`
-              if (msg.toLowerCase().includes('active session')) {
-                return { success: false, error: 'Cannot send: contact has an active session. The user needs to end it first or wait for it to expire.' }
-              }
-              return { success: false, error: msg }
-            }
-            console.log("[generate-flow] Tool trigger_flow: sent to", phone_number)
-            return { success: true, message: `Flow sent to ${phone_number}` }
-          } catch (error) {
-            return { success: false, error: error instanceof Error ? error.message : 'Network error calling fs-whatsapp' }
-          }
-        },
-      }),
+  // list_approved_templates
+  extraTools.list_approved_templates = (() => {
+    if (request.platform !== 'whatsapp') {
+      return tool({
+        description: 'List approved WhatsApp message templates. Only available on WhatsApp flows.',
+        inputSchema: z.object({}),
+        execute: async () => ({ success: false, error: `Templates are only available for WhatsApp flows. This flow uses ${request.platform}.` }),
+      })
     }
-  }
-
-  // publish_flow: available when we have project metadata + auth.
-  // Both internal UI ("publish this") and agent API get it.
-  if (toolContext?.projectId && toolContext.authHeader && apiUrl) {
-    const { projectId, authHeader } = toolContext
-    const authHeaders: Record<string, string> = authHeader.startsWith('whm_')
-      ? { 'X-API-Key': authHeader }
-      : { 'Authorization': authHeader }
-
-    const publishTool = tool({
-      description: 'Publish the current flow edits to make them live. This saves a new version, deploys it to the runtime, and makes the flow active for users. Call this after validate_result confirms no issues, and only when the user explicitly asks to publish or you are confident the edits are complete.',
+    const created = createListApprovedTemplatesTool(toolContext)
+    if (created) return created
+    return tool({
+      description: 'List approved WhatsApp message templates.',
       inputSchema: z.object({}),
-      execute: async () => {
-        const editResult = callbacks.getEditResult()
-        if (!editResult) {
-          return { success: false, error: 'No edits to publish — call apply_edit and validate_result first.' }
-        }
-
-        try {
-          // 1. Merge edit result with existing flow to get full state
-          const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
-          const mergedEdges = buildCurrentEdges(existingEdges, editResult)
-
-          // 2. Create version
-          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
-            method: 'POST',
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: 'AI publish',
-              nodes: mergedNodes,
-              edges: mergedEdges,
-              changes: {},
-              platform: request.platform,
-            }),
-          })
-          if (!versionRes.ok) {
-            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
-          }
-          const versionBody = await versionRes.json()
-          const versionId = versionBody.data?.version?.id
-          const versionNumber = versionBody.data?.version?.version_number
-          if (!versionId) {
-            return { success: false, error: 'Failed to save version: no version ID returned' }
-          }
-
-          // 3. Publish version (mark as published in DB)
-          const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${versionId}/publish`, {
-            method: 'POST',
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: '{}',
-          })
-          if (!publishRes.ok) {
-            return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
-          }
-
-          // 4. Flatten + convert + deploy to runtime
-          const flat = flattenFlow(mergedNodes, mergedEdges)
-          const converted = convertToFsWhatsApp(
-            flat.nodes,
-            flat.edges,
-            toolContext.projectName || 'Flow',
-            undefined,
-            [],
-            toolContext.triggerKeywords || [],
-            toolContext.triggerMatchType || 'exact',
-            undefined,
-            toolContext.flowSlug,
-            toolContext.waAccountId,
-          )
-
-          const existingRuntimeId = toolContext.publishedFlowId
-          const runtimeUrl = existingRuntimeId
-            ? `${apiUrl}/api/chatbot/flows/${existingRuntimeId}`
-            : `${apiUrl}/api/chatbot/flows`
-          const runtimeMethod = existingRuntimeId ? 'PUT' : 'POST'
-
-          const runtimeRes = await fetch(runtimeUrl, {
-            method: runtimeMethod,
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...converted,
-              trigger_keywords: toolContext.triggerKeywords || [],
-              trigger_match_type: toolContext.triggerMatchType || 'exact',
-            }),
-          })
-          if (!runtimeRes.ok) {
-            return { success: false, error: `Failed to deploy to runtime: HTTP ${runtimeRes.status}` }
-          }
-
-          const runtimeBody = await runtimeRes.json()
-          const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
-
-          // 5. Save published_flow_id back to project
-          if (runtimeFlowId) {
-            await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
-              method: 'PUT',
-              headers: { ...authHeaders, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ published_flow_id: runtimeFlowId }),
-            }).catch(() => {}) // best-effort
-          }
-
-          // Build test URL
-          const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
-          const firstKeyword = (toolContext.triggerKeywords || [])[0]
-          const testUrl = phoneDigits && firstKeyword
-            ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
-            : undefined
-
-          console.log("[generate-flow] Tool publish_flow: published version", versionNumber, "for project", projectId)
-          return {
-            success: true,
-            message: `Flow published! Version ${versionNumber} is now live.`,
-            version: versionNumber,
-            ...(testUrl ? { test_url: testUrl } : {}),
-          }
-        } catch (error) {
-          return { success: false, error: error instanceof Error ? error.message : 'Publish failed' }
-        }
-      },
+      execute: async () => ({ success: false, error: 'Cannot list templates — authentication context is missing.' }),
     })
+  })()
 
-    return { ...toolsWithTemplates, publish_flow: publishTool }
-  }
+  // trigger_flow
+  extraTools.trigger_flow = tool({
+    description: 'Trigger a test run of the flow by sending it to a phone number via WhatsApp. Use when the user asks to test the flow.',
+    inputSchema: z.object({
+      phone_number: z.string().describe('Phone number in E.164 format (e.g. "+919876543210")'),
+      variables: z.record(z.string()).optional().describe('Template parameter values if the flow starts with a template message'),
+    }),
+    execute: async ({ phone_number, variables }) => {
+      if (request.platform !== 'whatsapp') {
+        return { success: false, error: `Trigger is only available for WhatsApp flows. This flow uses ${request.platform}.` }
+      }
+      if (!toolContext?.publishedFlowId) {
+        return { success: false, error: 'Flow is not published yet. Call publish_flow first to make it live, then try again.' }
+      }
+      if (!authHeaders || !apiUrl) {
+        return { success: false, error: 'Cannot trigger flow — authentication context is missing.' }
+      }
 
-  return toolsWithTemplates
+      const body: Record<string, any> = { phone_number }
+      if (toolContext.waAccountName) body.whatsapp_account = toolContext.waAccountName
+      if (variables && Object.keys(variables).length > 0) body.variables = variables
+
+      try {
+        const response = await fetch(`${apiUrl}/api/chatbot/flows/${toolContext.publishedFlowId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify(body),
+        })
+        const data = await response.json()
+
+        if (!response.ok) {
+          const msg = data?.message || data?.error || `HTTP ${response.status}`
+          if (msg.toLowerCase().includes('active session')) {
+            return { success: false, error: 'Cannot send: contact has an active session. The user needs to end it first or wait for it to expire.' }
+          }
+          return { success: false, error: msg }
+        }
+        console.log("[generate-flow] Tool trigger_flow: sent to", phone_number)
+        return { success: true, message: `Flow sent to ${phone_number}` }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Network error calling fs-whatsapp' }
+      }
+    },
+  })
+
+  // publish_flow
+  extraTools.publish_flow = tool({
+    description: 'Publish the current flow edits to make them live. Saves a new version, deploys to the runtime, and activates the flow. Call after validate_result confirms no issues.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      if (!toolContext?.projectId) {
+        return { success: false, error: 'Cannot publish — project context is missing.' }
+      }
+      if (!authHeaders || !apiUrl) {
+        return { success: false, error: 'Cannot publish — authentication context is missing.' }
+      }
+
+      const editResult = callbacks.getEditResult()
+      if (!editResult) {
+        return { success: false, error: 'No edits to publish — call apply_edit and validate_result first.' }
+      }
+
+      const projectId = toolContext.projectId
+
+      try {
+        // 1. Merge edit result with existing flow
+        const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
+        const mergedEdges = buildCurrentEdges(existingEdges, editResult)
+
+        // 2. Create version
+        const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'AI publish',
+            nodes: mergedNodes,
+            edges: mergedEdges,
+            changes: {},
+            platform: request.platform,
+          }),
+        })
+        if (!versionRes.ok) {
+          return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+        }
+        const versionBody = await versionRes.json()
+        const versionId = versionBody.data?.version?.id
+        const versionNumber = versionBody.data?.version?.version_number
+        if (!versionId) {
+          return { success: false, error: 'Failed to save version: no version ID returned' }
+        }
+
+        // 3. Publish version
+        const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${versionId}/publish`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        if (!publishRes.ok) {
+          return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
+        }
+
+        // 4. Flatten + convert + deploy to runtime
+        const flat = flattenFlow(mergedNodes, mergedEdges)
+        const converted = convertToFsWhatsApp(
+          flat.nodes,
+          flat.edges,
+          toolContext.projectName || 'Flow',
+          undefined,
+          [],
+          toolContext.triggerKeywords || [],
+          toolContext.triggerMatchType || 'exact',
+          undefined,
+          toolContext.flowSlug,
+          toolContext.waAccountId,
+        )
+
+        const existingRuntimeId = toolContext.publishedFlowId
+        const runtimeUrl = existingRuntimeId
+          ? `${apiUrl}/api/chatbot/flows/${existingRuntimeId}`
+          : `${apiUrl}/api/chatbot/flows`
+
+        const runtimeRes = await fetch(runtimeUrl, {
+          method: existingRuntimeId ? 'PUT' : 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...converted,
+            trigger_keywords: toolContext.triggerKeywords || [],
+            trigger_match_type: toolContext.triggerMatchType || 'exact',
+          }),
+        })
+        if (!runtimeRes.ok) {
+          return { success: false, error: `Failed to deploy to runtime: HTTP ${runtimeRes.status}` }
+        }
+
+        const runtimeBody = await runtimeRes.json()
+        const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
+
+        // 5. Save published_flow_id back to project + update toolContext
+        if (runtimeFlowId) {
+          toolContext.publishedFlowId = runtimeFlowId
+          await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ published_flow_id: runtimeFlowId }),
+          }).catch(() => {})
+        }
+
+        const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
+        const firstKeyword = (toolContext.triggerKeywords || [])[0]
+        const testUrl = phoneDigits && firstKeyword
+          ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
+          : undefined
+
+        console.log("[generate-flow] Tool publish_flow: published version", versionNumber, "for project", projectId)
+        return {
+          success: true,
+          message: `Flow published! Version ${versionNumber} is now live.`,
+          version: versionNumber,
+          ...(testUrl ? { test_url: testUrl } : {}),
+        }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Publish failed' }
+      }
+    },
+  })
+
+  return { ...baseTools, ...extraTools }
 }

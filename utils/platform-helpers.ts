@@ -30,7 +30,7 @@ export const getPlatformSpecificContent = (nodeType: string, platform: Platform)
  */
 export function isMultiOutputType(nodeType: string): boolean {
   const base = getBaseNodeType(nodeType)
-  return base === "quickReply" || base === "list" || base === "apiFetch"
+  return base === "quickReply" || base === "list" || base === "apiFetch" || base === "templateMessage"
 }
 
 /**

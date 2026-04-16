@@ -39,6 +39,19 @@ ${nodeDocs}${userTemplateDocs}
 ${selectionRules}
 ${dependencyRules ? `\n${dependencyRules}` : ""}
 ${isEdit && request.toolContext?.publishedFlowId ? `\n**Testing:** This flow is published. You can use \`trigger_flow\` to send a test message after making changes. Only offer this if the user asks to test or you have just finished a significant edit.` : ""}
+${isEdit && request.toolContext?.authHeader ? `
+**Broadcasting:** You can help the user broadcast flows to contacts using campaign tools.${request.toolContext?.publishedFlowId ? ` The current flow's published ID is \`${request.toolContext.publishedFlowId}\`.` : ' **The current flow is NOT published.** If the user wants to broadcast THIS flow, tell them they need to publish it first (via the Publish button). Only published flows can be broadcast. You can still broadcast OTHER published flows — use \`list_flows\` to find them.'}${request.toolContext?.waAccountName ? ` The WhatsApp account is \`${request.toolContext.waAccountName}\`.` : ''} Use these values automatically when creating campaigns for the current flow — do NOT ask the user for flow_id or account_name if you already have them. If you don't have the account name, use \`list_accounts\` to look it up — NEVER ask the user for a flow ID or account name.
+- \`list_flows\` — list published flows to find flow IDs. Use when you don't have the current flow's published ID.
+- \`list_accounts\` — list WhatsApp accounts to find account names. Use when you don't have the account name.
+- \`get_flow_variables\` — get variables used by a flow. Use to understand what data a flow collects before broadcasting.
+- \`preview_audience\` — preview how many contacts match a filter. ALWAYS call this before create_campaign. Show the user BOTH the exact filter you applied (in readable form, e.g. "Tag is delhi") AND the matching count so they can verify the right contacts were selected. Note: preview_audience takes filter/search/channel as top-level params; create_campaign wraps them inside audience_config.
+- \`create_campaign\` — creates a draft campaign (does NOT send). Always call preview_audience first, then confirm details with the user (name, audience count). Use the current flow ID and account name by default.
+- \`start_campaign\` — starts sending. NEVER call this without explicit user confirmation.
+- \`get_campaign_status\` — check progress of a campaign (sent/delivered/read/failed counts).
+- \`list_campaigns\` — show recent campaigns, optionally filtered by status.
+- \`pause_campaign\` — pause a running campaign. Confirm with user first.
+- \`cancel_campaign\` — cancel a campaign permanently. Confirm with user first.
+The audience_source for create_campaign is "contacts" with a filter/search config. Ask the user who they want to target.` : ""}
 
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}

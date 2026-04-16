@@ -130,24 +130,42 @@ export function validateGeneratedFlow(
     }
   }
 
-  // 4b. Every choice on a quickReply/list must have an outgoing edge from
-  //     its own handle. Catches dangling choices (e.g. AI added a new
-  //     choice but used the wrong handle ID in addEdges, leaving the new
-  //     one without any onward connection).
+  // 4b. Every choice on a quickReply/list/templateMessage must have an
+  //     outgoing edge from its own handle. Catches dangling choices (e.g.
+  //     AI added a new choice but used the wrong handle ID in addEdges,
+  //     leaving the new one without any onward connection).
   for (const node of contentNodes) {
     const baseType = getBaseNodeType(node.type || "")
-    if (baseType !== "quickReply" && baseType !== "list") continue
     const data = node.data as Record<string, any>
-    const choices: Array<{ id?: string; text?: string; label?: string }> =
-      (data.choices as any[]) || []
-    if (choices.length === 0) continue
+
+    // Resolve the choice-like items and their kind label
+    let items: Array<{ id?: string; text?: string; label?: string }> = []
+    let choiceKind = "button"
+
+    if (baseType === "quickReply" || baseType === "list") {
+      items = (data.choices as any[]) || []
+      choiceKind = baseType === "list" ? "option" : "button"
+    } else if (baseType === "templateMessage") {
+      // templateMessage uses data.buttons; only quick_reply buttons get handles
+      items = ((data.buttons || []) as any[])
+        .filter((btn: any) => btn.type === "quick_reply")
+        .map((btn: any, idx: number) => ({
+          id: btn.id || `btn-${idx}`,
+          text: btn.text || "",
+        }))
+      choiceKind = "button"
+    } else {
+      continue
+    }
+
+    if (items.length === 0) continue
     const outgoingHandles = new Set(
       edges
         .filter((e) => e.source === node.id && e.sourceHandle)
         .map((e) => e.sourceHandle as string)
     )
-    for (let i = 0; i < choices.length; i++) {
-      const c = choices[i]
+    for (let i = 0; i < items.length; i++) {
+      const c = items[i]
       const handleId = c?.id
       if (!handleId) {
         // No id yet — plan-builder will assign one; skip.
@@ -155,7 +173,6 @@ export function validateGeneratedFlow(
       }
       if (!outgoingHandles.has(handleId)) {
         const labelText = c?.text || c?.label || `choice ${i + 1}`
-        const choiceKind = baseType === "list" ? "option" : "button"
         issues.push({
           type: "unconnected_button",
           nodeId: node.id,

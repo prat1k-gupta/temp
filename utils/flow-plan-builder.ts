@@ -76,6 +76,15 @@ function computeOutgoingHandles(
     return choices.map((c, i) => c.id || `button-${i}`)
   }
 
+  // templateMessage: quick_reply buttons get output handles (same as choices)
+  if (baseType === "templateMessage") {
+    const buttons = ((data.buttons || []) as any[])
+      .filter((btn: any) => btn.type === "quick_reply")
+    if (buttons.length > 0) {
+      return buttons.map((btn: any, i: number) => btn.id || `btn-${i}`)
+    }
+  }
+
   // Single-output types (question, message, name, email, etc.) render a
   // handleless default edge; we model that as one "default" handle here
   // so contraction-to-default cases can route to it.

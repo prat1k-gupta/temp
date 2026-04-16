@@ -1072,5 +1072,322 @@ function createEditTools(
     },
   })
 
-  return { ...baseTools, ...extraTools }
+  // Broadcast + lookup tools (from PR #74). Gated on auth availability
+  // and use the same X-API-Key vs Authorization header routing as the
+  // other tools in this file.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const actionTools: Record<string, any> = {}
+
+  if (apiUrl && authHeaders) {
+    // Lookup tools — help the assistant find flow IDs and account names
+    actionTools.list_flows = tool({
+      description: 'List published chatbot flows in this organization. Use this to find the flow ID when the user wants to broadcast a flow.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const response = await fetch(`${apiUrl}/api/chatbot/flows`, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          const flows = (result.flows || result || []).map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            status: f.status,
+            account_name: f.account_name,
+          }))
+          return { success: true, flows }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.list_accounts = tool({
+      description: 'List WhatsApp accounts configured for this organization. Use this to find the account name when creating a campaign.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const response = await fetch(`${apiUrl}/api/accounts`, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          const accounts = (result.accounts || result || []).map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            phone_number: a.phone_number,
+            status: a.status,
+          }))
+          return { success: true, accounts }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.get_flow_variables = tool({
+      description: 'Get the list of variables used by a published flow. Useful to understand what data a flow collects or requires before broadcasting it.',
+      inputSchema: z.object({
+        flow_id: z.string().uuid().describe('UUID of the published flow'),
+      }),
+      execute: async ({ flow_id }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/flow-variables/${flow_id}`, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          return { success: true, variables: result.variables || [] }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    // Campaign / broadcast tools — available whenever authenticated
+    actionTools.preview_audience = tool({
+      description: 'Preview how many contacts match a filter BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding with create_campaign.',
+      inputSchema: z.object({
+        source: z.literal('contacts').describe('Audience source type'),
+        filter: z.object({
+          type: z.enum(['tag', 'flow', 'variable']).optional(),
+          op: z.string().optional(),
+          values: z.array(z.string()).optional(),
+          value: z.string().optional(),
+          flow_slug: z.string().optional(),
+          name: z.string().optional(),
+          logic: z.enum(['and', 'or']).optional(),
+          filters: z.array(z.any()).optional(),
+        }).optional().describe('Contact filter (same format as create_campaign)'),
+        search: z.string().optional().describe('Free-text search'),
+        channel: z.string().optional().describe('Channel filter'),
+      }),
+      execute: async ({ source, filter, search, channel }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/preview-audience`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+            body: JSON.stringify({ source, filter, search, channel }),
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          return {
+            success: true,
+            total_count: result.total_count,
+            audience_type: result.audience_type,
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.create_campaign = tool({
+      description: 'Create a draft broadcast campaign. Does NOT start sending. Always confirm details with user first.',
+      inputSchema: z.object({
+        name: z.string().describe('Campaign name'),
+        flow_id: z.string().uuid().describe('UUID of the flow to broadcast'),
+        account_name: z.string().describe('WhatsApp account name to send from'),
+        audience_source: z.literal('contacts').describe('Audience source type'),
+        audience_config: z.object({
+          filter: z.object({
+            type: z.enum(['tag', 'flow', 'variable']).optional().describe('Filter type for leaf conditions'),
+            op: z.string().optional().describe('Operator: for tags use "is" or "is_not", for flows use "active"/"any"/"never", for variables use "is"/"is_not"/"contains"/"has_any_value"/"is_unknown"'),
+            values: z.array(z.string()).optional().describe('Tag names for tag filters (e.g. ["delhi", "mumbai"])'),
+            value: z.string().optional().describe('Value for variable filters'),
+            flow_slug: z.string().optional().describe('Flow slug for flow/variable filters'),
+            name: z.string().optional().describe('Variable name for variable filters'),
+            logic: z.enum(['and', 'or']).optional().describe('Group logic for combining multiple filters'),
+            filters: z.array(z.any()).optional().describe('Nested filter conditions when using groups'),
+          }).optional().describe('Contact filter. For tag filtering: {"type":"tag","op":"is","values":["tag-name"]}. For groups: {"logic":"and","filters":[...]}'),
+          search: z.string().optional().describe('Free-text search to match contacts by name or phone'),
+          channel: z.string().optional().describe('Channel filter (e.g. "whatsapp")'),
+        }).describe('Audience configuration — use filter for targeted selection, search for name/phone matching'),
+      }),
+      execute: async ({ name, flow_id, account_name, audience_source, audience_config }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+            body: JSON.stringify({ name, flow_id, account_name, audience_source, audience_config }),
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          console.log("[generate-flow] Tool create_campaign: created", result.id || result.campaign_id, name)
+          return {
+            success: true,
+            campaign_id: result.id || result.campaign_id,
+            name: result.name,
+            status: result.status,
+            total_recipients: result.total_recipients,
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.start_campaign = tool({
+      description: 'Start sending a draft campaign. Only call after user explicitly confirms.',
+      inputSchema: z.object({
+        campaign_id: z.string().uuid().describe('UUID of the campaign to start'),
+      }),
+      execute: async ({ campaign_id }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/${campaign_id}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          console.log("[generate-flow] Tool start_campaign: started", campaign_id)
+          return { success: true, status: result.status || 'processing', message: result.message || 'Campaign started' }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.get_campaign_status = tool({
+      description: 'Get current status and progress of a campaign.',
+      inputSchema: z.object({
+        campaign_id: z.string().uuid().describe('UUID of the campaign to check'),
+      }),
+      execute: async ({ campaign_id }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/${campaign_id}`, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          return {
+            success: true,
+            campaign_id: result.id || result.campaign_id,
+            name: result.name,
+            status: result.status,
+            total_recipients: result.total_recipients,
+            recipients_completed: result.recipients_completed,
+            sent_count: result.sent_count,
+            delivered_count: result.delivered_count,
+            read_count: result.read_count,
+            failed_count: result.failed_count,
+            started_at: result.started_at,
+            completed_at: result.completed_at,
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.list_campaigns = tool({
+      description: 'List recent broadcast campaigns. Optionally filter by status.',
+      inputSchema: z.object({
+        status: z.enum(['draft', 'processing', 'completed', 'paused', 'cancelled']).optional().describe('Filter by campaign status'),
+      }),
+      execute: async ({ status }) => {
+        try {
+          const url = status ? `${apiUrl}/api/campaigns?status=${encodeURIComponent(status)}` : `${apiUrl}/api/campaigns`
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: authHeaders,
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          return {
+            success: true,
+            campaigns: result.campaigns || result,
+            total: result.total,
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.pause_campaign = tool({
+      description: 'Pause a running campaign. Confirm with user first.',
+      inputSchema: z.object({
+        campaign_id: z.string().uuid().describe('UUID of the campaign to pause'),
+      }),
+      execute: async ({ campaign_id }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/${campaign_id}/pause`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          console.log("[generate-flow] Tool pause_campaign: paused", campaign_id)
+          return { success: true, status: result.status || 'paused', message: result.message || 'Campaign paused' }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.cancel_campaign = tool({
+      description: 'Cancel a campaign permanently. Confirm with user first.',
+      inputSchema: z.object({
+        campaign_id: z.string().uuid().describe('UUID of the campaign to cancel'),
+      }),
+      execute: async ({ campaign_id }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/${campaign_id}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+          })
+          const data = await response.json()
+
+          if (!response.ok) {
+            return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
+          }
+          const result = data?.data || data
+          console.log("[generate-flow] Tool cancel_campaign: cancelled", campaign_id)
+          return { success: true, status: result.status || 'cancelled', message: result.message || 'Campaign cancelled' }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+  }
+
+  return { ...baseTools, ...extraTools, ...actionTools }
 }

@@ -117,6 +117,113 @@ data: {"code":"validation_failed","message":"AI produced an invalid flow"}
 
 ---
 
+## POST /api/v1/agent/flows/{flow_id}/edit
+
+Edit an existing flow from natural language. Does NOT publish — call the publish endpoint when ready. Returns SSE stream.
+
+**Request body:**
+```json
+{
+  "instruction": "also ask for their phone number before saying thanks"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `instruction` | string | yes | What to change (1-4000 chars) |
+
+**Pre-stream errors** (returned as JSON, not SSE):
+
+| HTTP | Code | When |
+|---|---|---|
+| 400 | `invalid_param` | Missing or invalid `instruction` |
+| 401 | `unauthorized` | Missing or bad API key |
+| 404 | `flow_not_found` | No flow with that `flow_id` in your org |
+| 429 | `rate_limited` | Too many calls. Payload: `retry_after_seconds` |
+
+**Success response — SSE stream (`text/event-stream`):**
+
+Three event types: `progress`, `result`, `error`.
+
+```
+event: progress
+data: {"phase":"understanding","message":"Analyzing your instruction"}
+
+event: progress
+data: {"phase":"editing","message":"Applying changes to the flow"}
+
+event: progress
+data: {"phase":"validating","message":"Validating updated flow structure"}
+
+event: progress
+data: {"phase":"saving","message":"Saving new draft version"}
+
+event: result
+data: {
+  "flow_id": "uuid",
+  "version": 3,
+  "published": false,
+  "name": "Product Inquiry",
+  "summary": "Added a phone number question before the thank-you message",
+  "changes": ["Added 'ask for phone number' step before closing message"],
+  "node_count": 5,
+  "magic_flow_url": "https://your-app/flow/uuid",
+  "next_action": "Call /publish to make this live",
+  "updated_at": "2026-04-16T09:00:00Z"
+}
+```
+
+**In-stream errors** (HTTP status is still 200, error comes through the stream):
+
+```
+event: error
+data: {"code":"validation_failed","message":"AI produced an invalid flow"}
+```
+
+| Code | When |
+|---|---|
+| `validation_failed` | AI output failed structural validation |
+| `invalid_instruction` | AI couldn't apply the edit from the instruction |
+| `internal_error` | Catch-all |
+
+**Rate limit:** 10/min per key.
+
+---
+
+## POST /api/v1/agent/flows/{flow_id}/publish
+
+Publish the latest draft version of a flow to make it live on WhatsApp. This is idempotent — if the latest version is already published, it returns `already_published: true` rather than an error.
+
+**Request body:** `{}` (empty object)
+
+**Response (200):**
+```json
+{
+  "flow_id": "uuid",
+  "version": 3,
+  "published": true,
+  "already_published": false,
+  "published_at": "2026-04-16T09:05:00Z",
+  "test_url": "https://wa.me/1234567890?text=product",
+  "trigger_keyword": "product",
+  "magic_flow_url": "https://your-app/flow/uuid"
+}
+```
+
+If the latest version is already live, the response is the same shape with `already_published: true` — this is not an error, safe to retry.
+
+**Errors:**
+
+| HTTP | Code | When |
+|---|---|---|
+| 401 | `unauthorized` | Missing or bad API key |
+| 404 | `flow_not_found` | No flow with that `flow_id` in your org |
+| 502 | `publish_failed` | Runtime deploy failed (retryable) |
+
+**Rate limit:** 30/min per key.
+
+---
+
 ## Error response shape
 
 All errors (both HTTP and SSE) use this shape:

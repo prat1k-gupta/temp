@@ -257,7 +257,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         projectId,
         allNodes,
         flowData.edges,
-        { source: "agent_api", instruction, changes: flowChanges },
+        flowChanges as any,
       )
 
       // Step 4: Publish version in magic-flow

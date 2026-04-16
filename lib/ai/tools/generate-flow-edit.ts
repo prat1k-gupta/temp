@@ -926,6 +926,21 @@ function createEditTools(
         const intendedSnapshot = JSON.stringify({ nodes: intendedNodes, edges: intendedEdges })
         const latestSnapshot = JSON.stringify({ nodes: latest.nodes || [], edges: latest.edges || [] })
         if (intendedSnapshot !== latestSnapshot) {
+          // Pull the draft's changes array to carry into the new version.
+          // Matches the Update & Publish button path, which passes
+          // changeTracker.getChanges() to createVersion. Without this the
+          // version history shows "0 changes" for AI-published versions.
+          let draftChanges: any[] = []
+          try {
+            const draftRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
+              headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            })
+            if (draftRes.ok) {
+              const draftBody = await draftRes.json()
+              draftChanges = draftBody.data?.draft?.changes || []
+            }
+          } catch { /* no draft — use empty changes */ }
+
           const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
             method: 'POST',
             headers: { ...authHeaders, 'Content-Type': 'application/json' },
@@ -933,7 +948,7 @@ function createEditTools(
               name: 'AI publish',
               nodes: intendedNodes,
               edges: intendedEdges,
-              changes: {},
+              changes: draftChanges,
               platform: request.platform,
             }),
           })

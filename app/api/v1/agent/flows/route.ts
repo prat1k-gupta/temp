@@ -182,6 +182,14 @@ export const POST = withAgentAuth(async (ctx, req) => {
       // The start node shape must match what flow-storage.ts:370 creates —
       // it's platform-dependent (controls the trigger config panel in the UI)
       // and carries trigger keywords so the publish modal can read them.
+      // Trigger IDs from constants/triggers.ts — the keyword-based trigger per platform
+      const KEYWORD_TRIGGER_ID: Record<string, string> = {
+        whatsapp: "whatsapp-message",
+        instagram: "instagram-message",
+        web: "web-embedded",
+      }
+      const triggerId = KEYWORD_TRIGGER_ID[channel] || "whatsapp-message"
+
       const startNode = {
         id: "1",
         type: "start",
@@ -189,7 +197,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         data: {
           label: "Start",
           platform: channel,
-          triggerIds: [],
+          triggerId,
+          triggerIds: [triggerId],
           triggerKeywords: [normalizedKeyword],
           triggerMatchType: "exact",
           triggerRef: "",

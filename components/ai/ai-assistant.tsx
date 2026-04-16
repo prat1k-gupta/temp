@@ -430,9 +430,11 @@ export function AIAssistant({
                 const doneSummary = event.summary
 
                 // publish_flow just modified versions + deleted the draft
-                // on the backend. Match the normal Publish button flow:
-                // clear tracker state and invalidate caches so the UI
-                // reflects the published state without a page refresh.
+                // on the backend. Mirror the normal Publish button flow
+                // (see createAndPublishVersion in use-version-manager.ts):
+                // clear tracker, nuke draft cache synchronously, invalidate
+                // versions + project. The version-manager useEffect picks
+                // this up and flips editModeState to view mode.
                 if (
                   toolName === 'publish_flow' &&
                   flowId &&
@@ -442,9 +444,11 @@ export function AIAssistant({
                 ) {
                   changeTracker.clearChanges()
                   changeTracker.stopTracking()
-                  queryClient.invalidateQueries({ queryKey: flowKeys.detail(flowId) })
+                  // Synchronous cache write — matches useDeleteDraft.onSuccess
+                  queryClient.setQueryData(versionKeys.draft(flowId), null)
+                  // Async refetches for versions list + project detail
                   queryClient.invalidateQueries({ queryKey: versionKeys.list(flowId) })
-                  queryClient.invalidateQueries({ queryKey: versionKeys.draft(flowId) })
+                  queryClient.invalidateQueries({ queryKey: flowKeys.detail(flowId) })
                 }
                 // FIFO-pop the oldest running call for this tool so
                 // running/done events pair up in order when the same tool

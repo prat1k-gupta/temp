@@ -4,6 +4,7 @@ import { validateFlowVariables } from "./flow-variables"
 import { convertToFsWhatsApp } from "./whatsapp-converter"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getFixedHandles, getBaseNodeType } from "./platform-helpers"
+import { extractTemplateVariables } from "./template-helpers"
 
 export interface FlowIssue {
   type:
@@ -14,6 +15,7 @@ export interface FlowIssue {
     | "unconnected_handle"
     | "unconnected_button"
     | "converter_error"
+    | "template_mapping_gap"
   nodeId?: string
   nodeLabel?: string
   /** Short user-facing problem description. No node label prefix, no remediation. */
@@ -189,7 +191,8 @@ export function validateGeneratedFlow(
       baseType === "condition" ||
       baseType === "apiFetch" ||
       baseType === "transfer" ||
-      node.type === "flowTemplate" // content lives in internalNodes, checked above
+      node.type === "flowTemplate" || // content lives in internalNodes, checked above
+      node.type === "templateMessage" // content lives in bodyPreview/templateName — validated by 6b
     )
       continue
     const hasContent = CONTENT_FIELDS.some(
@@ -202,6 +205,31 @@ export function validateGeneratedFlow(
         nodeLabel: data.label || node.type || "",
         detail: "No message content.",
         hint: "Add a question or text.",
+      })
+    }
+  }
+
+  // 6b. templateMessage: parameterMappings should cover every {{var}} in bodyPreview.
+  // Soft warning — doesn't invalidate the flow (user can still fill in the panel),
+  // but surfaces the gap to the AI's self-correction loop.
+  for (const node of contentNodes) {
+    if (node.type !== "templateMessage") continue
+    const data = node.data as any
+    const body = data?.bodyPreview || ""
+    const bodyVars = extractTemplateVariables(body)
+    const mappedVars = new Set(
+      (data?.parameterMappings || [])
+        .map((m: any) => m.templateVar)
+        .filter(Boolean),
+    )
+    const missing = bodyVars.filter((v) => !mappedVars.has(v))
+    if (missing.length > 0) {
+      issues.push({
+        type: "template_mapping_gap",
+        nodeId: node.id,
+        nodeLabel: data?.label || "templateMessage",
+        detail: `Template body references {{${missing.join("}}, {{")}}} but parameterMappings is missing these variables.`,
+        hint: `Add a parameterMappings entry for each missing variable, using either a literal value or a {{flow_variable}} reference.`,
       })
     }
   }

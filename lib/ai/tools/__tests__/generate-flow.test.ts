@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from "vitest"
 import { deduplicateEdges } from "../generate-flow"
 import { buildCorrectionPrompt } from "../generate-flow-create"
 import { applyNodeUpdates, recoverUnvalidatedEdit, EDIT_STEP_BUDGET } from "../generate-flow-edit"
+import { buildFlowFromPlan } from "@/utils/flow-plan-builder"
+import { validateGeneratedFlow } from "@/utils/flow-validator"
 import type { BuildEditFlowResult } from "@/utils/flow-plan-builder"
 import type { Edge, Node } from "@xyflow/react"
 import type { FlowIssue } from "@/utils/flow-validator"
+import type { FlowPlan } from "@/types/flow-plan"
 
 function edge(
   id: string,
@@ -468,5 +471,74 @@ describe("applyNodeUpdates", () => {
       "whatsapp",
     )
     expect(result).toHaveLength(0)
+  })
+})
+
+describe("integration: templateMessage plan → flow", () => {
+  it("builds and validates a flow starting with a fully-mapped template", () => {
+    const plan: FlowPlan = {
+      message: "Start with the order_confirmation template",
+      steps: [
+        {
+          step: "node",
+          nodeType: "templateMessage",
+          content: {
+            templateId: "tpl-oc",
+            templateName: "order_confirmation",
+            displayName: "Order Confirmation",
+            language: "en",
+            category: "UTILITY",
+            bodyPreview: "Hi {{first_name}}, your order {{order_id}} is confirmed",
+            parameterMappings: [
+              { templateVar: "first_name", flowValue: "{{user_name}}" },
+              { templateVar: "order_id", flowValue: "{{last_order_id}}" },
+            ],
+            templateButtons: [
+              { type: "quick_reply", text: "Track order" },
+            ],
+          },
+        },
+      ],
+    }
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+    const templateNode = result.nodes.find((n) => n.type === "templateMessage")
+    expect(templateNode).toBeDefined()
+
+    const validation = validateGeneratedFlow(result.nodes, result.edges, "whatsapp")
+    // The flow may produce other warnings (orphan start edge etc. depending
+    // on builder behavior for a 1-step plan) — just assert no template-mapping
+    // gap is reported since all vars are mapped.
+    const templateIssues = validation.issues.filter((i) => i.type === "template_mapping_gap")
+    expect(templateIssues).toHaveLength(0)
+  })
+
+  it("reports template_mapping_gap when AI forgot a variable", () => {
+    const plan: FlowPlan = {
+      message: "Welcome template",
+      steps: [
+        {
+          step: "node",
+          nodeType: "templateMessage",
+          content: {
+            templateId: "tpl-w",
+            templateName: "welcome",
+            language: "en",
+            category: "MARKETING",
+            bodyPreview: "Hi {{first_name}} from {{company}}",
+            parameterMappings: [
+              { templateVar: "first_name", flowValue: "{{user_name}}" },
+              // {{company}} intentionally missing
+            ],
+          },
+        },
+      ],
+    }
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+    const validation = validateGeneratedFlow(result.nodes, result.edges, "whatsapp")
+    const gap = validation.issues.find((i) => i.type === "template_mapping_gap")
+    expect(gap).toBeDefined()
+    expect(gap!.detail).toContain("company")
   })
 })

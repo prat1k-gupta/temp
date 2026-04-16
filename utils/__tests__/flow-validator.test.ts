@@ -275,4 +275,70 @@ describe("validateGeneratedFlow", () => {
     const result = validateGeneratedFlow(nodes, edges, "whatsapp")
     expect(result.summary).toBe("")
   })
+
+  describe("templateMessage validation", () => {
+    it("does NOT flag empty_content on a populated templateMessage", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("t1", "templateMessage", {
+          templateName: "welcome",
+          bodyPreview: "Hi {{first_name}}",
+          parameterMappings: [{ templateVar: "first_name", flowValue: "{{user_name}}" }],
+        }),
+      ]
+      const edges = [makeEdge("1", "t1")]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      const emptyContent = result.issues.filter((i) => i.type === "empty_content")
+      expect(emptyContent).toHaveLength(0)
+    })
+
+    it("passes validation when every var in bodyPreview is mapped", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("t1", "templateMessage", {
+          templateName: "welcome",
+          bodyPreview: "Hi {{first_name}}, welcome to {{company}}",
+          parameterMappings: [
+            { templateVar: "first_name", flowValue: "{{user_name}}" },
+            { templateVar: "company", flowValue: "Acme" },
+          ],
+        }),
+      ]
+      const edges = [makeEdge("1", "t1")]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      expect(result.isValid).toBe(true)
+      expect(result.issues).toHaveLength(0)
+    })
+
+    it("flags template_mapping_gap on partial mapping", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("t1", "templateMessage", {
+          templateName: "welcome",
+          bodyPreview: "Hi {{first_name}} from {{company}}",
+          parameterMappings: [{ templateVar: "first_name", flowValue: "{{user_name}}" }],
+        }),
+      ]
+      const edges = [makeEdge("1", "t1")]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      const gap = result.issues.find((i) => i.type === "template_mapping_gap")
+      expect(gap).toBeDefined()
+      expect(gap!.detail).toContain("company")
+    })
+
+    it("does not flag template_mapping_gap when bodyPreview is empty", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("t1", "templateMessage", {
+          templateName: "simple",
+          bodyPreview: "",
+          parameterMappings: [],
+        }),
+      ]
+      const edges = [makeEdge("1", "t1")]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      const gap = result.issues.filter((i) => i.type === "template_mapping_gap")
+      expect(gap).toHaveLength(0)
+    })
+  })
 })

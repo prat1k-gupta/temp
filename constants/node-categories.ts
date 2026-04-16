@@ -433,18 +433,28 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     platforms: ["whatsapp"],
     limits: { maxConnections: 1, sourceHandles: "buttons" },
     ai: {
-      whenToUse: "When you need to send a pre-approved WhatsApp template message (e.g. outside the 24-hour window).",
+      description:
+        "Send a pre-approved Meta WhatsApp template message. Required for outbound-initiated conversations and messages outside the 24-hour customer service window.",
+      whenToUse:
+        "When the conversation needs to send a pre-approved Meta template — e.g. order confirmations, appointment reminders, re-engagement campaigns, any outbound message outside the 24-hour customer service window.",
+      selectionRule:
+        "Only usable on WhatsApp. Requires calling `list_approved_templates` first to discover available templates. NEVER guess a template name — always use one returned by the tool.",
+      contentFields:
+        "templateId, templateName, displayName, language, category, bodyPreview, headerType, templateButtons[{type,text,url?}] (type is lowercase: quick_reply|url|phone_number|copy_code), parameterMappings[{templateVar, flowValue}]",
       bestPractices: [
-        "Select an approved template from the template library",
-        "Map flow variables to template parameters",
-        "Templates must be pre-approved by Meta before use",
+        "Always call `list_approved_templates` before choosing a template — never guess names",
+        "Map every `{{var}}` in the body to a parameterMappings entry",
+        "Use `{{variable_name}}` in flowValue when the value comes from earlier in the flow",
+        "Use literal strings in flowValue for static substitutions",
+        "Templates must be pre-approved by Meta before use — only APPROVED status is selectable",
       ],
       examples: [
-        "Send order confirmation template",
-        "Send appointment reminder template",
+        "Send order_confirmation template with customer name and order ID",
+        "Send appointment_reminder template the day before a booking",
+        "Re-engage a dormant contact with a marketing template",
       ],
-      requiredProperties: ["label", "platform", "templateName", "language"],
-      optionalProperties: ["parameterMappings"],
+      requiredProperties: ["label", "platform", "templateId", "templateName", "language"],
+      optionalProperties: ["displayName", "category", "headerType", "bodyPreview", "templateButtons", "parameterMappings"],
     },
   },
 

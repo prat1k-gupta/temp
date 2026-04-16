@@ -33,6 +33,7 @@ import {
   Layers,
   FileText,
   MessageSquare,
+  Megaphone,
   Settings,
   Phone,
   Users,
@@ -64,6 +65,7 @@ const NAV_ITEMS: { label: string; icon: React.ElementType; path: string; feature
   { label: "Flow Templates", icon: Layers, path: "/flow-templates", feature: "flows" },
   { label: "WhatsApp Templates", icon: FileText, path: "/templates", feature: "templates" },
   { label: "Chat", icon: MessageSquare, path: "/chat", feature: "chat" },
+  { label: "Campaigns", icon: Megaphone, path: "/campaigns", feature: "campaigns" },
 ]
 
 export const SETTINGS_CHILDREN: { label: string; icon: React.ElementType; path: string; feature: Feature }[] = [

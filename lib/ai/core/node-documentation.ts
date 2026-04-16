@@ -333,6 +333,30 @@ function buildDataStructure(
     base.responseFields = ["string (field names returned by the form, auto-extracted from flow)"]
   }
 
+  // Template message (Meta-approved WhatsApp templates)
+  if (t === "templateMessage") {
+    base.templateId = "string (template's backend ID — from list_approved_templates)"
+    base.templateName = "string (Meta-registered template name — from list_approved_templates.name)"
+    base.displayName = "string (optional human-readable name)"
+    base.language = "string (e.g., 'en', 'en_US')"
+    base.category = "MARKETING | UTILITY | AUTHENTICATION"
+    base.headerType = "TEXT | IMAGE | VIDEO | DOCUMENT (optional)"
+    base.bodyPreview = "string (full template body with {{vars}} intact)"
+    base.templateButtons = [
+      {
+        type: "quick_reply | url | phone_number | copy_code",
+        text: "string (button label)",
+        url: "string (for url buttons only)",
+      },
+    ]
+    base.parameterMappings = [
+      {
+        templateVar: "string (variable name from the template body, e.g. 'first_name' or '1')",
+        flowValue: "string (literal value or {{variable_name}} reference to a flow variable)",
+      },
+    ]
+  }
+
   // Tracking notification
   if (t === "trackingNotification") {
     base.message = "string (the notification message)"

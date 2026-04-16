@@ -2,7 +2,134 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Plan granularity note:** This plan is at the task level with exact files, acceptance criteria, test requirements, and the specific code concerns each task needs to address. Full bite-sized TDD step decomposition is deliberately deferred until Phase 1 has shipped — the inner details of each task may shift based on what we learn from Phase 1 (e.g., actual vitest setup quirks, real event shapes from `generateFlowStreaming`, what it takes to mock fs-whatsapp effectively). Before starting Phase 2, re-run `superpowers:writing-plans` on this file to expand each task into step-level TDD form.
+> **Plan granularity note:** This plan is at the task level with exact files, acceptance criteria, test requirements, and the specific code concerns each task needs to address. Step-level TDD decomposition is produced by the controller at dispatch time per-task (same pattern Phase 1 execution used).
+
+## Lessons from Phase 1 (baked into this plan)
+
+Phase 1 execution surfaced three real bugs that the unit tests never caught because they only hit mocked `global.fetch` with the wrong shapes. Phase 2 inherits the fixes and the conventions — do not re-introduce these.
+
+### 1. fs-whatsapp wraps every response in `{status, data: {...}}`
+
+**Verified in code** — `fs-whatsapp/internal/handlers/accounts.go:70` and every handler that uses `r.SendEnvelope(...)`. The actual response shape is:
+
+```json
+{
+  "status": "success",
+  "data": { "projects": [...], "total": 1 }
+}
+```
+
+**Implication for Phase 2 publisher helpers**: every single one of `createProject`, `createVersion`, `publishVersion`, `publishRuntimeFlow`, `deleteProject`, `checkKeywordConflict` must read `body.data?.*` — NOT `body.*`. Test mocks must wrap response payloads in `{status: "success", data: {...}}` from the start. See the corrected Phase 1 helpers in `lib/agent-api/account-resolver.ts` and `lib/agent-api/publisher.ts` for the pattern. Phase 1 commit `7baa9205` has the full fix diff.
+
+### 2. Server-side code uses `FS_WHATSAPP_API_URL`, not `NEXT_PUBLIC_FS_WHATSAPP_URL`
+
+`lib/agent-api/constants.ts` was already corrected in Phase 1 (commit `c28050f1`). It reads `FS_WHATSAPP_API_URL` first (which docker compose sets to `http://host.docker.internal:8080`), falls back to `NEXT_PUBLIC_FS_WHATSAPP_URL`, then localhost. **Phase 2 inherits this** by importing `FS_WHATSAPP_URL` from `./constants` in every helper. Do not re-read env vars at call sites — always import the resolved constant.
+
+### 3. Next.js `middleware.ts` has `/api/v1/agent` in `PUBLIC_ROUTES`
+
+Already patched in Phase 1. Phase 2's `POST /v1/agent/flows` does not need any middleware changes — the wildcard match covers it.
+
+### 4. Subagent dispatch pattern
+
+Phase 1 used `superpowers:subagent-driven-development` with fresh general-purpose subagents per task (model: sonnet) and the docker compose run invocation pattern for tests:
+
+```bash
+docker compose run --rm --no-deps app npx vitest run <path>
+docker compose run --rm --no-deps app npx tsc --noEmit
+```
+
+The worktree at `.worktrees/agent-api-phase-1` was used — Phase 2 should use a NEW worktree `.worktrees/agent-api-phase-2` branched from `feat/flow-assistant-agent-api-phase-1` (NOT from main) so the Phase 1 glue layer is present.
+
+### 5. `vi.fn` type casts need `as unknown as [...]` for multi-arg tuples
+
+Phase 1's `auth.test.ts` Task 7 needed this workaround when casting `handler.mock.calls[0]` to a `[AgentContext, Request]` tuple. The `vi.fn` inference produces a single-arg tuple because the test's arrow `(ctx: AgentContext) => ...` infers a one-arg signature. Workaround: `mock.calls[0] as unknown as [AgentContext, Request]`. Bake this into Phase 2 route tests from the start.
+
+### 6. `.env.local` and the worktree
+
+Phase 1 needed `.env.local` copied from the main magic-flow checkout into the worktree for docker compose to start. Phase 2's new worktree will need the same copy. Not checked into git.
+
+## Verified from code — actual `generateFlowStreaming` shape
+
+**Important corrections from what the earlier spec assumed:**
+
+**Signature** (`lib/ai/tools/generate-flow.ts:355`):
+
+```typescript
+export async function generateFlowStreaming(
+  request: GenerateFlowRequest,
+  emit: (event: StreamEvent) => void,
+): Promise<void>
+```
+
+There is **NO `abortSignal` parameter**. My earlier plan claimed we'd plumb `req.signal` into `generateFlowStreaming` — we can't, because the parameter doesn't exist. For v1, Phase 2 accepts that client disconnects leave the AI call running in the background (wasted tokens until the streamText call completes naturally). Document this as a known gap; don't try to fix it by modifying `generateFlowStreaming`'s signature (that would break the internal UI path).
+
+**StreamEvent union** (`lib/ai/tools/generate-flow.ts:88-106`):
+
+```typescript
+export type StreamEvent =
+  | { type: 'tool_step'; tool: string; status: 'running' | 'done'; summary?: string; details?: ToolStepDetails }
+  | { type: 'text_delta'; delta: string }
+  | { type: 'flow_ready'; flowData?: GenerateFlowResponse['flowData']; updates?: GenerateFlowResponse['updates']; action: 'create' | 'edit'; warnings?: string[]; debugData?: Record<string, unknown> }
+  | { type: 'result'; data: GenerateFlowResponse }
+  | { type: 'error'; message: string }
+```
+
+Note: `tool_step` has `tool: string` (the tool name) and `status: 'running' | 'done'` — the earlier plan said the translator should switch on `details.kind`, which is only a hint and not always present. Don't switch on `details.kind` — switch on `tool` name and `status`, and use `summary` for the human-readable text.
+
+**Create path** (`lib/ai/tools/generate-flow-create-streaming.ts`):
+- Uses `streamText()` from Vercel AI SDK with ONE tool named `build_and_validate` (NOT the 8-tool edit set)
+- `stopWhen: stepCountIs(8)` — max 8 tool iterations
+- Events fire from `streamText` callbacks:
+  - `experimental_onToolCallStart` → `tool_step (running)`
+  - `experimental_onToolCallFinish` → `tool_step (done, summary, details)`
+  - `onChunk` for text chunks → `text_delta`
+- `flow_ready` fires **inside** the `build_and_validate` tool's `execute` function when validation passes (line 58-64) — this is the "flow is validated and ready" signal
+- Final `result` event emitted after `await result.text` (line 161-181) — carries `GenerateFlowResponse.flowData`
+
+**Implication for event translator**: the route handler must **capture** the final `result.data.flowData` via a closure variable in the emit callback, not forward it to SSE. The SSE `result` event is emitted by the route handler AFTER `generateFlowStreaming` returns, with the PUBLIC payload shape (flow_id, magic_flow_url, test_url, etc.), NOT the internal `GenerateFlowResponse`.
+
+Simplified translator logic (replaces the rules from the earlier plan):
+
+```typescript
+// In the route handler, inside the SSE async block:
+let capturedFlowData: GenerateFlowResponse['flowData'] | null = null
+let capturedMessage = ''
+let capturedError: string | null = null
+
+await generateFlowStreaming(request, (event) => {
+  switch (event.type) {
+    case 'text_delta':
+      // drop — noise for the agent API
+      break
+    case 'tool_step':
+      if (event.status === 'done' && event.summary) {
+        writer.progress('generating', event.summary)
+      }
+      break
+    case 'flow_ready':
+      writer.progress('validating', 'Flow plan validated, preparing to publish')
+      break
+    case 'result':
+      capturedFlowData = event.data.flowData ?? null
+      capturedMessage = event.data.message
+      break
+    case 'error':
+      capturedError = event.message
+      break
+  }
+})
+
+if (capturedError) throw new AgentError('validation_failed', capturedError)
+if (!capturedFlowData) throw new AgentError('invalid_instruction', capturedMessage || 'AI did not produce a flow')
+
+// Proceed with publishing using capturedFlowData
+```
+
+This is simpler than a separate `event-translator.ts` module. For Phase 2, inline this in the route handler. If we need to reuse it for Phase 3's edit endpoint, extract it then.
+
+**Consequence**: `lib/agent-api/event-translator.ts` is **no longer a deliverable** in Phase 2 — the translation is ~20 lines of route-handler-local code. Remove it from the file inventory below.
+
+---
 
 **Goal:** Ship the one-shot create endpoint. `POST /v1/agent/flows` that takes a natural-language instruction + trigger keyword, runs AI generation via `generateFlowStreaming`, creates a `MagicFlowProject`, writes a new version, and deploys to fs-whatsapp's `ChatbotFlow` runtime with the trigger keyword baked into the publish payload. Returns SSE stream with progress events and a final `result` event containing `test_url` and `magic_flow_url`.
 
@@ -29,13 +156,7 @@
 
 ### New files
 
-```
-magic-flow/
-├── lib/agent-api/
-│   ├── event-translator.ts           # StreamEvent → SSE progress/result/error translation
-│   └── __tests__/
-│       └── event-translator.test.ts
-```
+None. Phase 2 adds no new files in `lib/agent-api/*` — everything new lives as additions to the existing Phase 1 files. Event translation is inline in the route handler (~20 LOC), not its own module.
 
 ### Modified files
 
@@ -44,50 +165,107 @@ magic-flow/
 ├── lib/agent-api/
 │   ├── publisher.ts                  # Add createProject, createVersion, publishVersion,
 │   │                                 # publishRuntimeFlow, deleteProject, checkKeywordConflict
+│   │                                 # All unwrap {status, data: ...} envelope
 │   └── __tests__/
-│       └── publisher.test.ts         # Extended test coverage for new helpers
-├── lib/ai/tools/generate-flow.ts     # Add `context?: { source: "agent_api" }` param
+│       └── publisher.test.ts         # Extended with new helper tests
+├── lib/ai/tools/generate-flow.ts     # Add `context?: { source: "agent_api" | "ui" }` to
+│                                     # GenerateFlowRequest — optional, default behavior unchanged
 ├── app/api/v1/agent/flows/
-│   ├── route.ts                      # Add POST handler
+│   ├── route.ts                      # Add POST handler (~200 LOC — biggest single file in Phase 2)
 │   └── __tests__/
-│       └── route.test.ts             # Extend with POST create tests
+│       └── route.test.ts             # Extend with POST create tests, including:
+│                                     #   happy path, missing fields, keyword conflict,
+│                                     #   validation failure + orphan cleanup, publish failure
 ```
 
 ### File responsibilities
 
-**`event-translator.ts`**: single module exporting `translateStreamEvent(internal: StreamEvent, writer: SSEWriter): boolean`. Takes one internal event from `generateFlowStreaming`, emits the corresponding public SSE event(s), returns `true` if the event was terminal (result or error) or `false` otherwise. The caller uses the return value to stop reading the stream. Translation rules exactly as documented in the spec's "Event translation" subsection.
+**`publisher.ts` additions**: six new exported async functions. All take `ctx: AgentContext` as first arg, forward `X-API-Key` to fs-whatsapp, and unwrap `body.data?.*` from the response envelope. Follow the exact pattern of Phase 1's `listFlows`.
 
-**`publisher.ts` additions**: five new exported async functions. All take `ctx: AgentContext` as first arg and forward `X-API-Key` to fs-whatsapp.
+- `createProject(ctx, { name, platform })` → `Promise<{id: string}>` — POST to `/api/magic-flow/projects`. Returns the new project ID extracted from `body.data.id`.
+- `createVersion(ctx, projectId, nodes, edges, changes)` → `Promise<{id: string, version_number: number}>` — POST to `/api/magic-flow/projects/{projectId}/versions`. Returns `body.data.id` and `body.data.version_number`.
+- `publishVersion(ctx, projectId, versionId)` → `Promise<void>` — POST to `/api/magic-flow/projects/{projectId}/versions/{versionId}/publish`. Throws on non-2xx.
+- `publishRuntimeFlow(ctx, { flowData, triggerKeywords, triggerMatchType }, existingRuntimeFlowId?)` → `Promise<{runtimeFlowId: string}>` — POST to `/api/chatbot/flows` (create) or PUT to `/api/chatbot/flows/{id}` (update). `trigger_keywords` and `trigger_match_type` are included in the request body, not a separate call.
+- `deleteProject(ctx, projectId)` → `Promise<void>` — DELETE `/api/magic-flow/projects/{id}` for orphan cleanup. Throws on non-2xx BUT callers should wrap in try/catch since cleanup failures must not mask the original error.
+- `checkKeywordConflict(ctx, normalizedKeyword)` → `Promise<{id, name, magic_flow_url} | null>` — reuses Phase 1's `listFlows(ctx, 50)`, scans all returned `trigger_keyword` fields, returns matching flow info if found (case-insensitive match on the normalized keyword). Returns null if no conflict.
 
-- `createProject(ctx, { name, platform })` → `Promise<{id: string}>` — POSTs to `/api/magic-flow/projects`, returns the new project ID
-- `createVersion(ctx, projectId, nodes, edges, changes)` → `Promise<{id: string, version_number: number}>`
-- `publishVersion(ctx, projectId, versionId)` → `Promise<void>`
-- `publishRuntimeFlow(ctx, { flowData, triggerKeywords, triggerMatchType }, existingRuntimeFlowId?)` → `Promise<{runtimeFlowId: string}>` — POST or PUT to `/api/chatbot/flows`
-- `deleteProject(ctx, projectId)` → `Promise<void>` — DELETE for orphan cleanup
-- `checkKeywordConflict(ctx, normalizedKeyword)` → `Promise<ExistingFlowInfo | null>` — uses the Phase 1 `listFlows` helper internally, scans all flows' `trigger_keywords`, returns matching flow info if found
-
-**`generate-flow.ts` changes**: add an optional `context?: { source: "agent_api" | "ui" }` field to `GenerateFlowRequest`. When `context?.source === "agent_api"`, skip UI-specific logic. Non-breaking default: if omitted, behavior is identical to today. Keeps the UI path completely unchanged.
+**`generate-flow.ts` changes**: add an optional `context?: { source: "agent_api" | "ui" }` field to `GenerateFlowRequest`. For Phase 2's create path, the main effect is that when `source === "agent_api"`, downstream code should not expect `selectedNode`, `userTemplates`, or `toolContext.publishedFlowId` — these are UI-only. In practice the create path (`executeCreateModeStreaming`) doesn't use these fields, so the context param is more of a forward-declaration for Phase 3's edit path than a behavior change for Phase 2. Non-breaking default: if omitted, behavior is identical to today.
 
 **`route.ts` POST handler**: wrapped by `withAgentAuth(..., "expensive")`. Pipeline:
-1. Parse and validate request body with `createFlowBodySchema`
-2. Normalize `trigger_keyword` to lowercase (schema already enforces lowercase but be defensive)
-3. Verify `channel` is in `ctx.account.connected_channels` (throw `channel_not_connected`)
-4. Call `checkKeywordConflict(ctx, normalizedKeyword)`, throw `keyword_conflict` if found
-5. Start SSE stream via `SSEWriter.create()`
-6. Inside the stream's async block:
-   - Emit `progress` for "understanding"
-   - `createProject` with a derived name
-   - Emit `progress` for "planning"
-   - `generateFlowStreaming` with the translated-event callback that forwards to `writer` via `event-translator.ts`; the AbortSignal is `req.signal`
-   - Emit `progress` for "validating"
-   - `createVersion` with the generated nodes/edges
-   - `publishVersion` to promote v2 live in magic-flow
-   - Emit `progress` for "publishing"
-   - `publishRuntimeFlow` with `trigger_keywords` in the payload
-   - Emit `result` with the final payload (flow_id, version, magic_flow_url, test_url, trigger_keyword, summary, node_count, created_at)
+
+1. **Pre-stream validation** (HTTP errors, not SSE):
+   - Parse body with `createFlowBodySchema.safeParse`; on failure throw `AgentError("invalid_instruction", ...)` with zod issues in details
+   - `normalizedKeyword = body.trigger_keyword.toLowerCase()` (schema already lowercases but be defensive)
+   - If `body.channel` not in `ctx.account.connected_channels` → throw `AgentError("channel_not_connected", ..., { connected_channels })`
+   - `checkKeywordConflict(ctx, normalizedKeyword)` → if match, throw `AgentError("keyword_conflict", ..., { existing_flow: {...} })`
+
+2. **Open SSE stream** (`const { readable, writer } = SSEWriter.create()`) and return `Response` with SSE headers immediately. All pipeline work happens in an async IIFE that writes to the writer.
+
+3. **Pipeline** (inside the async IIFE, with `let projectId: string | null = null` for cleanup tracking):
+   - `writer.progress("understanding", "Analyzing your request")`
+   - `createProject(ctx, {name: deriveName(instruction), platform: channel})` → `projectId = project.id`
+   - `writer.progress("planning", "Building flow plan")`
+   - Call `generateFlowStreaming` with a closure-based emit callback (see "Event handling" below)
+   - `writer.progress("creating_version", "Saving flow version")`
+   - `createVersion(ctx, projectId, capturedFlowData.nodes, capturedFlowData.edges, {source: "agent_api", instruction})`
+   - `publishVersion(ctx, projectId, version.id)`
+   - `writer.progress("publishing", "Deploying to runtime")`
+   - `convertToFsWhatsApp(capturedFlowData)` to get the flat payload
+   - `publishRuntimeFlow(ctx, {flowData, triggerKeywords: [normalizedKeyword], triggerMatchType: "exact"})`
+   - `writer.result({flow_id: projectId, version: N, name, summary, node_count, magic_flow_url, test_url, trigger_keyword, created_at})`
    - `writer.close()`
-7. On any error after step 6.2 (createProject): catch, emit `error` event, call `deleteProject` for orphan cleanup, `writer.close()`
-8. Return `new Response(readable, { headers: sseHeaders })`
+
+4. **Error handling**:
+   - Catch any error from the pipeline
+   - `writer.error(AgentError.fromUnknown(err))`
+   - If `projectId` is set, call `deleteProject(ctx, projectId).catch(logCleanupError)` — cleanup failures are logged but don't re-throw
+   - `writer.close()`
+
+### Event handling — inline, NOT a separate module
+
+The earlier draft of this plan proposed a `lib/agent-api/event-translator.ts` module. We're dropping it — the translation is short enough to inline in the route handler. Pattern:
+
+```typescript
+let capturedFlowData: { nodes: any[]; edges: any[]; nodeOrder?: string[] } | null = null
+let capturedMessage = ''
+let capturedError: string | null = null
+
+await generateFlowStreaming(
+  {
+    prompt: instruction,
+    platform: channel,
+    existingFlow: { nodes: [{ id: "start", type: "start", position: {x:0,y:0}, data: {} }], edges: [] },
+    context: { source: "agent_api" },
+  },
+  (event) => {
+    switch (event.type) {
+      case 'text_delta':
+        // drop — AI prose tokens are noise for the agent API
+        break
+      case 'tool_step':
+        if (event.status === 'done' && event.summary) {
+          writer.progress('generating', event.summary)
+        }
+        break
+      case 'flow_ready':
+        writer.progress('validating', 'Flow plan ready')
+        break
+      case 'result':
+        capturedFlowData = event.data.flowData ?? null
+        capturedMessage = event.data.message
+        break
+      case 'error':
+        capturedError = event.message
+        break
+    }
+  }
+)
+
+if (capturedError) throw new AgentError('validation_failed', capturedError)
+if (!capturedFlowData) throw new AgentError('invalid_instruction', capturedMessage || 'AI did not produce a flow plan')
+```
+
+**No abort signal**: `generateFlowStreaming` doesn't accept one. If the client disconnects (`req.signal.aborted`), the async IIFE will try to write to a closed `SSEWriter` — the writer's `enqueue` catch swallows these, so it's safe. The AI call continues in the background until natural completion. Wasted tokens on abort, acceptable v1 tradeoff.
 
 ---
 
@@ -188,58 +366,36 @@ magic-flow/
 
 ---
 
-## Task 5: Add the `context` parameter to `generateFlowStreaming`
+## Task 5: Add the `context` parameter to `GenerateFlowRequest`
 
 **Files:**
 - Modify: `magic-flow/lib/ai/tools/generate-flow.ts`
-- Create: `magic-flow/lib/ai/tools/__tests__/generate-flow.context.test.ts` (new dedicated test for the new param)
+- (Optional) Create: `magic-flow/lib/ai/tools/__tests__/generate-flow.context.test.ts`
 
 **Acceptance criteria:**
-- `GenerateFlowRequest` gains an optional `context?: { source: "agent_api" | "ui" }` field
-- When `context?.source === "agent_api"`: skip UI-specific setup (selectedNode, userTemplates, userTemplateData, publishedFlowId in toolContext should all be undefined regardless of what the caller passed)
-- When `context` is omitted or `context.source === "ui"`: behavior identical to today (backwards-compatible)
+- `GenerateFlowRequest` interface (starts at line ~13 of `generate-flow.ts`) gains an optional field: `context?: { source: "agent_api" | "ui" }`
+- No runtime behavior change: the field is accepted but the create path (`executeCreateModeStreaming`) doesn't consume it in Phase 2. It's declared now so Phase 3's edit path can branch on it without a breaking schema change.
 - Internal UI path still works unchanged — existing `lib/__tests__/` tests still pass
+- No changes to `executeCreateModeStreaming`, `executeEditModeStreaming`, or `handleFallback` in Phase 2
 
 **Test requirements:**
-- Calling with `{source: "agent_api"}` and also passing `selectedNode: {...}` → selectedNode is ignored in the downstream logic (test by checking the system prompt does NOT contain selectedNode-specific content, or by mocking the downstream AI client and asserting the request passed to it)
-- Calling without `context` → all existing behavior is preserved
-- Both UI and agent_api modes emit the same `StreamEvent` types (the difference is inputs, not outputs)
+- Add a single type-level test (or inline comment) verifying the field is optional and doesn't break the existing call sites
+- Run the full existing magic-flow test suite: `docker compose run --rm --no-deps app npm run test` → all pass, no regressions
+- Manual UI sanity check: start the worktree stack, open a flow in the UI, interact with the AI flow assistant chat → confirm it still responds normally
 
 **Risk mitigation:**
-- This is the highest-risk change in Phase 2 because `generate-flow.ts` is shared with the internal UI. Use a conservative approach: add the parameter, add a single conditional at the top of the function, do not refactor anything else. Run the existing flow-assistant route in the UI manually and confirm it still works before committing.
+- Phase 2 deliberately makes the smallest possible change to `generate-flow.ts`: add one optional field to an interface. No conditionals, no code-path changes. Phase 3 will add the `context.source === "agent_api"` branch when we need it for edit mode's `toolFilter`.
 
 **Pre-reading for this task:**
-- Re-read `lib/ai/tools/generate-flow.ts` in full, especially lines 1-100 for the request types and lines 355+ for `generateFlowStreaming`
-- Look at how `selectedNode`, `userTemplates`, `toolContext` are consumed downstream — find every reference and confirm they'll be undefined in the agent path without breaking anything
+- `lib/ai/tools/generate-flow.ts:13-30` — `GenerateFlowRequest` interface
 
 ---
 
-## Task 6: Build `event-translator.ts`
+## Task 6: ~~Event translator module~~ (dropped)
 
-**Files:**
-- Create: `magic-flow/lib/agent-api/event-translator.ts`
-- Create: `magic-flow/lib/agent-api/__tests__/event-translator.test.ts`
+Inlined into the route handler (~20 LOC). No separate module. No separate test file. The route handler's integration test (Task 8) covers the event-handling logic end-to-end. See "Event handling — inline, NOT a separate module" in the File responsibilities section above for the pattern.
 
-**Acceptance criteria:**
-- Exports `translateStreamEvent(internal: StreamEvent, writer: SSEWriter): { terminal: boolean }`
-- Translation rules:
-  - `tool_step` with `details.kind === "edit"` → `writer.progress("editing", buildEditMessage(details))` where the message summarizes counts (e.g., "Applied 3 updates, 1 addition")
-  - `tool_step` with `details.kind === "validate"` and `details.valid === true` → `writer.progress("validating", `Validated ${nodeCount} nodes`)`
-  - `tool_step` with `details.kind === "validate"` and `details.valid === false` → `writer.error(new AgentError("validation_failed", "AI produced an invalid flow", { errors: details.issues }))`, returns `terminal: true`
-  - `text_delta` → silently dropped, returns `terminal: false`
-  - `flow_ready` → `writer.progress("ready", "Flow plan ready")`
-  - `result` → NOT handled here; the route handler constructs the final result payload with extra fields (flow_id, magic_flow_url, etc.) that the internal event doesn't carry. The translator emits nothing for this case and returns `terminal: true` so the route handler knows generation is done.
-  - `error` → `writer.error(AgentError.fromUnknown(new Error(internal.message)))`, returns `terminal: true`
-
-**Test requirements:**
-- Each of the 5 internal event types has at least one test case
-- Terminal vs non-terminal return values are asserted
-- The SSEWriter passed in is spied on to verify the right method was called with the right args
-- Edge case: validation failure with no `issues` array — falls back to `errors: []`
-
-**Pre-reading for this task:**
-- `lib/ai/tools/generate-flow.ts` lines 88-106 for the exact `StreamEvent` discriminated union
-- `lib/ai/tools/generate-flow.ts` for the `ToolStepDetails` shape (the `edit` and `validate` variants)
+This task is removed from Phase 2. The task numbering below reflects this — the old Task 7 (route handler) is now Task 6, old Task 8 is Task 7, etc.
 
 ---
 
@@ -261,7 +417,7 @@ magic-flow/
 - Each step emits a pre-step `progress` event via `writer.progress(phase, message)` before calling the work
 - On any error during the pipeline after `createProject`: emit `error` via writer, call `deleteProject(ctx, projectId)` in a finally block, close the writer. Cleanup failures are caught and logged, not re-thrown.
 - SSE response headers exactly: `content-type: text/event-stream`, `cache-control: no-cache`, `connection: keep-alive`, `x-accel-buffering: no`
-- Plumb `req.signal` into `generateFlowStreaming`'s abortSignal parameter
+- **No abort signal plumbing** — `generateFlowStreaming` doesn't accept one. Client disconnect is handled by `SSEWriter.enqueue`'s silent catch-and-drop; the AI call finishes in the background and its output is discarded when the writer is closed. Document as a known gap, don't fix in Phase 2.
 
 **Test requirements:**
 - Happy path: mock all fs-whatsapp calls, assert SSE stream contains expected progress events in order, assert final `result` event has the right fields
@@ -270,7 +426,6 @@ magic-flow/
 - Keyword conflict → 409 with `existing_flow` in response
 - Validation failure from AI → `error` event in stream + `deleteProject` called
 - Post-validation failure (e.g., publishRuntimeFlow fails) → `error` event + orphan cleanup
-- Client abort mid-stream: simulate by triggering `req.signal` abort, assert orphan cleanup still runs and no unhandled promise rejection
 
 **Pre-reading for this task:**
 - `magic-flow/app/api/ai/flow-assistant/route.ts` — the existing NDJSON streaming route. Your Phase 2 POST handler follows the same shape but with SSE and the new pipeline.
@@ -292,7 +447,8 @@ magic-flow/
 
 **Test requirements:**
 - This test is the single most important "does the whole thing work" signal for Phase 2. Spend time making it readable — it's the gold reference for how the create pipeline is supposed to behave.
-- Do not mock our own code (publisher.ts, event-translator.ts). Only mock `fetch` and `generateFlowStreaming`.
+- Do not mock our own code (publisher.ts helpers). Only mock `fetch` (for the publisher → fs-whatsapp calls) and the `generateFlowStreaming` module import (for the AI call).
+- **Mock fs-whatsapp responses in the `{status: "success", data: {...}}` envelope shape** — this is the number one gotcha from Phase 1. See `lib/agent-api/__tests__/publisher.test.ts` for the pattern.
 
 ---
 
@@ -302,10 +458,10 @@ magic-flow/
 - Modify: `magic-flow/app/api/v1/agent/flows/__tests__/route.test.ts`
 
 **Acceptance criteria:**
-- Test 1: AI generation returns a validation_failed event → SSE stream emits `error` event, deleteProject is called with the project ID, the HTTP response still succeeds (200 status, error comes through the stream not HTTP)
-- Test 2: publishRuntimeFlow throws → SSE stream emits `error` event with code `publish_failed`, deleteProject is called, stream closes cleanly
-- Test 3: deleteProject itself fails during cleanup → the primary error event is still emitted, cleanup failure is logged but swallowed, stream closes
-- Test 4: Client aborts the request mid-generation (simulate by triggering `req.signal` abort) → `generateFlowStreaming` sees the abort signal, no uncaught errors, orphan cleanup still runs
+- Test 1: AI generation returns a `StreamEvent` of type `error` → SSE stream emits `error` event, `deleteProject` is called with the project ID, the HTTP response is still 200 (the error comes through the stream, not HTTP status)
+- Test 2: `publishRuntimeFlow` throws → SSE stream emits `error` event with code `publish_failed`, `deleteProject` is called, stream closes cleanly
+- Test 3: `deleteProject` itself fails during cleanup → the primary error event is still emitted, the cleanup failure is logged but swallowed, stream closes
+- Test 4 (client abort — informational): simulate by calling `SSEWriter.close()` mid-pipeline. The pipeline continues but further `writer.progress/result/error` calls become no-ops. No uncaught promise rejections. Since `generateFlowStreaming` doesn't accept an AbortSignal, the AI call keeps running — we just stop writing its output. This test is a smoke test that the silent-drop behavior doesn't throw.
 
 **Test requirements:**
 - Explicit assertion on `deleteProject` call count — should be exactly 1 per failure test
@@ -315,7 +471,12 @@ magic-flow/
 
 ## Task 10: Manual verification against a running stack
 
-**Prerequisites:** Docker running, fs-whatsapp up on `:8080`, magic-flow up on `:3002`, test org with a seeded `WhatsAppAccount`, ANTHROPIC_API_KEY set in magic-flow's env, a `whm_*` key for the test org.
+**Prerequisites:**
+- Phase 1 worktree stack still running on port 3010 OR a fresh Phase 2 worktree stack (create a `docker-compose.override.yml` with port overrides to avoid conflicts with broadcasting-plans stack on port 3002)
+- fs-whatsapp running (the `fschat_*` containers from the fs-whatsapp repo's docker compose)
+- ANTHROPIC_API_KEY already set in the worktree's `.env.local` (copied from main magic-flow during Phase 1 setup)
+- Test org from Phase 1 reused: `phase1-test@agent-api.local` with its seeded WhatsApp account (account ID `4230af1f-b5f6-475c-878a-9979064ff972`). If that test data was cleaned up, recreate via the fs-whatsapp API as documented in Phase 1 Task 10.
+- A fresh `whm_*` key (previous one was revoked). Create via `POST /api/auth/login` + `POST /api/api-keys` as Phase 1 did.
 
 **Acceptance criteria:**
 - Curl a create request with valid fields, observe SSE stream in real time, see progress events fire
@@ -328,11 +489,11 @@ magic-flow/
 - Run a second create in the same minute that deliberately exceeds the `expensive` rate limit (11 calls) — observe 429 on the 11th
 - After successful creation, verify in the MagicFlow UI that the flow shows up in version history with `changes.source = "agent_api"` metadata
 
-**Test commands (example shapes):**
+**Test commands** (adjust port to match your worktree — Phase 1 used 3010):
 
 ```bash
-# Happy path
-curl -N -X POST http://localhost:3002/api/v1/agent/flows \
+# Happy path — observe SSE stream
+curl -N -X POST http://localhost:3010/api/v1/agent/flows \
   -H "X-API-Key: $FREESTAND_TEST_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
@@ -342,14 +503,19 @@ curl -N -X POST http://localhost:3002/api/v1/agent/flows \
     "trigger_keyword": "testphase2"
   }'
 
-# Keyword conflict (run twice)
-# Second call should return 409
+# Keyword conflict — run the same curl twice. Second call should return HTTP 409 with
+# `{"code":"keyword_conflict","existing_flow":{...}}` before any SSE stream opens.
 
-# Channel not connected
-curl -X POST http://localhost:3002/api/v1/agent/flows \
+# Channel not connected — Instagram is not seeded on the Phase 1 test org
+curl -X POST http://localhost:3010/api/v1/agent/flows \
   -H "X-API-Key: $FREESTAND_TEST_KEY" \
   -H "Content-Type: application/json" \
   -d '{"instruction":"x","channel":"instagram","trigger_keyword":"foo"}'
+# Expect HTTP 400 with `{"code":"channel_not_connected","connected_channels":["whatsapp"]}`
+
+# Cleanup verification — check the fs-whatsapp DB to confirm the test flow exists
+# after a happy path run, and does NOT exist after a validation-failure run.
+curl -s http://localhost:3010/api/v1/agent/flows -H "X-API-Key: $FREESTAND_TEST_KEY" | jq .
 ```
 
 ---
@@ -357,8 +523,8 @@ curl -X POST http://localhost:3002/api/v1/agent/flows \
 ## Task 11: Phase 2 wrap-up
 
 **Acceptance criteria:**
-- All unit tests pass: `npm run test`
-- Full type check passes: `npx tsc --noEmit`
+- All unit tests pass: `docker compose run --rm --no-deps app npm run test` → all green, no new skips
+- Full type check: `docker compose run --rm --no-deps app npx tsc --noEmit` → pass
 - The internal `/api/ai/flow-assistant` path still works in the MagicFlow UI with no regressions (spot-check by opening a flow and interacting with the AI assistant)
 - The Phase 1 `GET /v1/agent/flows` endpoint still works
 - A fresh `whm_*` key can create a flow end-to-end from curl in < 30 seconds wall time

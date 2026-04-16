@@ -65,6 +65,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { CSS } from "@dnd-kit/utilities"
 import { createChoiceData } from "@/utils"
 import { collectFlowVariables, collectFlowVariablesRich } from "@/utils/flow-variables"
+import { extractTemplateVariables } from "@/utils/template-helpers"
 import { BUTTON_LIMITS } from "@/constants/platform-limits"
 import { getNodeLimits } from "@/constants/node-limits/config"
 import { getImplicitInputType, VALIDATION_PRESETS } from "@/utils/validation-presets"
@@ -2691,8 +2692,7 @@ export function PropertiesPanel({
                     const tmpl = availableTemplates.find((t) => t.id === templateId)
                     if (tmpl) {
                       // Extract variables from body
-                      const bodyVars = (tmpl.body_content || "").match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []
-                      const varNames = [...new Set<string>(bodyVars.map((m: string) => m.replace(/\{\{|\}\}/g, "")))]
+                      const varNames = extractTemplateVariables(tmpl.body_content || "")
                       // Auto-create parameter mappings for detected variables
                       const mappings = varNames.map((v: string) => {
                         const existing = (selectedNode.data.parameterMappings || []).find((m: any) => m.templateVar === v)

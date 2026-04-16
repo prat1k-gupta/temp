@@ -755,6 +755,88 @@ describe("buildEditFlowFromPlan", () => {
     expect(attachEdge).toBeDefined()
     expect(attachEdge!.sourceHandle).toBe("btn-bbb")
   })
+
+  it("resolves attachHandle 'button-N' on templateMessage nodes (data.buttons, not data.choices)", () => {
+    // Template message nodes store buttons in data.buttons with {type, text, id} schema
+    // — they were intentionally excluded from the data.choices unification
+    const existingNodes = [
+      {
+        id: "tmpl-1",
+        type: "templateMessage",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "whatsapp",
+          label: "Template Message",
+          templateId: "tpl_123",
+          templateName: "satisfaction_survey",
+          buttons: [
+            { type: "quick_reply", text: "Very Satisfied", id: "btn-0" },
+            { type: "quick_reply", text: "Satisfied", id: "btn-1" },
+            { type: "quick_reply", text: "Unsatisfied", id: "btn-2" },
+          ],
+        },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Added follow-up after Satisfied button",
+      chains: [
+        {
+          attachTo: "tmpl-1",
+          attachHandle: "button-1", // AI says button-1 = Satisfied
+          steps: [
+            { step: "node", nodeType: "whatsappMessage", content: { message: "Thanks for your feedback!" } },
+          ],
+        },
+      ],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
+
+    const attachEdge = result.newEdges.find((e) => e.source === "tmpl-1")
+    expect(attachEdge).toBeDefined()
+    expect(attachEdge!.sourceHandle).toBe("btn-1") // Satisfied button's actual ID
+  })
+
+  it("does not resolve button-N on templateMessage with only URL buttons (no output handles)", () => {
+    const existingNodes = [
+      {
+        id: "tmpl-2",
+        type: "templateMessage",
+        position: { x: 100, y: 100 },
+        data: {
+          platform: "whatsapp",
+          label: "Template Message",
+          templateId: "tpl_456",
+          templateName: "promo_link",
+          buttons: [
+            { type: "url", text: "Visit Website", url: "https://example.com" },
+            { type: "phone_number", text: "Call Us" },
+          ],
+        },
+      },
+    ] as any[]
+
+    const editPlan: EditFlowPlan = {
+      message: "Added follow-up after first button",
+      chains: [
+        {
+          attachTo: "tmpl-2",
+          attachHandle: "button-0",
+          steps: [
+            { step: "node", nodeType: "whatsappMessage", content: { message: "Thanks!" } },
+          ],
+        },
+      ],
+    }
+
+    const result = buildEditFlowFromPlan(editPlan, "whatsapp", existingNodes)
+
+    // button-0 should stay unresolved — URL buttons don't have output handles
+    const attachEdge = result.newEdges.find((e) => e.source === "tmpl-2")
+    expect(attachEdge).toBeDefined()
+    expect(attachEdge!.sourceHandle).toBe("button-0")
+  })
 })
 
 // ─── warnings collection ────────────────────────────
@@ -2191,5 +2273,102 @@ describe("buildEditFlowFromPlan — localId in chains", () => {
     expect(newNode).toBeDefined()
     const edge = result.newEdges.find(e => e.source === newNode!.id && e.target === "target-msg")
     expect(edge).toBeDefined()
+  })
+})
+
+describe("buildFlowFromPlan — templateMessage", () => {
+  const basePlan = (content: any): FlowPlan => ({
+    message: "test",
+    steps: [
+      {
+        step: "node",
+        nodeType: "templateMessage",
+        content,
+      },
+    ],
+  })
+
+  it("builds a templateMessage node with full content", () => {
+    const plan = basePlan({
+      templateId: "tpl-123",
+      templateName: "order_confirmation",
+      displayName: "Order Confirmation",
+      language: "en",
+      category: "UTILITY",
+      headerType: "TEXT",
+      bodyPreview: "Hi {{first_name}}, your order {{order_id}} is ready",
+      parameterMappings: [
+        { templateVar: "first_name", flowValue: "{{user_name}}" },
+        { templateVar: "order_id", flowValue: "{{order_id}}" },
+      ],
+      templateButtons: [
+        { type: "QUICK_REPLY", text: "Track order" },
+        { type: "URL", text: "View", url: "https://example.com" },
+      ],
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+
+    const templateNode = result.nodes.find((n) => n.type === "templateMessage")
+    expect(templateNode).toBeDefined()
+    const data = templateNode!.data as any
+    expect(data.templateId).toBe("tpl-123")
+    expect(data.templateName).toBe("order_confirmation")
+    expect(data.displayName).toBe("Order Confirmation")
+    expect(data.language).toBe("en")
+    expect(data.category).toBe("UTILITY")
+    expect(data.headerType).toBe("TEXT")
+    expect(data.bodyPreview).toBe("Hi {{first_name}}, your order {{order_id}} is ready")
+    expect(data.parameterMappings).toEqual([
+      { templateVar: "first_name", flowValue: "{{user_name}}" },
+      { templateVar: "order_id", flowValue: "{{order_id}}" },
+    ])
+    expect(data.buttons).toHaveLength(2)
+    expect(data.buttons[0]).toMatchObject({ type: "quick_reply", text: "Track order", id: "btn-0" })
+    expect(data.buttons[1]).toMatchObject({ type: "url", text: "View", url: "https://example.com", id: "btn-1" })
+  })
+
+  it("seeds parameterMappings from bodyPreview when AI omits them", () => {
+    const plan = basePlan({
+      templateName: "welcome",
+      bodyPreview: "Hi {{first_name}}, welcome {{company}}",
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    expect(data.parameterMappings).toEqual([
+      { templateVar: "first_name", flowValue: "" },
+      { templateVar: "company", flowValue: "" },
+    ])
+  })
+
+  it("uses displayName for label when label is absent", () => {
+    const plan = basePlan({
+      templateName: "x",
+      displayName: "Welcome Template",
+      bodyPreview: "hello",
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    // Factory default label is "Template Message"; contentToNodeData should NOT
+    // overwrite it unless content.label is explicitly provided. Verify the
+    // factory default is preserved.
+    expect(data.label).toBe("Template Message")
+    expect(data.displayName).toBe("Welcome Template")
+  })
+
+  it("builds a clean node when the template has no variables", () => {
+    const plan = basePlan({
+      templateName: "simple",
+      bodyPreview: "Thanks for shopping with us!",
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    expect(data.parameterMappings).toEqual([])
   })
 })

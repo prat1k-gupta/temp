@@ -341,4 +341,49 @@ describe("validateGeneratedFlow", () => {
       expect(gap).toHaveLength(0)
     })
   })
+
+  describe("duplicate_source_edge", () => {
+    it("flags two outgoing edges from the same source handle", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("q1", "whatsappQuestion", { question: "Name?" }),
+        makeNode("m1", "whatsappMessage", { text: "Old target" }),
+        makeNode("m2", "whatsappMessage", { text: "New target" }),
+      ]
+      const edges = [
+        makeEdge("1", "q1"),
+        makeEdge("q1", "m1"),       // old edge — same default handle
+        makeEdge("q1", "m2"),       // new edge — same default handle, different target
+        makeEdge("m2", "m1"),       // normal edge
+      ]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      const dupes = result.issues.filter((i) => i.type === "duplicate_source_edge")
+      expect(dupes).toHaveLength(1)
+      expect(dupes[0].nodeId).toBe("q1")
+      expect(result.isValid).toBe(false)
+    })
+
+    it("allows multiple outgoing edges from different source handles (choice buttons)", () => {
+      const nodes = [
+        makeNode("1", "start"),
+        makeNode("qr", "whatsappQuickReply", {
+          question: "Pick one",
+          choices: [
+            { id: "btn-0", text: "A" },
+            { id: "btn-1", text: "B" },
+          ],
+        }),
+        makeNode("a", "whatsappMessage", { text: "Picked A" }),
+        makeNode("b", "whatsappMessage", { text: "Picked B" }),
+      ]
+      const edges = [
+        makeEdge("1", "qr"),
+        makeEdge("qr", "a", "btn-0"),
+        makeEdge("qr", "b", "btn-1"),
+      ]
+      const result = validateGeneratedFlow(nodes, edges, "whatsapp")
+      const dupes = result.issues.filter((i) => i.type === "duplicate_source_edge")
+      expect(dupes).toHaveLength(0)
+    })
+  })
 })

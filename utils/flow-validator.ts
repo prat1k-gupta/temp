@@ -14,6 +14,7 @@ export interface FlowIssue {
     | "empty_content"
     | "unconnected_handle"
     | "unconnected_button"
+    | "duplicate_source_edge"
     | "converter_error"
     | "template_mapping_gap"
   nodeId?: string
@@ -234,7 +235,30 @@ export function validateGeneratedFlow(
     }
   }
 
-  // 7. Converter trial — catches structural problems
+  // 7. Duplicate outgoing edges — each (source, sourceHandle) pair must have
+  //    at most one outgoing edge. A single output port pointing to two targets
+  //    is structurally invalid (runtime can't pick which path to follow).
+  const edgesBySourceHandle = new Map<string, Edge[]>()
+  for (const edge of edges) {
+    const key = `${edge.source}::${edge.sourceHandle ?? "default"}`
+    const arr = edgesBySourceHandle.get(key) ?? []
+    arr.push(edge)
+    edgesBySourceHandle.set(key, arr)
+  }
+  for (const [, group] of edgesBySourceHandle) {
+    if (group.length <= 1) continue
+    const sourceNode = nodes.find((n) => n.id === group[0].source)
+    const targets = group.map((e) => e.target).join(", ")
+    issues.push({
+      type: "duplicate_source_edge",
+      nodeId: group[0].source,
+      nodeLabel: (sourceNode?.data as any)?.label || sourceNode?.type || "",
+      detail: `Has ${group.length} outgoing edges from the same handle to different targets (${targets}).`,
+      hint: `Remove the stale edge(s) using removeEdges — only one target per source handle.`,
+    })
+  }
+
+  // 8. Converter trial — catches structural problems
   // Only run if a start node exists (AI-generated plans don't include it — the canvas adds it)
   const hasStartNode = nodes.some((n) => n.type === "start")
   if (hasStartNode) {

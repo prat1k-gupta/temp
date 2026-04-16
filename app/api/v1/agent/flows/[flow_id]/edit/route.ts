@@ -178,10 +178,28 @@ export const POST = withAgentAuth(async (ctx, req) => {
         return !removeEdgeKeys.has(key)
       })
 
-      // Step 5: Add new edges from updates.edges
+      // Step 5: Add new edges
       if (updates.edges && updates.edges.length > 0) {
         mergedEdges = [...mergedEdges, ...updates.edges]
       }
+
+      // Step 6: Enforce edge invariant — each (source, sourceHandle) pair
+      // can have at most one outgoing edge. A single output port pointing
+      // to two targets is structurally invalid. When duplicates exist
+      // (typically from AI self-correction losing removeEdges), keep the
+      // newest edge (from updates.edges) and drop the stale one.
+      const newEdgeIds = new Set((updates.edges ?? []).map(e => e.id))
+      const seenSourceHandles = new Map<string, Edge>()
+      const deduped: Edge[] = []
+      // Process newest edges first so they win on conflict
+      for (const e of [...mergedEdges].reverse()) {
+        const key = `${e.source}::${e.sourceHandle ?? "default"}`
+        if (!seenSourceHandles.has(key)) {
+          seenSourceHandles.set(key, e)
+          deduped.push(e)
+        }
+      }
+      mergedEdges = deduped.reverse()
 
       // --- Build change tracking entries ---
       const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`

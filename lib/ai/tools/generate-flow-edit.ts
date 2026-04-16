@@ -892,35 +892,19 @@ function createEditTools(
       const projectId = toolContext.projectId
 
       try {
-        // Step 1: If the AI made edits this session, save them as a new
-        // version first. This puts the edits in the DB so the publish
-        // logic below treats them uniformly with any other unpublished
-        // version. If no edits were made, skip — we'll publish whatever
-        // the DB already has as the highest version.
+        // Step 1: Compute the intended publish state — existing canvas
+        // merged with any in-session AI edits. For the internal UI this
+        // includes draft changes the user already made; for the agent API
+        // it's the latest version loaded by flow-loader plus tool edits.
         const editResult = callbacks.getEditResult()
-        if (editResult) {
-          const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
-          const mergedEdges = buildCurrentEdges(existingEdges, editResult)
+        const intendedNodes = editResult
+          ? buildCurrentNodes(existingNodes, editResult, request.platform)
+          : existingNodes
+        const intendedEdges = editResult
+          ? buildCurrentEdges(existingEdges, editResult)
+          : existingEdges
 
-          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
-            method: 'POST',
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: 'AI publish',
-              nodes: mergedNodes,
-              edges: mergedEdges,
-              changes: {},
-              platform: request.platform,
-            }),
-          })
-          if (!versionRes.ok) {
-            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
-          }
-          // Signal the edit endpoint not to create its own duplicate version.
-          callbacks.markVersionSavedByTool?.()
-        }
-
-        // Step 2: Fetch the latest version from DB (source of truth).
+        // Step 2: Fetch the latest version from DB to compare.
         const latestRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions?limit=1`, {
           headers: { ...authHeaders, 'Content-Type': 'application/json' },
         })
@@ -928,9 +912,40 @@ function createEditTools(
           return { success: false, error: `Failed to fetch latest version: HTTP ${latestRes.status}` }
         }
         const latestBody = await latestRes.json()
-        const latest = latestBody.data?.versions?.[0]
+        let latest = latestBody.data?.versions?.[0]
         if (!latest) {
           return { success: false, error: 'Flow has no versions to publish.' }
+        }
+
+        // Step 3: Save a new version if the intended state differs from
+        // the latest DB version. Catches three cases:
+        //   (a) AI just made edits (editResult exists, mergedNodes differs)
+        //   (b) User has draft changes on canvas (existingNodes differs
+        //       from latest version — draft is NOT a version)
+        //   (c) Nothing changed → skip version save
+        const intendedSnapshot = JSON.stringify({ nodes: intendedNodes, edges: intendedEdges })
+        const latestSnapshot = JSON.stringify({ nodes: latest.nodes || [], edges: latest.edges || [] })
+        if (intendedSnapshot !== latestSnapshot) {
+          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'AI publish',
+              nodes: intendedNodes,
+              edges: intendedEdges,
+              changes: {},
+              platform: request.platform,
+            }),
+          })
+          if (!versionRes.ok) {
+            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+          }
+          const newVersion = (await versionRes.json()).data?.version
+          if (newVersion) {
+            latest = newVersion // new version is now the target to publish
+          }
+          // Signal the edit endpoint not to create its own duplicate version.
+          callbacks.markVersionSavedByTool?.()
         }
 
         const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
@@ -961,7 +976,10 @@ function createEditTools(
         }
 
         // Step 5: Flatten + convert + deploy to runtime.
-        const flat = flattenFlow(latest.nodes || [], latest.edges || [])
+        // Use intendedNodes/intendedEdges (what we just saved) rather than
+        // latest.nodes which might be missing if the POST response doesn't
+        // include the full payload.
+        const flat = flattenFlow(intendedNodes, intendedEdges)
         const converted = convertToFsWhatsApp(
           flat.nodes,
           flat.edges,

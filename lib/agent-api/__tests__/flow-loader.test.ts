@@ -5,9 +5,10 @@ import type { ProjectInfo, VersionInfo } from "@/lib/agent-api/publisher"
 
 vi.mock("@/lib/agent-api/publisher", () => ({
   getProject: vi.fn(),
+  listVersions: vi.fn(),
 }))
 
-import { getProject } from "@/lib/agent-api/publisher"
+import { getProject, listVersions } from "@/lib/agent-api/publisher"
 
 function mockCtx(): AgentContext {
   return {
@@ -56,18 +57,25 @@ describe("loadFlowForEdit", () => {
     vi.clearAllMocks()
   })
 
-  it("returns existingFlow nodes/edges and toolContext from the published version", async () => {
-    const project = makeProject()
-    ;(getProject as any).mockResolvedValue(project)
+  it("uses the highest version (published or not) for editing", async () => {
+    const unpublishedV3 = makeVersion({ id: "ver_3", versionNumber: 3, isPublished: false, publishedAt: undefined })
+    const publishedV2 = makeVersion({ id: "ver_2", versionNumber: 2, isPublished: true })
+    ;(getProject as any).mockResolvedValue(makeProject())
+    ;(listVersions as any).mockResolvedValue([unpublishedV3, publishedV2]) // DESC order
 
     const result = await loadFlowForEdit(mockCtx(), "proj_1")
 
-    expect(getProject).toHaveBeenCalledWith(mockCtx(), "proj_1")
+    // Should use v3 (unpublished, highest), not v2 (published)
+    expect(result.version).toBe(unpublishedV3)
+    expect(result.existingFlow.nodes).toEqual(unpublishedV3.nodes)
+  })
 
-    expect(result.project).toBe(project)
-    expect(result.version).toBe(project.latestVersion)
-    expect(result.existingFlow.nodes).toEqual(project.latestVersion!.nodes)
-    expect(result.existingFlow.edges).toEqual(project.latestVersion!.edges)
+  it("returns toolContext with project metadata", async () => {
+    ;(getProject as any).mockResolvedValue(makeProject())
+    ;(listVersions as any).mockResolvedValue([makeVersion()])
+
+    const result = await loadFlowForEdit(mockCtx(), "proj_1")
+
     expect(result.toolContext.authHeader).toBe("whm_test123")
     expect(result.toolContext.projectId).toBe("proj_1")
     expect(result.toolContext.projectName).toBe("iPhone 11 Flow")
@@ -75,28 +83,20 @@ describe("loadFlowForEdit", () => {
     expect(result.toolContext.publishedFlowId).toBe("rtf_99")
   })
 
-  it("toolContext.authHeader is the raw whm_* key from ctx.apiKey", async () => {
-    const ctx = mockCtx()
-    ;(getProject as any).mockResolvedValue(makeProject())
-
-    const result = await loadFlowForEdit(ctx, "proj_1")
-
-    expect(result.toolContext.authHeader).toBe(ctx.apiKey)
-    expect(result.toolContext.authHeader).toMatch(/^whm_/)
-  })
-
-  it("throws flow_not_found when project has no latestVersion", async () => {
+  it("throws flow_not_found when project has no versions", async () => {
     ;(getProject as any).mockResolvedValue(makeProject({ latestVersion: undefined }))
+    ;(listVersions as any).mockResolvedValue([])
 
     await expect(loadFlowForEdit(mockCtx(), "proj_1")).rejects.toMatchObject({
       code: "flow_not_found",
-      message: expect.stringContaining("proj_1"),
+      message: expect.stringContaining("no versions"),
     })
   })
 
-  it("propagates flow_not_found when getProject throws for a missing project", async () => {
+  it("propagates flow_not_found when getProject throws", async () => {
     const { AgentError } = await import("@/lib/agent-api/errors")
     ;(getProject as any).mockRejectedValue(new AgentError("flow_not_found", "Project proj_99 not found"))
+    ;(listVersions as any).mockResolvedValue([])
 
     await expect(loadFlowForEdit(mockCtx(), "proj_99")).rejects.toMatchObject({
       code: "flow_not_found",

@@ -124,13 +124,24 @@ describe("POST /v1/agent/flows/[flow_id]/edit", () => {
     // Call sequence for edit:
     //   1. GET /api/accounts (withAgentAuth → getActingAccount)
     //   2. GET /api/magic-flow/projects/proj_1 (loadFlowForEdit → getProject)
-    //   3. POST /api/magic-flow/projects/proj_1/versions (createVersion)
+    //   3. GET /api/magic-flow/projects/proj_1/versions (loadFlowForEdit → listVersions)
+    //   4. POST /api/magic-flow/projects/proj_1/versions (createVersion)
+    const versionsListBody = {
+      status: "success",
+      data: {
+        versions: [PROJECT_BODY.data.project.latest_version],
+      },
+    }
     ;(global.fetch as any).mockImplementation((url: string, init?: RequestInit) => {
       if (url.includes("/api/accounts")) {
         return Promise.resolve(new Response(JSON.stringify(ACCOUNTS_BODY), { status: 200 }))
       }
       if (url.includes("/api/magic-flow/projects/proj_1/versions") && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify(NEW_VERSION_BODY), { status: 200 }))
+      }
+      // listVersions: GET .../versions (must come after POST check)
+      if (url.includes("/api/magic-flow/projects/proj_1/versions") && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(new Response(JSON.stringify(versionsListBody), { status: 200 }))
       }
       if (url.includes("/api/magic-flow/projects/proj_1") && (!init?.method || init.method === "GET")) {
         return Promise.resolve(new Response(JSON.stringify(PROJECT_BODY), { status: 200 }))

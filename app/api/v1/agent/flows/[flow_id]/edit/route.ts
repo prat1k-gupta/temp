@@ -76,7 +76,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         updates: CapturedUpdates | null
         message: string
         error: string | null
-      } = { updates: null, message: "", error: null }
+        versionSavedByTool: boolean
+      } = { updates: null, message: "", error: null, versionSavedByTool: false }
 
       // Pass default templates so the AI can resolve flowTemplate nodes
       const userTemplates = DEFAULT_TEMPLATES.map(t => ({
@@ -115,6 +116,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
             case "result":
               captured.updates = (event.data.updates as CapturedUpdates | undefined) ?? null
               captured.message = event.data.message
+              captured.versionSavedByTool = event.data.versionSavedByTool === true
               break
             case "error":
               captured.error = event.message
@@ -229,14 +231,28 @@ export const POST = withAgentAuth(async (ctx, req) => {
         })),
       ]
 
-      writer.progress("saving", "Saving updated flow version")
-      const newVersion = await createVersion(
-        ctx,
-        project.id,
-        mergedNodes,
-        mergedEdges,
-        flowChanges as any,
-      )
+      // Skip version save if the publish_flow tool already created one
+      // during the AI session — otherwise we'd create a duplicate row.
+      let versionNumber: number
+      let published = false
+      if (captured.versionSavedByTool) {
+        // Tool already saved + published. Fetch the latest for version number.
+        const { getLatestVersion } = await import("@/lib/agent-api/publisher")
+        const latest = await getLatestVersion(ctx, project.id)
+        versionNumber = latest?.versionNumber ?? 0
+        published = latest?.isPublished ?? false
+        writer.progress("saving", "Version already saved by publish_flow tool")
+      } else {
+        writer.progress("saving", "Saving updated flow version")
+        const newVersion = await createVersion(
+          ctx,
+          project.id,
+          mergedNodes,
+          mergedEdges,
+          flowChanges as any,
+        )
+        versionNumber = newVersion.version_number
+      }
 
       // --- Emit final result ---
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
@@ -250,14 +266,16 @@ export const POST = withAgentAuth(async (ctx, req) => {
 
       writer.result({
         flow_id: project.id,
-        version: newVersion.version_number,
-        published: false,
+        version: versionNumber,
+        published,
         name: project.name,
         summary: captured.message || "Flow edited successfully",
         changes: changesSummary,
         node_count: mergedNodes.length,
         magic_flow_url: `${appUrl}/flow/${project.id}`,
-        next_action: `Call POST /v1/agent/flows/${project.id}/publish to make this version live`,
+        next_action: published
+          ? undefined
+          : `Call POST /v1/agent/flows/${project.id}/publish to make this version live`,
         updated_at: now,
       })
     } catch (err) {

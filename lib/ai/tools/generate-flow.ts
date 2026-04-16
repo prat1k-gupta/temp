@@ -55,6 +55,8 @@ export interface GenerateFlowResponse {
     positionShifts?: Array<{ nodeId: string; dx: number }>
   }
   action: "create" | "edit" | "suggest" | "save_as_template"
+  /** True if publish_flow tool saved a version during this session — caller should skip duplicate createVersion. */
+  versionSavedByTool?: boolean
   templateMetadata?: {
     suggestedName: string
     description: string

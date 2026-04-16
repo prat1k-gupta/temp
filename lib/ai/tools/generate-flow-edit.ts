@@ -257,6 +257,9 @@ export async function executeEditModeStreaming(
   // edit to the canvas and double-track every change).
   let flowReadyEmittedForResult: BuildEditFlowResult | null = null
   let finalTemplateMetadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata } | null = null
+  // Set by publish_flow tool when it saves a new version to the DB.
+  // Edit route handlers check this to skip their own version save.
+  let versionSavedByTool = false
 
   const result = streamText({
     model: getModel('claude-sonnet'),
@@ -275,6 +278,7 @@ export async function executeEditModeStreaming(
       hasFlowReadyBeenEmittedFor: (r) => flowReadyEmittedForResult === r,
       setTemplateMetadata: (m) => { finalTemplateMetadata = m },
       getEditResult: () => finalEditResult,
+      markVersionSavedByTool: () => { versionSavedByTool = true },
     }, request.toolContext, emit),
     stopWhen: stepCountIs(EDIT_STEP_BUDGET),
     temperature: 0.3,
@@ -337,6 +341,7 @@ export async function executeEditModeStreaming(
         message: aiMessage,
         action: "save_as_template",
         templateMetadata: finalTemplateMetadata,
+        versionSavedByTool,
       },
     })
     return
@@ -376,6 +381,7 @@ export async function executeEditModeStreaming(
       data: {
         message: aiMessage,
         action: "edit",
+        versionSavedByTool,
       },
     })
     return
@@ -396,6 +402,7 @@ export async function executeEditModeStreaming(
       },
       action: "edit",
       warnings: validatedEditResult.warnings.length > 0 ? validatedEditResult.warnings : undefined,
+      versionSavedByTool,
     },
   })
 }
@@ -410,6 +417,8 @@ interface EditToolCallbacks {
   hasFlowReadyBeenEmittedFor?: (result: BuildEditFlowResult) => boolean
   setTemplateMetadata: (metadata: { suggestedName: string; description: string; aiMetadata: TemplateAIMetadata }) => void
   getEditResult: () => BuildEditFlowResult | null
+  /** Called by publish_flow when it saves a version. Lets the edit endpoint skip its own createVersion call. */
+  markVersionSavedByTool?: () => void
 }
 
 /**
@@ -880,42 +889,69 @@ function createEditTools(
         return { success: false, error: 'Cannot publish — authentication context is missing.' }
       }
 
-      const editResult = callbacks.getEditResult()
-      if (!editResult) {
-        return { success: false, error: 'No edits to publish — call apply_edit and validate_result first.' }
-      }
-
       const projectId = toolContext.projectId
 
       try {
-        // 1. Merge edit result with existing flow
-        const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
-        const mergedEdges = buildCurrentEdges(existingEdges, editResult)
+        // Step 1: If the AI made edits this session, save them as a new
+        // version first. This puts the edits in the DB so the publish
+        // logic below treats them uniformly with any other unpublished
+        // version. If no edits were made, skip — we'll publish whatever
+        // the DB already has as the highest version.
+        const editResult = callbacks.getEditResult()
+        if (editResult) {
+          const mergedNodes = buildCurrentNodes(existingNodes, editResult, request.platform)
+          const mergedEdges = buildCurrentEdges(existingEdges, editResult)
 
-        // 2. Create version
-        const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
-          method: 'POST',
+          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'AI publish',
+              nodes: mergedNodes,
+              edges: mergedEdges,
+              changes: {},
+              platform: request.platform,
+            }),
+          })
+          if (!versionRes.ok) {
+            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+          }
+          // Signal the edit endpoint not to create its own duplicate version.
+          callbacks.markVersionSavedByTool?.()
+        }
+
+        // Step 2: Fetch the latest version from DB (source of truth).
+        const latestRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions?limit=1`, {
           headers: { ...authHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: 'AI publish',
-            nodes: mergedNodes,
-            edges: mergedEdges,
-            changes: {},
-            platform: request.platform,
-          }),
         })
-        if (!versionRes.ok) {
-          return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+        if (!latestRes.ok) {
+          return { success: false, error: `Failed to fetch latest version: HTTP ${latestRes.status}` }
         }
-        const versionBody = await versionRes.json()
-        const versionId = versionBody.data?.version?.id
-        const versionNumber = versionBody.data?.version?.version_number
-        if (!versionId) {
-          return { success: false, error: 'Failed to save version: no version ID returned' }
+        const latestBody = await latestRes.json()
+        const latest = latestBody.data?.versions?.[0]
+        if (!latest) {
+          return { success: false, error: 'Flow has no versions to publish.' }
         }
 
-        // 3. Publish version
-        const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${versionId}/publish`, {
+        const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
+        const firstKeyword = (toolContext.triggerKeywords || [])[0]
+        const testUrl = phoneDigits && firstKeyword
+          ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
+          : undefined
+
+        // Step 3: If already published, nothing to do.
+        if (latest.is_published) {
+          return {
+            success: true,
+            already_published: true,
+            message: `Version ${latest.version_number} is already published.`,
+            version: latest.version_number,
+            ...(testUrl ? { test_url: testUrl } : {}),
+          }
+        }
+
+        // Step 4: Publish the latest unpublished version.
+        const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${latest.id}/publish`, {
           method: 'POST',
           headers: { ...authHeaders, 'Content-Type': 'application/json' },
           body: '{}',
@@ -924,8 +960,8 @@ function createEditTools(
           return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
         }
 
-        // 4. Flatten + convert + deploy to runtime
-        const flat = flattenFlow(mergedNodes, mergedEdges)
+        // Step 5: Flatten + convert + deploy to runtime.
+        const flat = flattenFlow(latest.nodes || [], latest.edges || [])
         const converted = convertToFsWhatsApp(
           flat.nodes,
           flat.edges,
@@ -960,7 +996,8 @@ function createEditTools(
         const runtimeBody = await runtimeRes.json()
         const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
 
-        // 5. Save published_flow_id back to project + update toolContext
+        // Step 6: Save published_flow_id back + update toolContext so
+        // trigger_flow can use it in the same session.
         if (runtimeFlowId) {
           toolContext.publishedFlowId = runtimeFlowId
           await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
@@ -970,17 +1007,12 @@ function createEditTools(
           }).catch(() => {})
         }
 
-        const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
-        const firstKeyword = (toolContext.triggerKeywords || [])[0]
-        const testUrl = phoneDigits && firstKeyword
-          ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
-          : undefined
-
-        console.log("[generate-flow] Tool publish_flow: published version", versionNumber, "for project", projectId)
+        console.log("[generate-flow] Tool publish_flow: published version", latest.version_number, "for project", projectId)
         return {
           success: true,
-          message: `Flow published! Version ${versionNumber} is now live.`,
-          version: versionNumber,
+          already_published: false,
+          message: `Flow published! Version ${latest.version_number} is now live.`,
+          version: latest.version_number,
           ...(testUrl ? { test_url: testUrl } : {}),
         }
       } catch (error) {

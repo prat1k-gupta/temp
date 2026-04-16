@@ -95,6 +95,263 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
   return { flows, total: body.data?.total ?? flows.length }
 }
 
+// ---------------------------------------------------------------------------
+// Project lifecycle (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface CreateProjectOpts {
+  name: string
+  platform: string
+  triggerKeywords?: string[]
+  triggerMatchType?: string
+  waAccountId?: string
+  waPhoneNumber?: string
+}
+
+export async function createProject(
+  ctx: AgentContext,
+  opts: CreateProjectOpts,
+): Promise<{ id: string }> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: opts.name,
+        platform: opts.platform,
+        trigger_keywords: opts.triggerKeywords,
+        trigger_match_type: opts.triggerMatchType,
+        ...(opts.waAccountId ? { wa_account_id: opts.waAccountId } : {}),
+        ...(opts.waPhoneNumber ? { wa_phone_number: opts.waPhoneNumber } : {}),
+      }),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when creating project`)
+  }
+
+  let body: { status?: string; data?: { project?: { id?: string } } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable project response")
+  }
+
+  const projectId = body.data?.project?.id
+  if (!projectId) {
+    throw new AgentError("internal_error", "fs-whatsapp did not return a project ID")
+  }
+
+  return { id: projectId }
+}
+
+export async function deleteProject(ctx: AgentContext, projectId: string): Promise<void> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when deleting project ${projectId}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Version management (Phase 2, Tasks 2+3)
+// ---------------------------------------------------------------------------
+
+export async function createVersion(
+  ctx: AgentContext,
+  projectId: string,
+  nodes: unknown[],
+  edges: unknown[],
+  changes?: Record<string, unknown>,
+): Promise<{ id: string; version_number: number }> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}/versions`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Agent API edit",
+        nodes,
+        edges,
+        changes: changes ?? {},
+        platform: "whatsapp",
+      }),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when creating version`)
+  }
+
+  let body: { status?: string; data?: { version?: { id?: string; version_number?: number } } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable version response")
+  }
+
+  const version = body.data?.version
+  if (!version?.id || version.version_number === undefined) {
+    throw new AgentError("internal_error", "fs-whatsapp did not return a valid version")
+  }
+
+  return { id: version.id, version_number: version.version_number }
+}
+
+export async function publishVersion(
+  ctx: AgentContext,
+  projectId: string,
+  versionId: string,
+): Promise<void> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/publish`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError(
+      "internal_error",
+      `fs-whatsapp returned ${res.status} when publishing version ${versionId}`,
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime flow publishing (Phase 2, Task 4)
+// ---------------------------------------------------------------------------
+
+export interface PublishRuntimeFlowOpts {
+  flowData: Record<string, unknown>
+  triggerKeywords: string[]
+  triggerMatchType: string
+  existingRuntimeFlowId?: string
+}
+
+export async function publishRuntimeFlow(
+  ctx: AgentContext,
+  opts: PublishRuntimeFlowOpts,
+): Promise<{ runtimeFlowId: string }> {
+  const isUpdate = Boolean(opts.existingRuntimeFlowId)
+  const url = isUpdate
+    ? `${FS_WHATSAPP_URL}/api/chatbot/flows/${encodeURIComponent(opts.existingRuntimeFlowId!)}`
+    : `${FS_WHATSAPP_URL}/api/chatbot/flows`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: isUpdate ? "PUT" : "POST",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...opts.flowData,
+        trigger_keywords: opts.triggerKeywords,
+        trigger_match_type: opts.triggerMatchType,
+      }),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "publish_failed",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("publish_failed", `fs-whatsapp returned ${res.status} when publishing runtime flow`)
+  }
+
+  let body: { status?: string; data?: { id?: string; flow_slug?: string } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("publish_failed", "fs-whatsapp returned unparseable runtime flow response")
+  }
+
+  const runtimeFlowId = body.data?.id
+  if (!runtimeFlowId) {
+    throw new AgentError("publish_failed", "fs-whatsapp did not return a runtime flow ID")
+  }
+
+  return { runtimeFlowId }
+}
+
+// ---------------------------------------------------------------------------
+// Keyword conflict detection (Phase 2, Task 4)
+// ---------------------------------------------------------------------------
+
+export async function checkKeywordConflict(
+  ctx: AgentContext,
+  normalizedKeyword: string,
+): Promise<{ id: string; name: string; magic_flow_url: string } | null> {
+  const { flows } = await listFlows(ctx, 50)
+
+  const lowerKeyword = normalizedKeyword.toLowerCase()
+  const match = flows.find(
+    (flow) => flow.trigger_keyword !== undefined && flow.trigger_keyword.toLowerCase() === lowerKeyword,
+  )
+
+  if (!match) return null
+
+  return {
+    id: match.flow_id,
+    name: match.name,
+    magic_flow_url: match.magic_flow_url,
+  }
+}
+
 function buildMagicFlowUrl(flowId: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
   return `${base}/flow/${flowId}`

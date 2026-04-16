@@ -296,7 +296,7 @@ export default function FlowsPage() {
                           {kw}
                           {flow.waPhoneNumber && (
                             <a
-                              href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                              href={`https://wa.me/${flow.waPhoneNumber?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(kw)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
@@ -319,7 +319,7 @@ export default function FlowsPage() {
                       {flow.triggerRef}
                       {flow.waPhoneNumber && (
                         <a
-                          href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(flow.triggerRef)}`}
+                          href={`https://wa.me/${flow.waPhoneNumber?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(flow.triggerRef)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -437,7 +437,7 @@ export default function FlowsPage() {
                           {kw}
                           {flow.waPhoneNumber && (
                             <a
-                              href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(kw)}`}
+                              href={`https://wa.me/${flow.waPhoneNumber?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(kw)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
@@ -465,7 +465,7 @@ export default function FlowsPage() {
                     {flow.triggerRef}
                     {flow.waPhoneNumber && (
                       <a
-                        href={`https://wa.me/${flow.waPhoneNumber}?text=${encodeURIComponent(flow.triggerRef)}`}
+                        href={`https://wa.me/${flow.waPhoneNumber?.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(flow.triggerRef)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}

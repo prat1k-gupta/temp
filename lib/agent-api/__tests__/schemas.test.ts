@@ -4,7 +4,6 @@ import {
   createFlowBodySchema,
   editFlowBodySchema,
   publishFlowBodySchema,
-  TRIGGER_KEYWORD_REGEX,
 } from "@/lib/agent-api/schemas"
 
 describe("findFlowQuerySchema", () => {
@@ -44,6 +43,7 @@ describe("findFlowQuerySchema", () => {
 
 describe("createFlowBodySchema", () => {
   const valid = {
+    name: "iPhone Lead Capture",
     instruction: "build a lead capture flow",
     channel: "whatsapp",
     trigger_keyword: "iphone11",
@@ -77,18 +77,18 @@ describe("createFlowBodySchema", () => {
     }
   })
 
-  it("rejects trigger_keyword with spaces", () => {
+  it("accepts trigger_keyword with spaces", () => {
     const { success } = createFlowBodySchema.safeParse({ ...valid, trigger_keyword: "hello world" })
-    expect(success).toBe(false)
+    expect(success).toBe(true)
   })
 
-  it("rejects trigger_keyword with uppercase letters", () => {
+  it("accepts trigger_keyword with mixed case (caller lowercases)", () => {
     const { success } = createFlowBodySchema.safeParse({ ...valid, trigger_keyword: "IPhone11" })
-    expect(success).toBe(false)
+    expect(success).toBe(true)
   })
 
-  it("accepts trigger_keyword with lowercase alphanumeric, dash, underscore", () => {
-    for (const kw of ["iphone11", "lead-capture", "foo_bar", "a"]) {
+  it("accepts various trigger_keyword formats", () => {
+    for (const kw of ["iphone11", "lead capture", "foo_bar", "a", "hello world!"]) {
       const { success } = createFlowBodySchema.safeParse({ ...valid, trigger_keyword: kw })
       expect(success, `kw=${kw}`).toBe(true)
     }
@@ -99,6 +99,22 @@ describe("createFlowBodySchema", () => {
       ...valid,
       trigger_keyword: "x".repeat(51),
     })
+    expect(success).toBe(false)
+  })
+
+  it("accepts name field", () => {
+    const result = createFlowBodySchema.parse({ ...valid, name: "My Lead Flow" })
+    expect(result.name).toBe("My Lead Flow")
+  })
+
+  it("rejects missing name", () => {
+    const { instruction, channel, trigger_keyword } = valid
+    const { success } = createFlowBodySchema.safeParse({ instruction, channel, trigger_keyword })
+    expect(success).toBe(false)
+  })
+
+  it("rejects name longer than 100 chars", () => {
+    const { success } = createFlowBodySchema.safeParse({ ...valid, name: "x".repeat(101) })
     expect(success).toBe(false)
   })
 })
@@ -133,16 +149,3 @@ describe("publishFlowBodySchema", () => {
   })
 })
 
-describe("TRIGGER_KEYWORD_REGEX", () => {
-  it("matches valid keywords", () => {
-    expect(TRIGGER_KEYWORD_REGEX.test("iphone11")).toBe(true)
-    expect(TRIGGER_KEYWORD_REGEX.test("a-b_c")).toBe(true)
-  })
-
-  it("rejects invalid keywords", () => {
-    expect(TRIGGER_KEYWORD_REGEX.test("hello world")).toBe(false)
-    expect(TRIGGER_KEYWORD_REGEX.test("Iphone")).toBe(false)
-    expect(TRIGGER_KEYWORD_REGEX.test("")).toBe(false)
-    expect(TRIGGER_KEYWORD_REGEX.test("x".repeat(51))).toBe(false)
-  })
-})

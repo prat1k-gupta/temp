@@ -13,6 +13,7 @@ import { findFlowQuerySchema, createFlowBodySchema } from "@/lib/agent-api/schem
 import { SSEWriter } from "@/lib/agent-api/sse"
 import { generateFlowStreaming } from "@/lib/ai/tools/generate-flow"
 import type { StreamEvent, GenerateFlowResponse } from "@/lib/ai/tools/generate-flow"
+import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import type { Node, Edge } from "@xyflow/react"
 
 /** Subset of GenerateFlowResponse["flowData"] that we need after AI generation. */
@@ -223,10 +224,22 @@ export const POST = withAgentAuth(async (ctx, req) => {
       // Step 4: Publish version in magic-flow
       await publishVersion(ctx, projectId, version.id)
 
-      // Step 5: Deploy to runtime with trigger keywords
+      // Step 5: Convert ReactFlow nodes → fs-whatsapp flat step format, then deploy
       writer.progress("publishing", "Deploying to runtime")
+      const converted = convertToFsWhatsApp(
+        allNodes,
+        flowData.edges,
+        instruction.slice(0, 100),        // flowName
+        undefined,                          // flowDescription
+        [triggerId],                        // triggerIds
+        [normalizedKeyword],                // triggerKeywords
+        "exact",                            // triggerMatchType
+        undefined,                          // triggerRef
+        undefined,                          // flowSlug
+        ctx.account.id,                     // whatsappAccount
+      )
       const runtime = await publishRuntimeFlow(ctx, {
-        flowData: { steps: flowData.nodes, name: instruction.slice(0, 100) },
+        flowData: converted as Record<string, unknown>,
         triggerKeywords: [normalizedKeyword],
         triggerMatchType: "exact",
       })

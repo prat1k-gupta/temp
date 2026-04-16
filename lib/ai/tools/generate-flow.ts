@@ -26,6 +26,14 @@ export interface GenerateFlowRequest {
     publishedFlowId?: string
     waAccountName?: string
     authHeader?: string
+    /** Project metadata for publish_flow tool. All optional — tool only appears when projectId + authHeader are present. */
+    projectId?: string
+    projectName?: string
+    triggerKeywords?: string[]
+    triggerMatchType?: string
+    flowSlug?: string
+    waAccountId?: string
+    waPhoneNumber?: string
   }
   /** Agent API context. When source is "agent_api", downstream code may skip UI-specific fields. */
   context?: { source: "agent_api" | "ui" }
@@ -47,6 +55,8 @@ export interface GenerateFlowResponse {
     positionShifts?: Array<{ nodeId: string; dx: number }>
   }
   action: "create" | "edit" | "suggest" | "save_as_template"
+  /** True if publish_flow tool saved a version during this session — caller should skip duplicate createVersion. */
+  versionSavedByTool?: boolean
   templateMetadata?: {
     suggestedName: string
     description: string
@@ -184,6 +194,10 @@ export function buildToolStepPayload(
           : undefined,
         details,
       }
+    case 'publish_flow':
+      if (r.error) return { summary: `Error: ${r.error}`, details }
+      if (r.already_published) return { summary: `Already published (v${r.version})`, details }
+      return { summary: r.message || `Published v${r.version}`, details }
     default:
       return { details }
   }

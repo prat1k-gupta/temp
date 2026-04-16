@@ -61,6 +61,26 @@ describe("fetchApprovedTemplates (executor)", () => {
     )
   })
 
+  it("sends X-API-Key header (not Authorization) when authHeader starts with whm_", async () => {
+    const fetchMock = mockFetchResponse(200, { templates: [] })
+
+    await fetchApprovedTemplates("http://fs-wa.test", "whm_secret123")
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers).toHaveProperty("X-API-Key", "whm_secret123")
+    expect(init.headers).not.toHaveProperty("Authorization")
+  })
+
+  it("sends Authorization header (not X-API-Key) when authHeader is a Bearer JWT", async () => {
+    const fetchMock = mockFetchResponse(200, { templates: [] })
+
+    await fetchApprovedTemplates("http://fs-wa.test", "Bearer jwt_token")
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers).toHaveProperty("Authorization", "Bearer jwt_token")
+    expect(init.headers).not.toHaveProperty("X-API-Key")
+  })
+
   it("shapes a template response into the expected payload", async () => {
     mockFetchResponse(200, {
       templates: [

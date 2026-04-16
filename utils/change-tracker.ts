@@ -184,6 +184,29 @@ export class ChangeTracker {
       }
     }
 
+    // AI edits are atomic — no point debouncing a single tool call.
+    // Flush immediately so the modal + auto-save see the change right away.
+    if (this.currentSource === 'ai') {
+      // If there's a pending update on this node (from a different source
+      // like the user mid-typing), flush it first with its own source so
+      // attributions stay correct.
+      const pendingForAi = this.pendingNodeUpdates.get(nodeId)
+      if (pendingForAi) {
+        clearTimeout(pendingForAi.timer)
+        this.pendingNodeUpdates.delete(nodeId)
+        this.flushNodeUpdate(
+          nodeId,
+          pendingForAi.firstOldData,
+          pendingForAi.latestNewData,
+          pendingForAi.oldType,
+          pendingForAi.newType,
+          pendingForAi.source,
+        )
+      }
+      this.flushNodeUpdate(nodeId, oldData, newData, oldType, newType, 'ai')
+      return
+    }
+
     // Debounce property changes (typing, slider drags, etc.)
     const pending = this.pendingNodeUpdates.get(nodeId)
     const incomingSource = this.currentSource

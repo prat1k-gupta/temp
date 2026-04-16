@@ -3,6 +3,8 @@ import {
   listFlows,
   createProject,
   deleteProject,
+  getProject,
+  listVersions,
   createVersion,
   publishVersion,
   publishRuntimeFlow,
@@ -396,7 +398,7 @@ describe("publishRuntimeFlow", () => {
       triggerKeywords: ["iphone11"],
       triggerMatchType: "exact",
     })
-    expect(result).toEqual({ runtimeFlowId: "rtf_1" })
+    expect(result).toEqual({ runtimeFlowId: "rtf_1", flowSlug: "iphone11" })
 
     const [url, init] = (global.fetch as any).mock.calls[0]
     expect(url).toContain("/api/chatbot/flows")
@@ -600,5 +602,207 @@ describe("checkKeywordConflict", () => {
     )
     const result = await checkKeywordConflict(mockCtx(), "promo")
     expect(result?.id).toBe("mf_1")
+  })
+})
+
+describe("getProject", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  const makeProjectResponse = (overrides: Record<string, any> = {}) => ({
+    status: "success",
+    data: {
+      project: {
+        id: "proj_1",
+        name: "iPhone 11 Flow",
+        platform: "whatsapp",
+        published_flow_id: "rtf_99",
+        flow_slug: "iphone11",
+        trigger_keywords: ["iphone11"],
+        trigger_match_type: "exact",
+        wa_account_id: "waid_1",
+        wa_phone_number: "+919876543210",
+        latest_version: {
+          id: "ver_2",
+          version_number: 2,
+          nodes: [{ id: "n1" }],
+          edges: [{ id: "e1" }],
+          platform: "whatsapp",
+          is_published: true,
+          published_at: "2026-04-15T12:00:00Z",
+          changes: [],
+        },
+        ...overrides,
+      },
+    },
+  })
+
+  it("returns project with latest_version parsed into camelCase", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify(makeProjectResponse()), { status: 200 }),
+    )
+    const result = await getProject(mockCtx(), "proj_1")
+    expect(result).toEqual({
+      id: "proj_1",
+      name: "iPhone 11 Flow",
+      platform: "whatsapp",
+      publishedFlowId: "rtf_99",
+      flowSlug: "iphone11",
+      triggerKeywords: ["iphone11"],
+      triggerMatchType: "exact",
+      waAccountId: "waid_1",
+      waPhoneNumber: "+919876543210",
+      latestVersion: {
+        id: "ver_2",
+        versionNumber: 2,
+        nodes: [{ id: "n1" }],
+        edges: [{ id: "e1" }],
+        platform: "whatsapp",
+        isPublished: true,
+        publishedAt: "2026-04-15T12:00:00Z",
+        changes: [],
+      },
+    })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects/proj_1")
+    expect(init.method).toBe("GET")
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+  })
+
+  it("returns latestVersion as undefined when latest_version is absent", async () => {
+    const body = makeProjectResponse()
+    body.data.project.latest_version = undefined as any
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 200 }),
+    )
+    const result = await getProject(mockCtx(), "proj_1")
+    expect(result.latestVersion).toBeUndefined()
+  })
+
+  it("returns publishedFlowId as undefined when published_flow_id is null", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify(makeProjectResponse({ published_flow_id: null })), { status: 200 }),
+    )
+    const result = await getProject(mockCtx(), "proj_1")
+    expect(result.publishedFlowId).toBeUndefined()
+  })
+
+  it("throws flow_not_found on 404", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("not found", { status: 404 }))
+    await expect(getProject(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "flow_not_found" })
+  })
+
+  it("throws internal_error on 500", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 500 }))
+    await expect(getProject(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "internal_error" })
+  })
+
+  it("throws flow_not_found when response has no project in data", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: "success", data: {} }), { status: 200 }),
+    )
+    await expect(getProject(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "flow_not_found" })
+  })
+
+  it("throws internal_error on network failure", async () => {
+    ;(global.fetch as any).mockRejectedValue(new Error("ECONNREFUSED"))
+    await expect(getProject(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "internal_error" })
+  })
+})
+
+describe("listVersions", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("returns versions sorted by version_number DESC", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            versions: [
+              {
+                id: "ver_1",
+                version_number: 1,
+                nodes: [],
+                edges: [],
+                platform: "whatsapp",
+                is_published: false,
+                published_at: undefined,
+                changes: [],
+              },
+              {
+                id: "ver_3",
+                version_number: 3,
+                nodes: [{ id: "n1" }],
+                edges: [],
+                platform: "whatsapp",
+                is_published: true,
+                published_at: "2026-04-15T12:00:00Z",
+                changes: [{ type: "add" }],
+              },
+              {
+                id: "ver_2",
+                version_number: 2,
+                nodes: [],
+                edges: [],
+                platform: "whatsapp",
+                is_published: false,
+                published_at: undefined,
+                changes: [],
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await listVersions(mockCtx(), "proj_1")
+    expect(result).toHaveLength(3)
+    expect(result[0].versionNumber).toBe(3)
+    expect(result[1].versionNumber).toBe(2)
+    expect(result[2].versionNumber).toBe(1)
+
+    expect(result[0]).toEqual({
+      id: "ver_3",
+      versionNumber: 3,
+      nodes: [{ id: "n1" }],
+      edges: [],
+      platform: "whatsapp",
+      isPublished: true,
+      publishedAt: "2026-04-15T12:00:00Z",
+      changes: [{ type: "add" }],
+    })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects/proj_1/versions")
+    expect(init.method).toBe("GET")
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+  })
+
+  it("returns empty array when no versions exist", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { versions: [] } }),
+        { status: 200 },
+      ),
+    )
+    const result = await listVersions(mockCtx(), "proj_1")
+    expect(result).toEqual([])
+  })
+
+  it("throws internal_error on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 500 }))
+    await expect(listVersions(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "internal_error" })
+  })
+
+  it("throws internal_error on network failure", async () => {
+    ;(global.fetch as any).mockRejectedValue(new Error("ECONNREFUSED"))
+    await expect(listVersions(mockCtx(), "proj_1")).rejects.toMatchObject({ code: "internal_error" })
   })
 })

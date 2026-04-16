@@ -29,8 +29,11 @@ export async function fetchApprovedTemplates(
   authHeader: string,
 ): Promise<FetchApprovedTemplatesResult> {
   try {
+    const headers: Record<string, string> = authHeader.startsWith("whm_")
+      ? { "X-API-Key": authHeader }
+      : { Authorization: authHeader }
     const res = await fetch(`${apiUrl}/api/templates?status=APPROVED`, {
-      headers: { Authorization: authHeader },
+      headers,
     })
     if (!res.ok) {
       return { success: false, error: `HTTP ${res.status}` }

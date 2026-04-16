@@ -26,26 +26,21 @@ describe("ChangeTracker.trackNodeUpdate — debounced source attribution", () =>
 
     // User types into a node. currentSource defaults to 'user'.
     tracker.trackNodeUpdate("node-1", { label: "" }, { label: "h" })
-    // 100ms later, AI fires an edit on the same node before the 500ms
-    // debounce window closes.
+    // 100ms later, AI fires an edit on the same node before the user's
+    // 500ms debounce window closes.
     vi.advanceTimersByTime(100)
     tracker.setSource("ai")
     tracker.trackNodeUpdate("node-1", { label: "h" }, { label: "AI value" })
 
-    // The crossover should flush the user entry immediately with its own
-    // captured source, and start a fresh debounce window for the ai entry.
+    // AI flushes immediately (no debounce). The user's pending entry also
+    // flushes from the crossover guard. Both appear right away.
     const afterCrossover = tracker.getChanges()
-    expect(afterCrossover).toHaveLength(1)
+    expect(afterCrossover).toHaveLength(2)
     expect(afterCrossover[0].source).toBe("user")
     expect(afterCrossover[0].data.newData).toEqual({ label: "h" })
-
-    // Advance past the fresh ai entry's debounce window.
-    vi.advanceTimersByTime(500)
-    const final = tracker.getChanges()
-    expect(final).toHaveLength(2)
-    expect(final[1].source).toBe("ai")
-    expect(final[1].data.oldData).toEqual({ label: "h" })
-    expect(final[1].data.newData).toEqual({ label: "AI value" })
+    expect(afterCrossover[1].source).toBe("ai")
+    expect(afterCrossover[1].data.oldData).toEqual({ label: "h" })
+    expect(afterCrossover[1].data.newData).toEqual({ label: "AI value" })
   })
 
   it("attributes an ai→user crossover to the right source on each entry", () => {

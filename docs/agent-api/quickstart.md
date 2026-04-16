@@ -70,7 +70,65 @@ Returns:
 }
 ```
 
-## 4. Wire it into your AI agent
+## 4. Edit a flow
+
+Once you have a `flow_id`, you can edit the flow with a natural language instruction. Edit saves a new draft but does NOT publish it — the current live version stays untouched until you explicitly publish.
+
+```bash
+curl -N -X POST https://your-freestand-url/api/v1/agent/flows/{flow_id}/edit \
+  -H "X-API-Key: $FREESTAND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{
+    "instruction": "also ask for their phone number before saying thanks"
+  }'
+```
+
+You'll see SSE events stream back — same format as create:
+
+```
+event: progress
+data: {"phase":"understanding","message":"Analyzing your instruction"}
+
+event: progress
+data: {"phase":"editing","message":"Applying changes to the flow"}
+
+event: progress
+data: {"phase":"saving","message":"Saving new draft version"}
+
+event: result
+data: {"flow_id":"...","version":3,"published":false,"summary":"Added phone number step","next_action":"Call /publish to make this live",...}
+```
+
+The result includes `published: false` — the edit is saved as a draft. The live flow is unchanged.
+
+## 5. Publish the edit
+
+```bash
+curl -X POST https://your-freestand-url/api/v1/agent/flows/{flow_id}/publish \
+  -H "X-API-Key: $FREESTAND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Returns:
+
+```json
+{
+  "flow_id": "...",
+  "version": 3,
+  "published": true,
+  "already_published": false,
+  "published_at": "2026-04-16T09:05:00Z",
+  "test_url": "https://wa.me/1234567890?text=product",
+  "trigger_keyword": "product",
+  "magic_flow_url": "https://your-freestand-url/flow/..."
+}
+```
+
+This endpoint is idempotent — calling it again when the latest version is already live returns `already_published: true`, not an error.
+
+## 6. Wire it into your AI agent
 
 ### Vercel AI SDK (TypeScript)
 
@@ -130,6 +188,16 @@ async function callFreestandJSON(path: string) {
   return res.json()
 }
 
+async function callFreestandJSONPost(path: string, body: Record<string, unknown> = {}) {
+  const res = await fetch(`${FREESTAND_URL}${path}`, {
+    method: "POST",
+    headers: { "X-API-Key": API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
 // Define tools for your agent
 const freestandTools = {
   freestand_find_flow: tool({
@@ -150,6 +218,26 @@ const freestandTools = {
       console.log(`[${e.phase}] ${e.message}`)
     }),
   }),
+
+  freestand_edit_flow: tool({
+    description: "Edit an existing flow using a natural language instruction. Saves a new draft but does NOT publish — call freestand_publish_flow separately after confirming the changes with the user.",
+    parameters: z.object({
+      flow_id: z.string().describe("ID of the flow to edit (from freestand_find_flow or freestand_create_flow)"),
+      instruction: z.string().describe("What to change about the flow in natural language"),
+    }),
+    execute: ({ flow_id, instruction }) =>
+      callFreestandSSE(`/api/v1/agent/flows/${flow_id}/edit`, { instruction }, (e) => {
+        console.log(`[${e.phase}] ${e.message}`)
+      }),
+  }),
+
+  freestand_publish_flow: tool({
+    description: "Publish the latest draft version of a flow to make it live on WhatsApp. Safe to retry — returns already_published: true if already live.",
+    parameters: z.object({
+      flow_id: z.string().describe("ID of the flow to publish"),
+    }),
+    execute: ({ flow_id }) => callFreestandJSONPost(`/api/v1/agent/flows/${flow_id}/publish`),
+  }),
 }
 ```
 
@@ -163,20 +251,14 @@ import httpx
 FREESTAND_URL = "https://your-freestand-url"
 API_KEY = os.environ["FREESTAND_API_KEY"]
 
-def create_flow(name, instruction, trigger_keyword, channel="whatsapp"):
+def call_freestand_sse(path, body):
     headers = {
         "X-API-Key": API_KEY,
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
     }
-    body = {
-        "name": name,
-        "instruction": instruction,
-        "channel": channel,
-        "trigger_keyword": trigger_keyword,
-    }
     result = None
-    with httpx.stream("POST", f"{FREESTAND_URL}/api/v1/agent/flows",
+    with httpx.stream("POST", f"{FREESTAND_URL}{path}",
                       headers=headers, json=body, timeout=120) as r:
         r.raise_for_status()
         buffer = ""
@@ -200,6 +282,26 @@ def create_flow(name, instruction, trigger_keyword, channel="whatsapp"):
                     raise Exception(f"{payload['code']}: {payload['message']}")
     return result
 
+def create_flow(name, instruction, trigger_keyword, channel="whatsapp"):
+    return call_freestand_sse("/api/v1/agent/flows", {
+        "name": name,
+        "instruction": instruction,
+        "channel": channel,
+        "trigger_keyword": trigger_keyword,
+    })
+
+def edit_flow(flow_id, instruction):
+    return call_freestand_sse(f"/api/v1/agent/flows/{flow_id}/edit", {
+        "instruction": instruction,
+    })
+
+def publish_flow(flow_id):
+    headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+    r = httpx.post(f"{FREESTAND_URL}/api/v1/agent/flows/{flow_id}/publish",
+                   headers=headers, json={}, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
 # Usage
 flow = create_flow(
     name="Product Inquiry",
@@ -207,6 +309,13 @@ flow = create_flow(
     trigger_keyword="product"
 )
 print(f"Test URL: {flow['test_url']}")
+
+# Edit then publish
+draft = edit_flow(flow["flow_id"], "also ask for their phone number before saying thanks")
+print(f"Draft saved: v{draft['version']} — {draft['summary']}")
+
+result = publish_flow(flow["flow_id"])
+print(f"Published v{result['version']} — {result['test_url']}")
 ```
 
 ### Raw curl
@@ -222,4 +331,17 @@ curl -N -X POST $FREESTAND_URL/api/v1/agent/flows \
 # List flows
 curl $FREESTAND_URL/api/v1/agent/flows \
   -H "X-API-Key: $FREESTAND_API_KEY"
+
+# Edit (SSE streaming)
+curl -N -X POST $FREESTAND_URL/api/v1/agent/flows/{flow_id}/edit \
+  -H "X-API-Key: $FREESTAND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"instruction":"also ask for their phone number before saying thanks"}'
+
+# Publish (JSON)
+curl -X POST $FREESTAND_URL/api/v1/agent/flows/{flow_id}/publish \
+  -H "X-API-Key: $FREESTAND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```

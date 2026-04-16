@@ -157,6 +157,194 @@ export async function createProject(
   return { id: projectId }
 }
 
+export async function updateProject(
+  ctx: AgentContext,
+  projectId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when updating project ${projectId}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Project + version read (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface VersionInfo {
+  id: string
+  versionNumber: number
+  nodes: any[]
+  edges: any[]
+  platform: string
+  isPublished: boolean
+  publishedAt: string | undefined
+  changes: any[]
+}
+
+export interface ProjectInfo {
+  id: string
+  name: string
+  platform: string
+  publishedFlowId: string | undefined
+  flowSlug: string
+  triggerKeywords: string[]
+  triggerMatchType: string
+  waAccountId: string
+  waPhoneNumber: string
+  latestVersion: VersionInfo | undefined
+}
+
+function parseVersionInfo(v: {
+  id: string
+  version_number: number
+  nodes: any[]
+  edges: any[]
+  platform: string
+  is_published: boolean
+  published_at?: string
+  changes: any[]
+}): VersionInfo {
+  return {
+    id: v.id,
+    versionNumber: v.version_number,
+    nodes: v.nodes,
+    edges: v.edges,
+    platform: v.platform,
+    isPublished: v.is_published,
+    publishedAt: v.published_at,
+    changes: v.changes,
+  }
+}
+
+export async function getProject(ctx: AgentContext, projectId: string): Promise<ProjectInfo> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (res.status === 404) {
+    throw new AgentError("flow_not_found", `Project ${projectId} not found`)
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when fetching project ${projectId}`)
+  }
+
+  let body: { status?: string; data?: { project?: Record<string, any> } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable project response")
+  }
+
+  const p = body.data?.project
+  if (!p) {
+    throw new AgentError("flow_not_found", `Project ${projectId} not found in response`)
+  }
+
+  return {
+    id: p.id,
+    name: p.name,
+    platform: p.platform,
+    publishedFlowId: p.published_flow_id ?? undefined,
+    flowSlug: p.flow_slug,
+    triggerKeywords: p.trigger_keywords ?? [],
+    triggerMatchType: p.trigger_match_type,
+    waAccountId: p.wa_account_id,
+    waPhoneNumber: p.wa_phone_number,
+    latestVersion: p.latest_version ? parseVersionInfo(p.latest_version) : undefined,
+  }
+}
+
+export async function listVersions(
+  ctx: AgentContext,
+  projectId: string,
+  limit?: number,
+): Promise<VersionInfo[]> {
+  const base = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}/versions`
+  const url = limit ? `${base}?limit=${limit}` : base
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError(
+      "internal_error",
+      `fs-whatsapp returned ${res.status} when listing versions for project ${projectId}`,
+    )
+  }
+
+  let body: { status?: string; data?: { versions?: any[] } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable versions response")
+  }
+
+  const versions = body.data?.versions ?? []
+  return versions
+    .map(parseVersionInfo)
+    .sort((a: VersionInfo, b: VersionInfo) => b.versionNumber - a.versionNumber)
+}
+
+/**
+ * Fetch just the highest version (published or not). Uses the backend's
+ * ?limit=1 to avoid pulling the full history.
+ */
+export async function getLatestVersion(
+  ctx: AgentContext,
+  projectId: string,
+): Promise<VersionInfo | null> {
+  const versions = await listVersions(ctx, projectId, 1)
+  return versions[0] ?? null
+}
+
 export async function deleteProject(ctx: AgentContext, projectId: string): Promise<void> {
   const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
 
@@ -282,7 +470,7 @@ export interface PublishRuntimeFlowOpts {
 export async function publishRuntimeFlow(
   ctx: AgentContext,
   opts: PublishRuntimeFlowOpts,
-): Promise<{ runtimeFlowId: string }> {
+): Promise<{ runtimeFlowId: string; flowSlug?: string }> {
   const isUpdate = Boolean(opts.existingRuntimeFlowId)
   const url = isUpdate
     ? `${FS_WHATSAPP_URL}/api/chatbot/flows/${encodeURIComponent(opts.existingRuntimeFlowId!)}`
@@ -320,12 +508,14 @@ export async function publishRuntimeFlow(
     throw new AgentError("publish_failed", "fs-whatsapp returned unparseable runtime flow response")
   }
 
-  const runtimeFlowId = body.data?.id
+  // On create, the response includes the new ID. On update, the response
+  // may not — fall back to the ID we already have.
+  const runtimeFlowId = body.data?.id || opts.existingRuntimeFlowId
   if (!runtimeFlowId) {
     throw new AgentError("publish_failed", "fs-whatsapp did not return a runtime flow ID")
   }
 
-  return { runtimeFlowId }
+  return { runtimeFlowId, flowSlug: body.data?.flow_slug }
 }
 
 // ---------------------------------------------------------------------------

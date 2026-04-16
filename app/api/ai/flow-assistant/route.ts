@@ -33,6 +33,14 @@ export async function POST(request: NextRequest) {
     userTemplateData,
     publishedFlowId,
     waAccountName,
+    // Project metadata for publish_flow tool
+    projectId,
+    projectName,
+    triggerKeywords,
+    triggerMatchType,
+    flowSlug,
+    waAccountId,
+    waPhoneNumber,
   } = body
 
   const authHeader = request.headers.get('Authorization') || ''
@@ -66,6 +74,13 @@ export async function POST(request: NextRequest) {
       publishedFlowId,
       waAccountName,
       authHeader,
+      projectId,
+      projectName,
+      triggerKeywords,
+      triggerMatchType,
+      flowSlug,
+      waAccountId,
+      waPhoneNumber,
     },
   }
 

@@ -57,11 +57,19 @@ export function useAutoSave(
   useEffect(() => {
     if (!enabled || !projectId || projectId === "new" || nodes.length === 0) return
 
-    // On first enable, seed the baseline with current data — don't save it back
+    // On first enable, seed the baseline with current data — don't save it back.
+    // EXCEPTION: if the change tracker is already dirty when we enable, the
+    // user (or AI) edited before autoSave woke up. In that case, fall through
+    // to the normal save path so those changes persist to the draft.
     if (!initializedRef.current) {
       initializedRef.current = true
-      lastSavedRef.current = JSON.stringify({ nodes, edges, platform })
-      return
+      if (!changeTracker.isDirty()) {
+        lastSavedRef.current = JSON.stringify({ nodes, edges, platform })
+        return
+      }
+      // Tracker is dirty — force a save. Seed with an empty baseline so the
+      // snapshot comparison below always produces a save on first pass.
+      lastSavedRef.current = ""
     }
 
     const snapshot = JSON.stringify({ nodes, edges, platform })

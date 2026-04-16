@@ -2,12 +2,15 @@
 
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { flushSync } from "react-dom"
+import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Send, Loader2, RotateCcw, Check } from "lucide-react"
 import { getAllTemplates, getFlow } from "@/utils/flow-storage"
 import { apiClient } from "@/lib/api-client"
 import { useAccounts } from "@/hooks/queries"
+import { flowKeys, versionKeys } from "@/hooks/queries/query-keys"
+import { changeTracker } from "@/utils/change-tracker"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
 import type { TemplateAIMetadata } from "@/types"
 import type { StreamEvent } from "@/lib/ai/tools/generate-flow"
@@ -100,6 +103,11 @@ interface AIAssistantProps {
   onUpdateFlow?: (updates: { nodes?: any[]; edges?: any[]; description?: string; removeNodeIds?: string[]; removeEdges?: any[]; positionShifts?: Array<{ nodeId: string; dx: number }> }, meta?: { warnings?: string[]; debugData?: Record<string, unknown>; userPrompt?: string }) => void
   publishedFlowId?: string
   waAccountId?: string
+  waPhoneNumber?: string
+  projectName?: string
+  triggerKeywords?: string[]
+  triggerMatchType?: string
+  flowSlug?: string
   isPanelOpen?: boolean
 }
 
@@ -148,8 +156,14 @@ export function AIAssistant({
   onUpdateFlow,
   publishedFlowId,
   waAccountId,
+  waPhoneNumber,
+  projectName,
+  triggerKeywords,
+  triggerMatchType,
+  flowSlug,
   isPanelOpen,
 }: AIAssistantProps) {
+  const queryClient = useQueryClient()
   // Resolve waAccountId → account name for trigger_flow (backend expects name, not UUID)
   const { data: accounts = [] } = useAccounts()
   const waAccountName = useMemo(() => {
@@ -315,6 +329,13 @@ export function AIAssistant({
           userTemplateData,
           publishedFlowId,
           waAccountName,
+          projectId: flowId,
+          projectName,
+          triggerKeywords,
+          triggerMatchType,
+          flowSlug,
+          waAccountId,
+          waPhoneNumber,
         }),
       })
 
@@ -407,6 +428,28 @@ export function AIAssistant({
                 const incomingDetails = event.details as ToolStepDetails | undefined
                 const toolName = event.tool
                 const doneSummary = event.summary
+
+                // publish_flow just modified versions + deleted the draft
+                // on the backend. Mirror the normal Publish button flow
+                // (see createAndPublishVersion in use-version-manager.ts):
+                // clear tracker, nuke draft cache synchronously, invalidate
+                // versions + project. The version-manager useEffect picks
+                // this up and flips editModeState to view mode.
+                if (
+                  toolName === 'publish_flow' &&
+                  flowId &&
+                  doneSummary &&
+                  !doneSummary.startsWith('Error:') &&
+                  !doneSummary.startsWith('Already published')
+                ) {
+                  changeTracker.clearChanges()
+                  changeTracker.stopTracking()
+                  // Synchronous cache write — matches useDeleteDraft.onSuccess
+                  queryClient.setQueryData(versionKeys.draft(flowId), null)
+                  // Async refetches for versions list + project detail
+                  queryClient.invalidateQueries({ queryKey: versionKeys.list(flowId) })
+                  queryClient.invalidateQueries({ queryKey: flowKeys.detail(flowId) })
+                }
                 // FIFO-pop the oldest running call for this tool so
                 // running/done events pair up in order when the same tool
                 // is invoked multiple times in one turn.

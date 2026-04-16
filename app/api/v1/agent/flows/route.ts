@@ -7,6 +7,7 @@ import {
   createVersion,
   publishVersion,
   publishRuntimeFlow,
+  updateProject,
   checkKeywordConflict,
 } from "@/lib/agent-api/publisher"
 import { findFlowQuerySchema, createFlowBodySchema } from "@/lib/agent-api/schemas"
@@ -284,6 +285,14 @@ export const POST = withAgentAuth(async (ctx, req) => {
         flowData: converted as Record<string, unknown>,
         triggerKeywords: [normalizedKeyword],
         triggerMatchType: "exact",
+      })
+
+      // Step 5b: Save runtime flow ID (and first-time flow_slug) back
+      // to the project so subsequent publishes update this flow instead
+      // of creating duplicates. Matches UI's onPublished callback.
+      await updateProject(ctx, projectId!, {
+        published_flow_id: runtime.runtimeFlowId,
+        ...(runtime.flowSlug ? { flow_slug: runtime.flowSlug } : {}),
       })
 
       // Step 6: Emit final result

@@ -846,6 +846,11 @@ function MagicFlowInner() {
         onUpdateFlow={flowAI.handleUpdateFlow}
         publishedFlowId={persistence.currentFlow?.publishedFlowId}
         waAccountId={persistence.currentFlow?.waAccountId}
+        waPhoneNumber={persistence.currentFlow?.waPhoneNumber}
+        projectName={persistence.currentFlow?.name}
+        triggerKeywords={persistence.currentFlow?.triggerKeywords}
+        triggerMatchType={persistence.currentFlow?.triggerMatchType}
+        flowSlug={persistence.currentFlow?.flowSlug}
       />
 
       {/* AI Suggestions Panel */}

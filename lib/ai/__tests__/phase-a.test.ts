@@ -117,11 +117,10 @@ describe('Phase A: AI Platform', () => {
       expect(src).toContain('authHeader,')
     })
 
-    it('trigger_flow tool is conditionally included', () => {
+    it('trigger_flow tool is always registered with runtime precondition checks', () => {
       const src = readFileSync('./lib/ai/tools/generate-flow-edit.ts', 'utf-8')
-      expect(src).toContain('trigger_flow: tool({')
-      expect(src).toContain("request.platform === 'whatsapp'")
-      expect(src).toContain('FS_WHATSAPP_API_URL')
+      expect(src).toContain('extraTools.trigger_flow = tool({')
+      expect(src).toContain('Flow is not published yet')
       expect(src).toContain('active session')
     })
 

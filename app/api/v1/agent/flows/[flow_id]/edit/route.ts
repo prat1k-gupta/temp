@@ -3,7 +3,7 @@ import { AgentError } from "@/lib/agent-api/errors"
 import { editFlowBodySchema } from "@/lib/agent-api/schemas"
 import { SSEWriter } from "@/lib/agent-api/sse"
 import { loadFlowForEdit } from "@/lib/agent-api/flow-loader"
-import { createVersion } from "@/lib/agent-api/publisher"
+import { createVersion, getLatestVersion } from "@/lib/agent-api/publisher"
 import { generateFlowStreaming } from "@/lib/ai/tools/generate-flow"
 import type { StreamEvent } from "@/lib/ai/tools/generate-flow"
 import { DEFAULT_TEMPLATES } from "@/constants/default-templates"
@@ -128,7 +128,36 @@ export const POST = withAgentAuth(async (ctx, req) => {
       if (captured.error) {
         throw new AgentError("validation_failed", captured.error)
       }
+
+      // No AI edits applied, but maybe the tool handled everything
+      // (e.g., 'just publish this' instruction). Check the DB — source of
+      // truth — rather than tracking tool outcomes through session memory.
       if (!captured.updates) {
+        const latest = await getLatestVersion(ctx, project.id)
+        if (latest?.isPublished) {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
+          const phoneDigits = ctx.account.phone_number?.replace(/\D/g, "")
+          const firstKeyword = (project.triggerKeywords ?? [])[0]
+          const testUrl =
+            phoneDigits && firstKeyword
+              ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
+              : undefined
+
+          writer.result({
+            flow_id: project.id,
+            version: latest.versionNumber,
+            published: true,
+            name: project.name,
+            summary: captured.message || `Version ${latest.versionNumber} is now live`,
+            changes: [],
+            node_count: latest.nodes.length,
+            magic_flow_url: `${appUrl}/flow/${project.id}`,
+            test_url: testUrl,
+            updated_at: new Date().toISOString(),
+          })
+          return
+        }
+
         throw new AgentError(
           "invalid_instruction",
           captured.message || "AI did not produce any edits. Try a more specific instruction.",
@@ -237,7 +266,6 @@ export const POST = withAgentAuth(async (ctx, req) => {
       let published = false
       if (captured.versionSavedByTool) {
         // Tool already saved + published. Fetch the latest for version number.
-        const { getLatestVersion } = await import("@/lib/agent-api/publisher")
         const latest = await getLatestVersion(ctx, project.id)
         versionNumber = latest?.versionNumber ?? 0
         published = latest?.isPublished ?? false

@@ -96,10 +96,8 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
 }
 
 function buildMagicFlowUrl(flowId: string): string {
-  // In a proper deployment this would read an env var for the public app URL.
-  // For v1 we hardcode freestand.xyz; the dashboard URL should come from config
-  // when we productionize. Tests just assert `contains "/flow/<id>"`.
-  return `https://app.freestand.xyz/flow/${flowId}`
+  const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
+  return `${base}/flow/${flowId}`
 }
 
 function buildTestUrl(phoneNumber: string | undefined, keyword: string | undefined): string | undefined {

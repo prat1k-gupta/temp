@@ -14,6 +14,7 @@ import { SSEWriter } from "@/lib/agent-api/sse"
 import { generateFlowStreaming } from "@/lib/ai/tools/generate-flow"
 import type { StreamEvent, GenerateFlowResponse } from "@/lib/ai/tools/generate-flow"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
+import { flattenFlow } from "@/utils/flow-flattener"
 import type { Node, Edge } from "@xyflow/react"
 
 /** Subset of GenerateFlowResponse["flowData"] that we need after AI generation. */
@@ -224,11 +225,14 @@ export const POST = withAgentAuth(async (ctx, req) => {
       // Step 4: Publish version in magic-flow
       await publishVersion(ctx, projectId, version.id)
 
-      // Step 5: Convert ReactFlow nodes → fs-whatsapp flat step format, then deploy
+      // Step 5: Flatten template nodes → convert to fs-whatsapp flat steps → deploy
+      // flattenFlow expands flowTemplate nodes (e.g. "Name") by inlining their
+      // internal sub-nodes. Without this, the converter skips them (SKIP_NODE_TYPES).
       writer.progress("publishing", "Deploying to runtime")
+      const flat = flattenFlow(allNodes, flowData.edges)
       const converted = convertToFsWhatsApp(
-        allNodes,
-        flowData.edges,
+        flat.nodes,
+        flat.edges,
         instruction.slice(0, 100),        // flowName
         undefined,                          // flowDescription
         [triggerId],                        // triggerIds

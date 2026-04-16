@@ -289,8 +289,13 @@ export async function getProject(ctx: AgentContext, projectId: string): Promise<
   }
 }
 
-export async function listVersions(ctx: AgentContext, projectId: string): Promise<VersionInfo[]> {
-  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}/versions`
+export async function listVersions(
+  ctx: AgentContext,
+  projectId: string,
+  limit?: number,
+): Promise<VersionInfo[]> {
+  const base = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}/versions`
+  const url = limit ? `${base}?limit=${limit}` : base
 
   let res: Response
   try {
@@ -326,6 +331,18 @@ export async function listVersions(ctx: AgentContext, projectId: string): Promis
   return versions
     .map(parseVersionInfo)
     .sort((a: VersionInfo, b: VersionInfo) => b.versionNumber - a.versionNumber)
+}
+
+/**
+ * Fetch just the highest version (published or not). Uses the backend's
+ * ?limit=1 to avoid pulling the full history.
+ */
+export async function getLatestVersion(
+  ctx: AgentContext,
+  projectId: string,
+): Promise<VersionInfo | null> {
+  const versions = await listVersions(ctx, projectId, 1)
+  return versions[0] ?? null
 }
 
 export async function deleteProject(ctx: AgentContext, projectId: string): Promise<void> {

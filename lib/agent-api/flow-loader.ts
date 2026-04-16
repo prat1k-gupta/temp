@@ -1,4 +1,4 @@
-import { getProject, listVersions } from "./publisher"
+import { getProject, getLatestVersion } from "./publisher"
 import type { ProjectInfo, VersionInfo } from "./publisher"
 import { AgentError } from "./errors"
 import type { AgentContext } from "./types"
@@ -29,21 +29,17 @@ export async function loadFlowForEdit(
   ctx: AgentContext,
   projectId: string,
 ): Promise<FlowEditContext> {
-  const [project, versions] = await Promise.all([
+  const [project, version] = await Promise.all([
     getProject(ctx, projectId),
-    listVersions(ctx, projectId),
+    getLatestVersion(ctx, projectId),
   ])
 
-  if (versions.length === 0) {
+  if (!version) {
     throw new AgentError(
       "flow_not_found",
       `Flow ${projectId} has no versions to edit`,
     )
   }
-
-  // Use the highest version (published or not) so consecutive edits
-  // build on top of each other. listVersions returns DESC order.
-  const version = versions[0]
 
   return {
     project,

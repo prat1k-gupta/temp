@@ -1,7 +1,7 @@
 import { withAgentAuth } from "@/lib/agent-api/auth"
 import { AgentError } from "@/lib/agent-api/errors"
 import { publishFlowBodySchema } from "@/lib/agent-api/schemas"
-import { getProject, listVersions, publishVersion, publishRuntimeFlow, updateProject } from "@/lib/agent-api/publisher"
+import { getProject, getLatestVersion, publishVersion, publishRuntimeFlow, updateProject } from "@/lib/agent-api/publisher"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 import { flattenFlow } from "@/utils/flow-flattener"
 
@@ -37,15 +37,15 @@ export const POST = withAgentAuth(async (ctx, req) => {
   }
   publishFlowBodySchema.parse(body)
 
-  // Load project and versions
-  const project = await getProject(ctx, flowId)
-  const versions = await listVersions(ctx, flowId)
+  // Load project + latest version (published or not)
+  const [project, latestVersion] = await Promise.all([
+    getProject(ctx, flowId),
+    getLatestVersion(ctx, flowId),
+  ])
 
-  if (versions.length === 0) {
+  if (!latestVersion) {
     throw new AgentError("flow_not_found", "Flow has no versions")
   }
-
-  const latestVersion = versions[0]
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
   const phoneDigits = ctx.account.phone_number?.replace(/\D/g, "")

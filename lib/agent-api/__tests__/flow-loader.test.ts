@@ -5,10 +5,10 @@ import type { ProjectInfo, VersionInfo } from "@/lib/agent-api/publisher"
 
 vi.mock("@/lib/agent-api/publisher", () => ({
   getProject: vi.fn(),
-  listVersions: vi.fn(),
+  getLatestVersion: vi.fn(),
 }))
 
-import { getProject, listVersions } from "@/lib/agent-api/publisher"
+import { getProject, getLatestVersion } from "@/lib/agent-api/publisher"
 
 function mockCtx(): AgentContext {
   return {
@@ -61,7 +61,7 @@ describe("loadFlowForEdit", () => {
     const unpublishedV3 = makeVersion({ id: "ver_3", versionNumber: 3, isPublished: false, publishedAt: undefined })
     const publishedV2 = makeVersion({ id: "ver_2", versionNumber: 2, isPublished: true })
     ;(getProject as any).mockResolvedValue(makeProject())
-    ;(listVersions as any).mockResolvedValue([unpublishedV3, publishedV2]) // DESC order
+    ;(getLatestVersion as any).mockResolvedValue(unpublishedV3)
 
     const result = await loadFlowForEdit(mockCtx(), "proj_1")
 
@@ -72,7 +72,7 @@ describe("loadFlowForEdit", () => {
 
   it("returns toolContext with project metadata", async () => {
     ;(getProject as any).mockResolvedValue(makeProject())
-    ;(listVersions as any).mockResolvedValue([makeVersion()])
+    ;(getLatestVersion as any).mockResolvedValue(makeVersion())
 
     const result = await loadFlowForEdit(mockCtx(), "proj_1")
 
@@ -85,7 +85,7 @@ describe("loadFlowForEdit", () => {
 
   it("throws flow_not_found when project has no versions", async () => {
     ;(getProject as any).mockResolvedValue(makeProject({ latestVersion: undefined }))
-    ;(listVersions as any).mockResolvedValue([])
+    ;(getLatestVersion as any).mockResolvedValue(null)
 
     await expect(loadFlowForEdit(mockCtx(), "proj_1")).rejects.toMatchObject({
       code: "flow_not_found",
@@ -96,7 +96,7 @@ describe("loadFlowForEdit", () => {
   it("propagates flow_not_found when getProject throws", async () => {
     const { AgentError } = await import("@/lib/agent-api/errors")
     ;(getProject as any).mockRejectedValue(new AgentError("flow_not_found", "Project proj_99 not found"))
-    ;(listVersions as any).mockResolvedValue([])
+    ;(getLatestVersion as any).mockResolvedValue(null)
 
     await expect(loadFlowForEdit(mockCtx(), "proj_99")).rejects.toMatchObject({
       code: "flow_not_found",

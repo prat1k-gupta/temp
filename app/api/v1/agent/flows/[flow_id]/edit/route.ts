@@ -275,7 +275,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         magic_flow_url: `${appUrl}/flow/${project.id}`,
         next_action: published
           ? undefined
-          : `Call POST /v1/agent/flows/${project.id}/publish to make this version live`,
+          : "Call the publish tool to make this version live.",
         updated_at: now,
       })
     } catch (err) {

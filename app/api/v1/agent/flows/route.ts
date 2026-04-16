@@ -226,14 +226,38 @@ export const POST = withAgentAuth(async (ctx, req) => {
       }
       const allNodes = [startNode, ...flowData.nodes]
 
-      // Step 3: Create version
+      // Step 3: Build change tracking entries (same shape as ChangeTracker produces)
+      // so the version history UI shows what the AI created.
+      const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const now = new Date().toISOString()
+      const flowChanges = [
+        // One node_add per AI-generated node (skip start — that's infrastructure)
+        ...flowData.nodes.map((n: any) => ({
+          id: generateId(),
+          type: "node_add",
+          timestamp: now,
+          data: n,
+          description: `Added ${n.type || "node"}: ${n.data?.label || n.id}`,
+          source: "ai",
+        })),
+        // One edge_add per edge
+        ...flowData.edges.map((e: any) => ({
+          id: generateId(),
+          type: "edge_add",
+          timestamp: now,
+          data: e,
+          description: `Connected ${e.source} → ${e.target}`,
+          source: "ai",
+        })),
+      ]
+
       writer.progress("saving", "Saving flow version")
       const version = await createVersion(
         ctx,
         projectId,
         allNodes,
         flowData.edges,
-        { source: "agent_api", instruction },
+        { source: "agent_api", instruction, changes: flowChanges },
       )
 
       // Step 4: Publish version in magic-flow

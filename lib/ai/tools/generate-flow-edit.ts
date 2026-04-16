@@ -789,15 +789,6 @@ function createEditTools(
 
   const apiUrl = process.env.FS_WHATSAPP_API_URL
 
-  // Agent API edit path: strip UI-only tools that are meaningless without a
-  // human in the loop. save_as_template requires a confirmation dialog,
-  // undo_last is for interactive undo/redo stacks. Keeping them wastes AI
-  // context tokens and risks confusing tool calls.
-  const isAgentApi = request.context?.source === 'agent_api'
-  const filteredBaseTools = isAgentApi
-    ? (({ save_as_template, undo_last, ...rest }) => rest)(baseTools)
-    : baseTools
-
   // list_approved_templates: available whenever the user is on WhatsApp AND
   // authenticated. Factory returns null otherwise, so we skip spread.
   const listTemplatesTool =
@@ -805,8 +796,8 @@ function createEditTools(
       ? createListApprovedTemplatesTool(toolContext)
       : null
   const toolsWithTemplates = listTemplatesTool
-    ? { ...filteredBaseTools, list_approved_templates: listTemplatesTool }
-    : filteredBaseTools
+    ? { ...baseTools, list_approved_templates: listTemplatesTool }
+    : baseTools
 
   if (toolContext?.publishedFlowId && request.platform === 'whatsapp' && apiUrl && toolContext.authHeader) {
     const { publishedFlowId, waAccountName, authHeader } = toolContext
@@ -826,7 +817,12 @@ function createEditTools(
           try {
             const response = await fetch(`${apiUrl}/api/chatbot/flows/${publishedFlowId}/send`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(authHeader.startsWith('whm_')
+                  ? { 'X-API-Key': authHeader }
+                  : { 'Authorization': authHeader }),
+              },
               body: JSON.stringify(body),
             })
             const data = await response.json()

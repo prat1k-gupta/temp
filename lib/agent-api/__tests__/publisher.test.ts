@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { listFlows } from "@/lib/agent-api/publisher"
+import { listFlows, createProject, deleteProject } from "@/lib/agent-api/publisher"
 import type { AgentContext } from "@/lib/agent-api/types"
 
 function mockCtx(): AgentContext {
@@ -154,5 +154,105 @@ describe("listFlows", () => {
   it("throws internal_error on fs-whatsapp HTTP failure", async () => {
     ;(global.fetch as any).mockResolvedValue(new Response("nope", { status: 500 }))
     await expect(listFlows(mockCtx(), 10)).rejects.toMatchObject({ code: "internal_error" })
+  })
+})
+
+describe("createProject", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("POSTs to /api/magic-flow/projects and returns the project ID", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            project: { id: "proj_1", name: "Test Flow", platform: "whatsapp" },
+            latest_version: { id: "v_1", version_number: 1 },
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await createProject(mockCtx(), { name: "Test Flow", platform: "whatsapp" })
+    expect(result).toEqual({ id: "proj_1" })
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects")
+    expect(init.method).toBe("POST")
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+    const body = JSON.parse(init.body)
+    expect(body.name).toBe("Test Flow")
+    expect(body.platform).toBe("whatsapp")
+  })
+
+  it("includes trigger_keywords when provided", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { project: { id: "p1" }, latest_version: {} } }),
+        { status: 200 },
+      ),
+    )
+    await createProject(mockCtx(), {
+      name: "Test",
+      platform: "whatsapp",
+      triggerKeywords: ["hello"],
+      triggerMatchType: "exact",
+    })
+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(body.trigger_keywords).toEqual(["hello"])
+    expect(body.trigger_match_type).toBe("exact")
+  })
+
+  it("throws internal_error on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 500 }))
+    await expect(
+      createProject(mockCtx(), { name: "Test", platform: "whatsapp" }),
+    ).rejects.toMatchObject({ code: "internal_error" })
+  })
+
+  it("throws internal_error on network failure", async () => {
+    ;(global.fetch as any).mockRejectedValue(new Error("ECONNREFUSED"))
+    await expect(
+      createProject(mockCtx(), { name: "Test", platform: "whatsapp" }),
+    ).rejects.toMatchObject({ code: "internal_error" })
+  })
+})
+
+describe("deleteProject", () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => { global.fetch = vi.fn() })
+  afterEach(() => { global.fetch = originalFetch })
+
+  it("DELETEs /api/magic-flow/projects/{id} and returns void", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "success", data: { message: "Project deleted" } }),
+        { status: 200 },
+      ),
+    )
+    await expect(deleteProject(mockCtx(), "proj_1")).resolves.toBeUndefined()
+
+    const [url, init] = (global.fetch as any).mock.calls[0]
+    expect(url).toContain("/api/magic-flow/projects/proj_1")
+    expect(init.method).toBe("DELETE")
+    expect(init.headers["X-API-Key"]).toBe("whm_abc")
+  })
+
+  it("throws internal_error on non-2xx response", async () => {
+    ;(global.fetch as any).mockResolvedValue(new Response("error", { status: 404 }))
+    await expect(deleteProject(mockCtx(), "proj_1")).rejects.toMatchObject({
+      code: "internal_error",
+    })
+  })
+
+  it("throws internal_error on network failure", async () => {
+    ;(global.fetch as any).mockRejectedValue(new Error("ECONNREFUSED"))
+    await expect(deleteProject(mockCtx(), "proj_1")).rejects.toMatchObject({
+      code: "internal_error",
+    })
   })
 })

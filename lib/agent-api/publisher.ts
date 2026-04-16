@@ -95,6 +95,88 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
   return { flows, total: body.data?.total ?? flows.length }
 }
 
+// ---------------------------------------------------------------------------
+// Project lifecycle (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface CreateProjectOpts {
+  name: string
+  platform: string
+  triggerKeywords?: string[]
+  triggerMatchType?: string
+}
+
+export async function createProject(
+  ctx: AgentContext,
+  opts: CreateProjectOpts,
+): Promise<{ id: string }> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: opts.name,
+        platform: opts.platform,
+        trigger_keywords: opts.triggerKeywords,
+        trigger_match_type: opts.triggerMatchType,
+      }),
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when creating project`)
+  }
+
+  let body: { status?: string; data?: { project?: { id?: string } } }
+  try {
+    body = await res.json()
+  } catch {
+    throw new AgentError("internal_error", "fs-whatsapp returned unparseable project response")
+  }
+
+  const projectId = body.data?.project?.id
+  if (!projectId) {
+    throw new AgentError("internal_error", "fs-whatsapp did not return a project ID")
+  }
+
+  return { id: projectId }
+}
+
+export async function deleteProject(ctx: AgentContext, projectId: string): Promise<void> {
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects/${encodeURIComponent(projectId)}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "X-API-Key": ctx.apiKey,
+        "Content-Type": "application/json",
+      },
+    })
+  } catch (err) {
+    throw new AgentError(
+      "internal_error",
+      `Failed to reach fs-whatsapp: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  if (!res.ok) {
+    throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when deleting project ${projectId}`)
+  }
+}
+
 function buildMagicFlowUrl(flowId: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
   return `${base}/flow/${flowId}`

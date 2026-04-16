@@ -27,6 +27,8 @@ export interface GenerateFlowRequest {
     waAccountName?: string
     authHeader?: string
   }
+  /** Agent API context. When source is "agent_api", downstream code may skip UI-specific fields. */
+  context?: { source: "agent_api" | "ui" }
 }
 
 export interface GenerateFlowResponse {

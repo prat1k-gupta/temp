@@ -336,6 +336,7 @@ export function AIAssistant({
           flowSlug,
           waAccountId,
           waPhoneNumber,
+          userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       })
 

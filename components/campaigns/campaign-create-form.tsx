@@ -9,11 +9,13 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { PageHeader } from "@/components/page-header"
 import {
   BookUser,
   Building2,
+  CalendarClock,
+  Clock,
   FileSpreadsheet,
   FileText,
   FlaskConical,
@@ -33,6 +35,7 @@ import { useCreateCampaign, usePreviewAudience } from "@/hooks/queries/use-campa
 import { toApiFilter } from "@/hooks/queries/use-contact-filters"
 import { useContactFilterUI } from "@/components/chat/contact-list/contact-filter"
 import { SearchablePicker } from "./searchable-picker"
+import { DateTimePicker } from "./datetime-picker"
 import { InfoBanner24hr } from "./info-banner-24hr"
 import { VariableMappingForm } from "./variable-mapping-form"
 import { AudiencePickerSamplingCentral } from "./audience-picker-sampling-central"
@@ -57,6 +60,8 @@ const schema = z
     flow_id: z.string().optional(),
     audience_source: z.enum(AUDIENCE_SOURCES),
     sc_audience_id: z.string().optional(),
+    send_when: z.enum(["now", "later"]).default("now"),
+    scheduled_at_local: z.string().optional(),
   })
   // superRefine lets us emit template_id / flow_id errors on the correct field
   // path depending on which send type the user picked. A plain .refine() can
@@ -143,6 +148,8 @@ export function CampaignCreateForm() {
       account_name: "",
       type: "template",
       audience_source: "contacts",
+      send_when: "now",
+      scheduled_at_local: "",
     },
   })
 
@@ -237,6 +244,24 @@ export function CampaignCreateForm() {
       return
     }
 
+    let scheduled_at: string | null = null
+    if (values.send_when === "later") {
+      if (!values.scheduled_at_local) {
+        form.setError("scheduled_at_local", { message: "Pick a date and time" })
+        return
+      }
+      const d = new Date(values.scheduled_at_local)
+      if (isNaN(d.getTime())) {
+        form.setError("scheduled_at_local", { message: "Invalid date" })
+        return
+      }
+      if (d.getTime() < Date.now() + 60_000) {
+        form.setError("scheduled_at_local", { message: "Schedule at least 1 minute in the future" })
+        return
+      }
+      scheduled_at = d.toISOString()
+    }
+
     const res = await createCampaign({
       name: values.name,
       account_name: values.account_name,
@@ -244,7 +269,7 @@ export function CampaignCreateForm() {
       flow_id: values.type === "flow" ? values.flow_id! : null,
       audience_source: values.audience_source,
       audience_config,
-      schedule_at: null,
+      scheduled_at,
     })
     router.push(`/campaigns/${res.id}`)
   }
@@ -483,6 +508,11 @@ export function CampaignCreateForm() {
                 setContactCount(null)
                 form.clearErrors("audience_source")
                 form.clearErrors("sc_audience_id")
+                // Reset schedule state when switching to CSV
+                if (v === "csv") {
+                  form.setValue("send_when", "now")
+                  form.setValue("scheduled_at_local", "")
+                }
               }
               return (
                 <div className="flex flex-col gap-3">
@@ -613,6 +643,70 @@ export function CampaignCreateForm() {
             onChange={setColumnMapping}
           />
         )}
+
+        {/* Schedule */}
+        <SectionCard
+          icon={CalendarClock}
+          title="Schedule"
+          description="Send now or schedule for later"
+        >
+          <FormField
+            control={form.control}
+            name="send_when"
+            render={({ field }) => {
+              const csvDisabled = form.watch("audience_source") === "csv"
+              return (
+                <FormItem>
+                  <Label className="text-sm text-muted-foreground">
+                    When to send
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3 max-w-xl mt-2">
+                    <SendTypeButton
+                      active={field.value === "now"}
+                      onClick={() => field.onChange("now")}
+                      icon={<Send className="h-5 w-5" />}
+                      label="Send now"
+                      sublabel="Start from the detail page"
+                    />
+                    <SendTypeButton
+                      active={field.value === "later"}
+                      onClick={() => !csvDisabled && field.onChange("later")}
+                      icon={<Clock className="h-5 w-5" />}
+                      label="Schedule for later"
+                      sublabel={csvDisabled ? "Not yet supported for CSV" : "Pick a future date and time"}
+                    />
+                  </div>
+                </FormItem>
+              )
+            }}
+          />
+
+          {form.watch("send_when") === "later" && (
+            <FormField
+              control={form.control}
+              name="scheduled_at_local"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Scheduled time</FormLabel>
+                  <FormControl>
+                    <DateTimePicker
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Your timezone:{" "}
+                    <span className="font-medium text-foreground">
+                      {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </span>
+                    . Contacts matching your filter at this moment will receive the broadcast.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+        </SectionCard>
       </form>
     </Form>
   )

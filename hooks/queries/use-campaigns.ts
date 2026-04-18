@@ -131,6 +131,15 @@ export function useDeleteCampaign() {
   })
 }
 
+export function useRescheduleCampaign() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, scheduled_at }: { id: string; scheduled_at: string }) =>
+      apiClient.post(`/api/campaigns/${id}/reschedule`, { scheduled_at }),
+    onSuccess: (_data, { id }) => invalidateCampaignQueries(qc, id),
+  })
+}
+
 export function usePreviewAudience() {
   return useMutation({
     mutationFn: (input: { source: string; audience_id?: string; filter?: unknown }) =>

@@ -25,7 +25,7 @@ Not every tool is available in every session. Availability depends on four runti
 | Availability level | Requires | Tools |
 |---|---|---|
 | Always | Nothing | `get_node_details`, `get_node_connections`, `apply_edit`, `validate_result`, `undo_last`, `list_variables`, `save_as_template`, `build_and_validate` |
-| Authenticated | `apiUrl` + `authHeader` | `list_flows`, `list_accounts`, `get_flow_variables`, `preview_audience`, `create_campaign`, `start_campaign`, `get_campaign_status`, `list_campaigns`, `pause_campaign`, `cancel_campaign` |
+| Authenticated | `apiUrl` + `authHeader` | `list_flows`, `list_accounts`, `get_flow_variables`, `preview_audience`, `create_campaign`, `reschedule_campaign`, `start_campaign`, `get_campaign_status`, `list_campaigns`, `pause_campaign`, `cancel_campaign` |
 | WhatsApp + Authenticated | `apiUrl` + `authHeader` + `platform === "whatsapp"` | `list_approved_templates` |
 | Published WhatsApp flow | `apiUrl` + `authHeader` + `publishedFlowId` + `platform === "whatsapp"` | `trigger_flow` |
 
@@ -580,6 +580,8 @@ Get the list of variables used by a published flow. Useful to understand what da
 
 All campaign tools require authentication (`apiUrl` + `authHeader`).
 
+**Timezone handling:** the flow assistant receives the user's browser timezone as `toolContext.userTimezone` (e.g. `"Asia/Kolkata"`). When a user asks to schedule a broadcast with a relative or local time, the assistant resolves the time in that timezone and converts to UTC before calling `create_campaign` or `reschedule_campaign`.
+
 #### `preview_audience`
 
 Preview how many contacts match a filter BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding.
@@ -622,7 +624,7 @@ Preview how many contacts match a filter BEFORE creating a campaign. Always call
 
 #### `create_campaign`
 
-Create a draft broadcast campaign. Does NOT start sending. Always confirm details with user first.
+Create a draft or scheduled broadcast campaign. Does NOT start sending immediately (unless `scheduled_at` is provided). Always confirm details with user first.
 
 **Availability:** Authenticated
 
@@ -633,6 +635,7 @@ Create a draft broadcast campaign. Does NOT start sending. Always confirm detail
 | `account_name` | `string` | Yes | WhatsApp account name to send from |
 | `audience_source` | `"contacts"` | Yes | Audience source type |
 | `audience_config` | `object` | Yes | Audience configuration (see below) |
+| `scheduled_at` | ISO 8601 UTC datetime | No | If provided, the campaign is created in `scheduled` state and the scheduler will start it automatically at that time. Must be at least 30 seconds in the future. NOT supported with `audience_source: "csv"`. |
 
 **`audience_config` object:**
 
@@ -786,6 +789,31 @@ Cancel a campaign permanently. Confirm with user first.
 ```
 
 **Example use case:** User says "cancel the campaign, something's wrong" -- confirm with user, then call `cancel_campaign`.
+
+---
+
+#### `reschedule_campaign`
+
+Reschedule a draft, scheduled, or failed campaign to a new time. Transitions the campaign to `scheduled` state.
+
+**Availability:** Authenticated
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `campaign_id` | `string` (UUID) | Yes | The campaign to reschedule |
+| `scheduled_at` | ISO 8601 UTC datetime | Yes | New scheduled time. Must be at least 30 seconds in the future. |
+
+**Returns on success:**
+
+```json
+{
+  "success": true,
+  "status": "scheduled",
+  "scheduled_at": "2026-04-17T12:30:00Z"
+}
+```
+
+**Example use case:** "Actually move that broadcast to 8 PM instead of 6 PM" -- the assistant confirms the new time with the user, then calls `reschedule_campaign({ campaign_id, scheduled_at })`.
 
 ---
 

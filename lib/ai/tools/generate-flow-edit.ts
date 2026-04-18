@@ -1199,7 +1199,7 @@ function createEditTools(
     })
 
     actionTools.create_campaign = tool({
-      description: 'Create a draft broadcast campaign. Does NOT start sending. Always confirm details with user first.',
+      description: 'Create a draft or scheduled broadcast campaign. Does NOT start sending immediately unless scheduled_at is provided. Always confirm details with user first.',
       inputSchema: z.object({
         name: z.string().describe('Campaign name'),
         flow_id: z.string().uuid().describe('UUID of the flow to broadcast'),
@@ -1219,13 +1219,28 @@ function createEditTools(
           search: z.string().optional().describe('Free-text search to match contacts by name or phone'),
           channel: z.string().optional().describe('Channel filter (e.g. "whatsapp")'),
         }).describe('Audience configuration — use filter for targeted selection, search for name/phone matching'),
+        scheduled_at: z
+          .string()
+          .datetime()
+          .optional()
+          .describe(
+            "Optional ISO 8601 UTC timestamp (e.g. '2026-04-17T18:00:00Z'). If provided, the campaign is created in scheduled state and will start automatically at that time. Must be at least 30 seconds in the future. Resolve relative times (e.g. 'tomorrow 6 PM') using the user's timezone from the system prompt, then convert to UTC. Not supported when audience_source is 'csv'."
+          ),
       }),
-      execute: async ({ name, flow_id, account_name, audience_source, audience_config }) => {
+      execute: async ({ name, flow_id, account_name, audience_source, audience_config, scheduled_at }) => {
         try {
+          const body: Record<string, any> = {
+            name,
+            flow_id,
+            account_name,
+            audience_source,
+            audience_config,
+          }
+          if (scheduled_at) body.scheduled_at = scheduled_at
           const response = await fetch(`${apiUrl}/api/campaigns`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ name, flow_id, account_name, audience_source, audience_config }),
+            body: JSON.stringify(body),
           })
           const data = await response.json()
 
@@ -1384,6 +1399,42 @@ function createEditTools(
           return { success: true, status: result.status || 'cancelled', message: result.message || 'Campaign cancelled' }
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Network error' }
+        }
+      },
+    })
+
+    actionTools.reschedule_campaign = tool({
+      description:
+        "Reschedule a draft, scheduled, or failed campaign to a new time. Works on any campaign that has not yet started processing. Transitions the campaign to scheduled state. Confirm the new time with the user first.",
+      inputSchema: z.object({
+        campaign_id: z.string().uuid().describe("UUID of the campaign"),
+        scheduled_at: z
+          .string()
+          .datetime()
+          .describe("ISO 8601 UTC timestamp for the new scheduled time. Must be at least 30 seconds in the future."),
+      }),
+      execute: async ({ campaign_id, scheduled_at }) => {
+        try {
+          const response = await fetch(`${apiUrl}/api/campaigns/${campaign_id}/reschedule`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({ scheduled_at }),
+          })
+          const data = await response.json()
+          if (!response.ok) {
+            const err = data?.message || data?.error || `HTTP ${response.status}`
+            console.log("[generate-flow] Tool reschedule_campaign: failed", campaign_id, err)
+            return { success: false, error: err }
+          }
+          const result = data?.data || data
+          console.log("[generate-flow] Tool reschedule_campaign: rescheduled", campaign_id, "to", scheduled_at)
+          return {
+            success: true,
+            status: result.status ?? "scheduled",
+            scheduled_at: result.scheduled_at ?? scheduled_at,
+          }
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : "Network error" }
         }
       },
     })

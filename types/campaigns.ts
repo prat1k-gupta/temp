@@ -17,7 +17,9 @@ export interface Campaign {
   name: string
   account_name: string
   template_id: string | null
+  template_name?: string | null
   flow_id: string | null
+  flow_name?: string | null
   audience_source: AudienceSource
   source_system: string | null
   source_external_id: string | null
@@ -32,6 +34,7 @@ export interface Campaign {
   started_at: string | null
   completed_at: string | null
   created_at: string
+  error_message?: string
 }
 
 export interface CampaignRecipient {
@@ -61,7 +64,7 @@ export interface CreateCampaignInput {
   flow_id: string | null
   audience_source: AudienceSource
   audience_config: unknown // shape varies by source; see spec
-  schedule_at: string | null
+  scheduled_at: string | null
 }
 
 export interface CreateCampaignResponse {

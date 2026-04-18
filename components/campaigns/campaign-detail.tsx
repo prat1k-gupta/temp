@@ -1,6 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { formatDistanceToNow } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -8,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { PageHeader } from "@/components/page-header"
 import { CampaignStatusBadge } from "./campaign-status-badge"
 import { RecipientTable } from "./recipient-table"
+import { RescheduleDialog } from "./reschedule-dialog"
 import { useCampaignStatsSubscription } from "./use-campaign-stats-subscription"
 import {
   useStartCampaign,
@@ -20,6 +23,7 @@ import { ArrowLeft, FileText, GitBranch, Info, RotateCcw } from "lucide-react"
 
 export function CampaignDetail({ campaign }: { campaign: Campaign }) {
   const router = useRouter()
+  const [rescheduleOpen, setRescheduleOpen] = useState(false)
   useCampaignStatsSubscription(campaign.id)
 
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
@@ -74,6 +78,17 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
               {campaign.status === "paused" ? "Resume" : "Start Campaign"}
             </Button>
           )}
+          {(campaign.status === "scheduled" ||
+            (campaign.status === "failed" &&
+              campaign.error_message?.startsWith("Missed scheduled start window"))) && (
+            <Button
+              variant="outline"
+              onClick={() => setRescheduleOpen(true)}
+              className="cursor-pointer"
+            >
+              Reschedule
+            </Button>
+          )}
           {canRetry && (
             <Button
               variant="outline"
@@ -116,7 +131,15 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           ) : (
             <FileText className="h-3.5 w-3.5" />
           )}
-          {campaign.flow_id ? "Flow campaign" : "Template campaign"}
+          <span>
+            {campaign.flow_id ? "Flow" : "Template"}
+            {": "}
+            <span className="font-medium text-foreground">
+              {campaign.flow_id
+                ? campaign.flow_name ?? "Unnamed flow"
+                : campaign.template_name ?? "Unnamed template"}
+            </span>
+          </span>
         </span>
         <span>·</span>
         <span>{campaign.account_name}</span>
@@ -130,6 +153,22 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           </>
         )}
       </div>
+
+      {campaign.status === "scheduled" && campaign.scheduled_at && (
+        <div className="rounded-md border bg-muted/50 p-3 text-sm">
+          <strong>Scheduled for {new Date(campaign.scheduled_at).toLocaleString()}</strong>
+          <span className="ml-2 text-muted-foreground">
+            ({formatDistanceToNow(new Date(campaign.scheduled_at), { addSuffix: true })})
+          </span>
+        </div>
+      )}
+
+      {campaign.status === "failed" &&
+        campaign.error_message?.startsWith("Missed scheduled start window") && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+            {campaign.error_message}
+          </div>
+        )}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -174,6 +213,13 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           <RecipientTable campaignId={campaign.id} />
         </CardContent>
       </Card>
+
+      <RescheduleDialog
+        campaignId={campaign.id}
+        currentScheduledAt={campaign.scheduled_at}
+        open={rescheduleOpen}
+        onOpenChange={setRescheduleOpen}
+      />
     </div>
   )
 }

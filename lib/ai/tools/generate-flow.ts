@@ -34,6 +34,8 @@ export interface GenerateFlowRequest {
     flowSlug?: string
     waAccountId?: string
     waPhoneNumber?: string
+    userTimezone?: string
+    currentTime?: string
   }
   /** Agent API context. When source is "agent_api", downstream code may skip UI-specific fields. */
   context?: { source: "agent_api" | "ui" }

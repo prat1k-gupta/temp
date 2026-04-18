@@ -22,6 +22,8 @@ export interface FlowEditContext {
     flowSlug: string
     waAccountId: string
     waPhoneNumber?: string
+    userTimezone?: string
+    currentTime: string
   }
 }
 
@@ -58,6 +60,10 @@ export async function loadFlowForEdit(
       flowSlug: project.flowSlug,
       waAccountId: project.waAccountId,
       waPhoneNumber: ctx.account.phone_number,
+      // Server-side "now" so the AI can resolve relative times ("tomorrow 6 PM")
+      // without relying on training-data priors. Public agent callers have no
+      // browser timezone; defaults to UTC at the prompt level.
+      currentTime: new Date().toISOString(),
     },
   }
 }

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { formatDistanceToNow } from "date-fns"
 import {
+  Clock,
   FileText,
   GitBranch,
   MoreHorizontal,
@@ -123,10 +124,23 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium truncate max-w-[240px]">{c.name}</p>
-                        <p className="text-xs text-muted-foreground truncate max-w-[240px]">
-                          {c.account_name}
-                        </p>
+                        <p className="font-medium truncate max-w-[280px]">{c.name}</p>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground max-w-[280px]">
+                          <span className="truncate">{c.account_name}</span>
+                          {(c.flow_name || c.template_name) && (
+                            <>
+                              <span aria-hidden="true">|</span>
+                              {c.flow_id ? (
+                                <GitBranch className="h-3 w-3 shrink-0" />
+                              ) : (
+                                <FileText className="h-3 w-3 shrink-0" />
+                              )}
+                              <span className="truncate">
+                                {c.flow_name ?? c.template_name}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -141,6 +155,12 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   {/* Status */}
                   <td className="px-4 py-3">
                     <CampaignStatusBadge status={c.status} />
+                    {c.status === "scheduled" && c.scheduled_at && (
+                      <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        {new Date(c.scheduled_at).toLocaleString()}
+                      </span>
+                    )}
                   </td>
 
                   {/* Progress */}

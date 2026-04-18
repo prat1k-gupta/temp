@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     flowSlug,
     waAccountId,
     waPhoneNumber,
+    userTimezone,
   } = body
 
   const authHeader = request.headers.get('Authorization') || ''
@@ -81,6 +82,10 @@ export async function POST(request: NextRequest) {
       flowSlug,
       waAccountId,
       waPhoneNumber,
+      userTimezone,
+      // Server-side "now" — trainings priors are unreliable for dates, and
+      // the AI needs this to resolve "tomorrow 9 PM" correctly.
+      currentTime: new Date().toISOString(),
     },
   }
 

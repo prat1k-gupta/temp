@@ -569,6 +569,16 @@ Ported the FS Chat Vue campaigns feature to MagicFlow React and extended it with
 - **SC audience ID dropdown** — right now the user types the UUID; a searchable dropdown needs a new `GET /audiences` list endpoint on the SC side (out of scope here).
 - **Component unit tests** (vitest) for `campaign-list`, `campaign-detail`, create form — currently only integration-level coverage via the backend handlers tests.
 
+### 4.2.1 Broadcasting v2 — Scheduling, Go-Backend Audience, AI Template Creation 🧠 BRAINSTORM NEEDED
+
+Three follow-ups to broadcasting v1 and the AI flow assistant. Each needs its own brainstorm + design doc before implementation.
+
+- **Campaign scheduling** — campaign model already has `ScheduledAt *time.Time` but no scheduler picks them up. Need to decide: worker cron vs. ticker goroutine, schedule granularity, timezone handling, UI for setting schedule in create form + AI tool support (`schedule_campaign` or extend `create_campaign`).
+
+- **Go-backend claimant audience source** — replace the direct `pkg/samplingcentral` HTTP client with our own Go backend's `claimant/get` API (takes audience ID → returns claimants). Scope: which backend service owns the API, shape of the endpoint, whether we fully replace `sampling-central` source or keep it as a fallback, impact on per-org credential plans.
+
+- **AI template creation tool** — today the AI can `list_approved_templates` but can't create new ones. Need a tool that creates a WhatsApp template via `POST /api/templates` and submits to Meta for approval. Scope: which components (BODY / HEADER / FOOTER / BUTTONS), sync vs async approval flow, whether the AI waits for approval or just reports "pending".
+
 ### 4.3 Remaining Settings (keywords, AI contexts, canned responses, webhooks, SSO)
 
 ---

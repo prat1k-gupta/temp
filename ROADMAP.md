@@ -718,6 +718,39 @@ Current auto-save sends the full `nodes[]` + `edges[]` JSON on every change (1s 
 - Template resolution: plan builder resolves user templates by ID via templateResolver
 - Full template data loaded in AI assistant for resolver pipeline
 
+**Flow Assistant Agent API ✅** (April 2026)
+REST+SSE API exposing the MagicFlow AI flow assistant for customer-built AI agents. Customer's AI agent calls 4 endpoints; the server-side Sonnet-based agent does the actual flow building.
+
+- **Phase 1** (PR #71): scaffolding + `GET /v1/agent/flows` (find/list)
+- **Phase 2** (PR #72): `POST /v1/agent/flows` (create + auto-publish, SSE)
+- **Phase 3** (magic-flow #78 + fs-chat #34): `POST /v1/agent/flows/{id}/edit` + `POST /v1/agent/flows/{id}/publish` + shared AI tool set
+- **Phase 4** — OpenAPI 3.1 spec + docs polish. Handoff doc written at `docs/superpowers/specs/2026-04-16-agent-api-phase-4-openapi-docs.md`, ready for another team to implement.
+
+**Two AI agents sharing one code path:**
+- Create agent (2 tools) — runs on `POST /flows`, builds a flow from a plain-English instruction
+- Edit agent (21 tools) — runs on `POST /flows/{id}/edit`. 5 editing tools + 3 lifecycle + 2 WhatsApp-specific + 11 broadcast/campaign tools. Internal UI chat and external agent API use the exact same agents.
+
+**Key design decisions:**
+- Auth: `whm_*` General API Keys via `X-API-Key` (agent) OR `Authorization: Bearer <jwt>` (UI) — both routed through a shared `authHeaders` helper
+- DB is source of truth (not session memory) for publish decisions
+- Single-account assumption, WhatsApp-only in v1
+
+**Phase 3 bugs fixed along the way** (all surfaced during E2E testing):
+- Duplicate edges from AI self-correction — validator rule `duplicate_source_edge` + merge-layer invariant
+- `published_flow_id` + `flow_slug` not saved → every publish was duplicating the runtime flow
+- `PUT` response missing ID — fall back to `existingRuntimeFlowId`
+- Consecutive edits losing changes — `loadFlowForEdit` now uses highest version, not just latest published
+- `list_approved_templates` + `trigger_flow` auth header routing for `whm_*` keys
+- Auto-save baseline race for AI edits (draft wasn't persisting)
+- Change tracker debounced AI edits (changes modal was empty)
+- Draft not deleted after AI publish; UI state not clearing after AI publish
+- `publish_flow` tool needed DB-first logic (not editResult-only)
+
+**Follow-ups:**
+- magic-flow #77 — change-tracker + undo-redo sync (pre-existing bug, scoped fix in the issue)
+- Phase 4 handoff PR when ready
+- MCP server wrapping Agent API + AI tools (future initiative)
+
 **Deferred to Phase 3:**
 - API timeout config (1.4 partial)
 - FLOW button in template builder (1.5)

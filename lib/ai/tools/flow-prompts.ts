@@ -53,7 +53,14 @@ The user's timezone is ${request.toolContext?.userTimezone ?? "UTC"}. The curren
 - \`list_campaigns\` — show recent campaigns, optionally filtered by status.
 - \`pause_campaign\` — pause a running campaign. Confirm with user first.
 - \`cancel_campaign\` — cancel a campaign permanently. Confirm with user first.
-The audience_source for create_campaign is "contacts" with a filter/search config. Ask the user who they want to target.` : ""}
+The audience_source for create_campaign is "contacts" with a filter/search config. Ask the user who they want to target.
+
+**Template-first rule for broadcasts.** WhatsApp only permits initiating messages outside the 24-hour session window via approved templates. Broadcasts almost always target cold recipients, so any flow intended for broadcast MUST start (the node immediately after Start) with a \`templateMessage\` node referencing an approved template — otherwise WhatsApp will reject every send. When the user asks to broadcast a new flow or an existing flow whose entry node is not a template:
+1. Call \`list_approved_templates\` first to see what's available.
+2. Pick the template that best matches the user's stated goal (feedback → a feedback template, promo → a promo template, etc.) and confirm the choice with the user.
+3. If no approved template fits, tell the user they need to create + get Meta approval for one before the broadcast can go out; offer to help them draft the template.
+4. Only skip this rule if the user explicitly says something like "skip the template" or "send without a template" — and in that case warn them the broadcast will fail on cold recipients.
+Do NOT create a campaign for a flow that starts with a plain \`whatsappMessage\` node. Check the entry node before calling \`create_campaign\`.` : ""}
 
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}

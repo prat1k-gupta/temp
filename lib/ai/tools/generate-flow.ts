@@ -236,6 +236,25 @@ export function deduplicateEdges(edges: Edge[]): Edge[] {
 }
 
 /**
+ * promptImpliesBroadcast returns true when the user's instruction references
+ * broadcasting / scheduling a campaign. Used to force the edit-mode agent
+ * (which has the 11 broadcast/campaign tools) even for a canvas that only
+ * has a start node — otherwise the create-mode agent runs with just 2 flow-
+ * generation tools, the model has no way to actually invoke preview/create
+ * campaign, and it hallucinates XML-tag-shaped pretend-tool output.
+ *
+ * Whole-word match on a small keyword set — a phrase like "I'm creating
+ * a flow to send a broadcast" triggers correctly, while "don't schedule
+ * this meeting" shouldn't appear in flow-builder prompts. Acceptable
+ * false-positive rate for the upside of tools always being available
+ * when the user expects them.
+ */
+function promptImpliesBroadcast(prompt: string | undefined | null): boolean {
+  if (!prompt) return false
+  return /\b(broadcast|broadcasts|broadcasting|campaign|campaigns|schedule|scheduled|scheduling|audience)\b/i.test(prompt)
+}
+
+/**
  * AI Tool: Generate or Edit Flow
  * Determines mode (create vs edit), delegates to the appropriate handler,
  * and provides a text-generation fallback if structured output fails.
@@ -247,12 +266,17 @@ export async function generateFlow(
     const aiClient = getAIClient()
     const platformGuidelines = getPlatformGuidelines(request.platform)
 
-    // A canvas with only the start node is a fresh flow → create mode
+    // A canvas with only the start node is a fresh flow → create mode,
+    // UNLESS the user's instruction implies broadcast/campaign work — the
+    // edit agent is the one with the 11 campaign tools, so force into
+    // edit mode when the prompt clearly needs them (see
+    // promptImpliesBroadcast above for rationale).
     const hasRealNodes = request.existingFlow &&
       request.existingFlow.nodes.some(n => n.type !== "start")
     const hasEdges = request.existingFlow &&
       request.existingFlow.edges.length > 0
-    const isEditRequest = Boolean(hasRealNodes || hasEdges)
+    const isEditRequest = Boolean(hasRealNodes || hasEdges) ||
+      promptImpliesBroadcast(request.prompt)
 
     // Build template resolver from user template data
     const templateResolver: TemplateResolver | undefined = request.userTemplateData
@@ -378,11 +402,15 @@ export async function generateFlowStreaming(
     const aiClient = getAIClient()
     const platformGuidelines = getPlatformGuidelines(request.platform)
 
+    // Same gate as generateFlow above — force edit mode when the prompt
+    // implies broadcast/campaign work so the 11 campaign tools are available
+    // from the first turn, even on an empty canvas.
     const hasRealNodes = request.existingFlow &&
       request.existingFlow.nodes.some(n => n.type !== "start")
     const hasEdges = request.existingFlow &&
       request.existingFlow.edges.length > 0
-    const isEditRequest = Boolean(hasRealNodes || hasEdges)
+    const isEditRequest = Boolean(hasRealNodes || hasEdges) ||
+      promptImpliesBroadcast(request.prompt)
 
     const templateResolver: TemplateResolver | undefined = request.userTemplateData
       ? (id: string) => {

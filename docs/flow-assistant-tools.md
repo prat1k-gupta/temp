@@ -584,18 +584,27 @@ All campaign tools require authentication (`apiUrl` + `authHeader`).
 
 #### `preview_audience`
 
-Preview how many contacts match a filter BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding.
+Preview how many recipients match an audience BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding. Uses a discriminated union on `source`: `"contacts"` for the org contact DB, or `"freestand-claimant"` for a Freestand claimant audience from go-backend.
 
 **Availability:** Authenticated
 
+**Shape A -- `source: "contacts"`:**
+
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `source` | `"contacts"` | Yes | Audience source type (currently only `"contacts"`) |
+| `source` | `"contacts"` | Yes | Discriminator |
 | `filter` | `object` | No | Contact filter (see filter schema below) |
 | `search` | `string` | No | Free-text search |
 | `channel` | `string` | No | Channel filter |
 
-**Filter object:**
+**Shape B -- `source: "freestand-claimant"`:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `source` | `"freestand-claimant"` | Yes | Discriminator |
+| `audience_id` | `string` (UUID) | Yes | UUID of the Freestand claimant audience |
+
+**Filter object (contacts source only):**
 
 | Field | Type | Description |
 |---|---|---|
@@ -614,11 +623,19 @@ Preview how many contacts match a filter BEFORE creating a campaign. Always call
 {
   "success": true,
   "total_count": 142,
-  "audience_type": "contacts"
+  "audience_type": "contacts",
+  "audience_name": "April claimants (DL)",
+  "snapshot_date": "2026-04-15",
+  "available_columns": ["name", "city", "state", "waybill_number"]
 }
 ```
 
-**Example use case:** User says "send the welcome flow to all contacts tagged 'new-lead'" -- call `preview_audience` with `{ source: "contacts", filter: { type: "tag", op: "is", values: ["new-lead"] } }` to show them the count before creating the campaign.
+`audience_name`, `snapshot_date`, and `available_columns` are populated for `freestand-claimant` previews and omitted for `contacts`.
+
+**Example use cases:**
+
+- **Contacts:** User says "send the welcome flow to all contacts tagged 'new-lead'" -- call `preview_audience` with `{ source: "contacts", filter: { type: "tag", op: "is", values: ["new-lead"] } }`.
+- **Freestand claimant:** User says "broadcast to the April Delhi claimants audience" -- look up the audience UUID, then call `preview_audience` with `{ source: "freestand-claimant", audience_id: "<uuid>" }`. Use `available_columns` to build the `column_mapping` for `create_campaign`.
 
 ---
 
@@ -633,17 +650,38 @@ Create a draft or scheduled broadcast campaign. Does NOT start sending immediate
 | `name` | `string` | Yes | Campaign name |
 | `flow_id` | `string` | Yes | ID of the flow to broadcast |
 | `account_name` | `string` | Yes | WhatsApp account name to send from |
-| `audience_source` | `"contacts"` | Yes | Audience source type |
-| `audience_config` | `object` | Yes | Audience configuration (see below) |
-| `scheduled_at` | ISO 8601 UTC datetime | No | If provided, the campaign is created in `scheduled` state and the scheduler will start it automatically at that time. Must be at least 30 seconds in the future. NOT supported with `audience_source: "csv"`. |
+| `audience_source` | `"contacts" \| "freestand-claimant"` | Yes | Audience source type. `"csv"` is intentionally not exposed to the AI -- users upload CSVs manually through the UI. |
+| `audience_config` | `object` | Yes | Audience configuration -- shape varies by `audience_source` (see below) |
+| `scheduled_at` | ISO 8601 UTC datetime | No | If provided, the campaign is created in `scheduled` state and the scheduler will start it automatically at that time. Must be at least 30 seconds in the future. NOT supported with `audience_source: "csv"`. For `audience_source: "freestand-claimant"`, the campaign first transitions to `materializing` and then to `scheduled` once recipients are fetched. |
 
-**`audience_config` object:**
+**`audience_config` shape for `audience_source: "contacts"`:**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `filter` | `object` | No | Contact filter (same format as `preview_audience`) |
 | `search` | `string` | No | Free-text search to match contacts by name or phone |
 | `channel` | `string` | No | Channel filter (e.g. `"whatsapp"`) |
+
+**`audience_config` shape for `audience_source: "freestand-claimant"`:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `audience_id` | `string` (UUID) | Yes | UUID of the Freestand claimant audience |
+| `column_mapping` | `Record<string, ClaimantColumn>` | Yes | Maps flow-variable names (keys) to claimant audience columns (values). Only mapped columns are available inside the flow via the usual `{{variable_name}}` syntax. |
+
+**`ClaimantColumn` allowed values** (must match `fs-whatsapp/internal/handlers/materialize_go_backend.go` `freestandClaimantAllowedColumns()`):
+
+`"name"`, `"city"`, `"state"`, `"pincode"`, `"country"`, `"address"`, `"status"`, `"claim_date"`, `"campaign_name"`, `"skus"`, `"utm_source"`, `"order_status"`, `"delivery_status"`, `"waybill_number"`
+
+Example `column_mapping`:
+
+```json
+{
+  "customer_name": "name",
+  "order_id": "waybill_number",
+  "ship_to_city": "city"
+}
+```
 
 **Returns on success:**
 
@@ -653,9 +691,12 @@ Create a draft or scheduled broadcast campaign. Does NOT start sending immediate
   "campaign_id": "camp-uuid-123",
   "name": "Welcome Campaign",
   "status": "draft",
-  "total_recipients": 142
+  "total_recipients": 142,
+  "audience_total": 142
 }
 ```
+
+For `audience_source: "freestand-claimant"`, the initial `status` is `"materializing"` while a background goroutine fetches recipients from go-backend. The campaign transitions to `"draft"` (or `"scheduled"` if `scheduled_at` was provided) once materialization succeeds, or `"failed"` with `error_message` on failure. `audience_total` is populated when known. The assistant MUST poll `get_campaign_status` until the status leaves `"materializing"` before calling `start_campaign`.
 
 **Example use case:** After confirming audience count with `preview_audience`, create the campaign in draft state so the user can review before starting.
 
@@ -695,6 +736,20 @@ Get current status and progress of a campaign.
 |---|---|---|---|
 | `campaign_id` | `string` | Yes | ID of the campaign to check |
 
+**Status values:**
+
+| Status | Meaning |
+|---|---|
+| `draft` | Created but not yet started. Safe to call `start_campaign`. |
+| `materializing` | **Transient** -- only occurs for `freestand-claimant` broadcasts while a background goroutine is fetching recipients from go-backend. Resolves to `draft` (or `scheduled` if `scheduled_at` was set) on success, or `failed` with `error_message` on error. **Do NOT call `start_campaign` while in this state** -- poll until it resolves. |
+| `scheduled` | Waiting for its `scheduled_at` time; the scheduler will auto-start it. |
+| `queued` | Queued for processing by the worker. |
+| `processing` | Actively sending. |
+| `paused` | Paused mid-send. Can be resumed by the user. |
+| `completed` | All recipients processed. |
+| `cancelled` | Cancelled by the user. |
+| `failed` | Terminal failure. See `error_message` for details. |
+
 **Returns on success:**
 
 ```json
@@ -704,17 +759,22 @@ Get current status and progress of a campaign.
   "name": "Welcome Campaign",
   "status": "processing",
   "total_recipients": 142,
+  "materialized_count": 142,
+  "audience_total": 142,
   "recipients_completed": 87,
   "sent_count": 87,
   "delivered_count": 82,
   "read_count": 45,
   "failed_count": 5,
   "started_at": "2026-04-16T10:30:00Z",
-  "completed_at": null
+  "completed_at": null,
+  "error_message": null
 }
 ```
 
-**Example use case:** User asks "how's the campaign going?" -- call `get_campaign_status` to show delivery progress.
+`materialized_count` and `audience_total` track materialization progress for `freestand-claimant` broadcasts (both `null` for other sources once materialization has settled). `error_message` is populated on `failed` (materialization error, scheduler error, etc.).
+
+**Example use case:** User asks "how's the campaign going?" -- call `get_campaign_status` to show delivery progress. For a just-created `freestand-claimant` campaign, poll this tool every few seconds until `status` leaves `materializing`.
 
 ---
 
@@ -726,7 +786,7 @@ List recent broadcast campaigns. Optionally filter by status.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `status` | `"draft" \| "processing" \| "completed" \| "paused" \| "cancelled"` | No | Filter by campaign status |
+| `status` | `"draft" \| "materializing" \| "scheduled" \| "queued" \| "processing" \| "paused" \| "completed" \| "cancelled" \| "failed"` | No | Filter by campaign status. Matches the 9-state enum used by `get_campaign_status`. |
 
 **Returns on success:**
 
@@ -887,6 +947,54 @@ A user says: "Send the feedback survey to all contacts tagged 'recent-purchase'.
 
 8. get_campaign_status({ campaign_id: "camp-uuid-123" })
    -- Check progress when user asks
+```
+
+### 2a. Broadcast a flow to a Freestand claimant audience
+
+A user says: "Send the delivery update flow to the April Delhi claimants audience."
+
+```
+1. list_flows({})
+   -- Find the flow ID for "delivery update"
+
+2. list_accounts({})
+   -- Find the WhatsApp account name
+
+3. preview_audience({
+     source: "freestand-claimant",
+     audience_id: "aud-uuid-456"
+   })
+   -- Returns total_count, audience_name, snapshot_date, available_columns.
+   -- Show the user the audience name + count before proceeding.
+
+4. [Wait for user confirmation: "Yes, send to those 520 claimants"]
+
+5. create_campaign({
+     name: "Delivery Update -- April DL claimants",
+     flow_id: "uuid-of-delivery-flow",
+     account_name: "main-wa",
+     audience_source: "freestand-claimant",
+     audience_config: {
+       audience_id: "aud-uuid-456",
+       column_mapping: {
+         "customer_name": "name",
+         "waybill": "waybill_number",
+         "ship_city": "city"
+       }
+     }
+   })
+   -- Returns { status: "materializing", campaign_id: "camp-uuid-789", ... }
+
+6. Poll get_campaign_status({ campaign_id: "camp-uuid-789" }) every few seconds
+   until status leaves "materializing":
+     - Success path: status transitions to "draft" (or "scheduled" if
+       scheduled_at was set). materialized_count equals audience_total.
+     - Failure path: status is "failed", error_message explains why.
+
+7. [Wait for user confirmation: "Looks good, start it"]
+
+8. start_campaign({ campaign_id: "camp-uuid-789" })
+   -- Begin sending. Do NOT call this while status is "materializing".
 ```
 
 ### 3. Create a new flow from scratch

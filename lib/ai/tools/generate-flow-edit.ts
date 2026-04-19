@@ -1178,28 +1178,50 @@ function createEditTools(
 
     // Campaign / broadcast tools — available whenever authenticated
     actionTools.preview_audience = tool({
-      description: 'Preview how many contacts match a filter BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding with create_campaign.',
+      description: 'Preview how many recipients match an audience BEFORE creating a campaign. Always call this first and show the count to the user so they can verify the audience is correct before proceeding with create_campaign. Supports both "contacts" (filter/search/channel) and "freestand-claimant" (audience_id) sources.',
+      // Flat object instead of z.discriminatedUnion — Anthropic tool API
+      // rejects schemas whose top-level isn't type:"object". Runtime branches
+      // on `source` below; shape enforcement is per-source via description.
       inputSchema: z.object({
-        source: z.literal('contacts').describe('Audience source type'),
-        filter: z.object({
-          type: z.enum(['tag', 'flow', 'variable']).optional(),
-          op: z.string().optional(),
-          values: z.array(z.string()).optional(),
-          value: z.string().optional(),
-          flow_slug: z.string().optional(),
-          name: z.string().optional(),
-          logic: z.enum(['and', 'or']).optional(),
-          filters: z.array(z.any()).optional(),
-        }).optional().describe('Contact filter (same format as create_campaign)'),
-        search: z.string().optional().describe('Free-text search'),
-        channel: z.string().optional().describe('Channel filter'),
+        source: z
+          .enum(['contacts', 'freestand-claimant'])
+          .describe('Audience source type. "contacts" uses filter/search/channel; "freestand-claimant" requires audience_id.'),
+        audience_id: z
+          .string()
+          .uuid()
+          .optional()
+          .describe('UUID of the Freestand claimant audience. REQUIRED when source="freestand-claimant", omit otherwise.'),
+        filter: z
+          .object({
+            type: z.enum(['tag', 'flow', 'variable']).optional(),
+            op: z.string().optional(),
+            values: z.array(z.string()).optional(),
+            value: z.string().optional(),
+            flow_slug: z.string().optional(),
+            name: z.string().optional(),
+            logic: z.enum(['and', 'or']).optional(),
+            filters: z.array(z.any()).optional(),
+          })
+          .optional()
+          .describe('Contact filter — only used when source="contacts" (same format as create_campaign).'),
+        search: z.string().optional().describe('Free-text search — only used when source="contacts".'),
+        channel: z.string().optional().describe('Channel filter (e.g. "whatsapp") — only used when source="contacts".'),
       }),
-      execute: async ({ source, filter, search, channel }) => {
+      execute: async (input) => {
         try {
+          const body: Record<string, any> =
+            input.source === 'freestand-claimant'
+              ? { source: 'freestand-claimant', audience_id: input.audience_id }
+              : {
+                  source: 'contacts',
+                  filter: input.filter,
+                  search: input.search,
+                  channel: input.channel,
+                }
           const response = await fetch(`${apiUrl}/api/campaigns/preview-audience`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ source, filter, search, channel }),
+            body: JSON.stringify(body),
           })
           const data = await response.json()
           if (!response.ok) {
@@ -1210,6 +1232,9 @@ function createEditTools(
             success: true,
             total_count: result.total_count,
             audience_type: result.audience_type,
+            audience_name: result.name,
+            snapshot_date: result.snapshot_date,
+            available_columns: result.available_columns,
           }
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Network error' }
@@ -1218,32 +1243,83 @@ function createEditTools(
     })
 
     actionTools.create_campaign = tool({
-      description: 'Create a draft or scheduled broadcast campaign. Does NOT start sending immediately unless scheduled_at is provided. Always confirm details with user first.',
+      description:
+        'Create a draft or scheduled broadcast campaign. Does NOT start sending immediately unless scheduled_at is provided. Always confirm details with user first. Supports audience sources "contacts" (filter/search/channel) and "freestand-claimant" (audience_id + column_mapping). For the freestand-claimant source, the campaign is returned with status "materializing" while a background goroutine fetches recipients from go-backend; poll get_campaign_status until it transitions to "draft" (or "scheduled" when scheduled_at is provided) before calling start_campaign.',
       inputSchema: z.object({
         name: z.string().describe('Campaign name'),
         flow_id: z.string().uuid().describe('UUID of the flow to broadcast'),
         account_name: z.string().describe('WhatsApp account name to send from'),
-        audience_source: z.literal('contacts').describe('Audience source type'),
-        audience_config: z.object({
-          filter: z.object({
-            type: z.enum(['tag', 'flow', 'variable']).optional().describe('Filter type for leaf conditions'),
-            op: z.string().optional().describe('Operator: for tags use "is" or "is_not", for flows use "active"/"any"/"never", for variables use "is"/"is_not"/"contains"/"has_any_value"/"is_unknown"'),
-            values: z.array(z.string()).optional().describe('Tag names for tag filters (e.g. ["delhi", "mumbai"])'),
-            value: z.string().optional().describe('Value for variable filters'),
-            flow_slug: z.string().optional().describe('Flow slug for flow/variable filters'),
-            name: z.string().optional().describe('Variable name for variable filters'),
-            logic: z.enum(['and', 'or']).optional().describe('Group logic for combining multiple filters'),
-            filters: z.array(z.any()).optional().describe('Nested filter conditions when using groups'),
-          }).optional().describe('Contact filter. For tag filtering: {"type":"tag","op":"is","values":["tag-name"]}. For groups: {"logic":"and","filters":[...]}'),
-          search: z.string().optional().describe('Free-text search to match contacts by name or phone'),
-          channel: z.string().optional().describe('Channel filter (e.g. "whatsapp")'),
-        }).describe('Audience configuration — use filter for targeted selection, search for name/phone matching'),
+        audience_source: z
+          .enum(['contacts', 'freestand-claimant'])
+          .describe(
+            'Audience source type. "contacts" = org contact filter; "freestand-claimant" = a Freestand claimant audience fetched from go-backend (requires column_mapping in audience_config). CSV is intentionally not exposed to the AI here — users upload CSVs manually.'
+          ),
+        // Flat object instead of z.union — nested unions convert to anyOf in
+        // JSON Schema, which some tool-schema validators reject. Runtime
+        // branches on audience_source to pick the correct fields.
+        audience_config: z
+          .object({
+            // --- contacts source fields ---
+            filter: z
+              .object({
+                type: z.enum(['tag', 'flow', 'variable']).optional().describe('Filter type for leaf conditions'),
+                op: z
+                  .string()
+                  .optional()
+                  .describe(
+                    'Operator: for tags use "is" or "is_not", for flows use "active"/"any"/"never", for variables use "is"/"is_not"/"contains"/"has_any_value"/"is_unknown"'
+                  ),
+                values: z.array(z.string()).optional().describe('Tag names for tag filters (e.g. ["delhi", "mumbai"])'),
+                value: z.string().optional().describe('Value for variable filters'),
+                flow_slug: z.string().optional().describe('Flow slug for flow/variable filters'),
+                name: z.string().optional().describe('Variable name for variable filters'),
+                logic: z.enum(['and', 'or']).optional().describe('Group logic for combining multiple filters'),
+                filters: z.array(z.any()).optional().describe('Nested filter conditions when using groups'),
+              })
+              .optional()
+              .describe('ONLY for audience_source="contacts". Contact filter tree.'),
+            search: z.string().optional().describe('ONLY for audience_source="contacts". Free-text search.'),
+            channel: z.string().optional().describe('ONLY for audience_source="contacts". Channel filter (e.g. "whatsapp").'),
+            // --- freestand-claimant source fields ---
+            audience_id: z
+              .string()
+              .uuid()
+              .optional()
+              .describe('REQUIRED when audience_source="freestand-claimant". UUID of the claimant audience.'),
+            column_mapping: z
+              .record(
+                z.string(),
+                z.enum([
+                  'name',
+                  'city',
+                  'state',
+                  'pincode',
+                  'country',
+                  'address',
+                  'status',
+                  'claim_date',
+                  'campaign_name',
+                  'skus',
+                  'utm_source',
+                  'order_status',
+                  'delivery_status',
+                  'waybill_number',
+                ])
+              )
+              .optional()
+              .describe(
+                'REQUIRED when audience_source="freestand-claimant". Maps flow-variable names to claimant audience columns. Keys are flow variable names (e.g. "first_name"); values are one of the 14 allowed claimant columns. Example: {"customer_name":"name","order_id":"waybill_number"}.'
+              ),
+          })
+          .describe(
+            'Audience configuration — fields vary by audience_source. For "contacts" use filter/search/channel. For "freestand-claimant" use audience_id + column_mapping. Unused fields are ignored.'
+          ),
         scheduled_at: z
           .string()
           .datetime()
           .optional()
           .describe(
-            "Optional ISO 8601 UTC timestamp (e.g. '2026-04-17T18:00:00Z'). If provided, the campaign is created in scheduled state and will start automatically at that time. Must be at least 30 seconds in the future. Resolve relative times (e.g. 'tomorrow 6 PM') using the user's timezone from the system prompt, then convert to UTC. Not supported when audience_source is 'csv'."
+            "Optional ISO 8601 UTC timestamp (e.g. '2026-04-17T18:00:00Z'). If provided, the campaign is created in scheduled state and will start automatically at that time. Must be at least 30 seconds in the future. Resolve relative times (e.g. 'tomorrow 6 PM') using the user's timezone from the system prompt, then convert to UTC. Not supported when audience_source is 'csv'. For audience_source 'freestand-claimant', the campaign first transitions to status 'materializing' and then to 'scheduled' once recipients are fetched."
           ),
       }),
       execute: async ({ name, flow_id, account_name, audience_source, audience_config, scheduled_at }) => {
@@ -1274,6 +1350,7 @@ function createEditTools(
             name: result.name,
             status: result.status,
             total_recipients: result.total_recipients,
+            audience_total: result.audience_total,
           }
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Network error' }
@@ -1307,7 +1384,8 @@ function createEditTools(
     })
 
     actionTools.get_campaign_status = tool({
-      description: 'Get current status and progress of a campaign.',
+      description:
+        'Get current status and progress of a campaign. Status values: "draft", "materializing", "scheduled", "queued", "processing", "paused", "completed", "cancelled", "failed". "materializing" appears only for freestand-claimant broadcasts while the background goroutine is fetching recipients; it resolves to "draft" (or "scheduled" when scheduled_at was set) on success, or "failed" with error_message on error. Poll this tool until status leaves "materializing" before calling start_campaign.',
       inputSchema: z.object({
         campaign_id: z.string().uuid().describe('UUID of the campaign to check'),
       }),
@@ -1329,6 +1407,8 @@ function createEditTools(
             name: result.name,
             status: result.status,
             total_recipients: result.total_recipients,
+            materialized_count: result.materialized_count,
+            audience_total: result.audience_total,
             recipients_completed: result.recipients_completed,
             sent_count: result.sent_count,
             delivered_count: result.delivered_count,
@@ -1336,6 +1416,7 @@ function createEditTools(
             failed_count: result.failed_count,
             started_at: result.started_at,
             completed_at: result.completed_at,
+            error_message: result.error_message,
           }
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Network error' }
@@ -1346,7 +1427,10 @@ function createEditTools(
     actionTools.list_campaigns = tool({
       description: 'List recent broadcast campaigns. Optionally filter by status.',
       inputSchema: z.object({
-        status: z.enum(['draft', 'processing', 'completed', 'paused', 'cancelled']).optional().describe('Filter by campaign status'),
+        status: z
+          .enum(['draft', 'materializing', 'scheduled', 'queued', 'processing', 'paused', 'completed', 'cancelled', 'failed'])
+          .optional()
+          .describe('Filter by campaign status. Matches the 9-state enum used by get_campaign_status.'),
       }),
       execute: async ({ status }) => {
         try {

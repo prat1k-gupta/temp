@@ -2,6 +2,7 @@
 // NOTE: "processing" (not "running") matches the backend enum.
 export type CampaignStatus =
   | "draft"
+  | "materializing"
   | "scheduled"
   | "queued"
   | "processing"
@@ -10,7 +11,7 @@ export type CampaignStatus =
   | "cancelled"
   | "failed"
 
-export type AudienceSource = "contacts" | "csv" | "sampling-central"
+export type AudienceSource = "contacts" | "csv" | "freestand-claimant"
 
 export interface Campaign {
   id: string
@@ -25,6 +26,8 @@ export interface Campaign {
   source_external_id: string | null
   status: CampaignStatus
   total_recipients: number
+  materialized_count: number | null
+  audience_total: number | null
   recipients_completed: number
   sent_count: number
   delivered_count: number
@@ -34,6 +37,7 @@ export interface Campaign {
   started_at: string | null
   completed_at: string | null
   created_at: string
+  updated_at?: string
   error_message?: string
 }
 
@@ -42,6 +46,7 @@ export interface CampaignRecipient {
   campaign_id: string
   contact_id: string | null
   phone_number: string
+  recipient_name: string
   status: "pending" | "sent" | "delivered" | "read" | "failed"
   provider_message_id: string | null
   error_message: string | null
@@ -55,6 +60,23 @@ export interface AudiencePreview {
   name?: string
   audience_type?: string
   available_columns: string[]
+}
+
+// Columns exposed in the freestand-claimant column-mapping UI.
+// Must match fs-whatsapp/internal/handlers/materialize_go_backend.go's
+// freestandClaimantAllowedColumns(). Rename/extend in lockstep with that file.
+export const FREESTAND_CLAIMANT_ALLOWED_COLUMNS = [
+  "name", "city", "state", "pincode", "country", "address",
+  "status", "claim_date", "campaign_name", "skus", "utm_source",
+  "order_status", "delivery_status", "waybill_number",
+] as const
+
+export type FreestandClaimantColumn = typeof FREESTAND_CLAIMANT_ALLOWED_COLUMNS[number]
+
+// Shape of audience_config when audience_source === "freestand-claimant".
+export interface AudienceConfigFreestandClaimant {
+  audience_id: string
+  column_mapping: Record<string, FreestandClaimantColumn>
 }
 
 export interface CreateCampaignInput {

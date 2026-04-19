@@ -30,21 +30,19 @@ import {
 import { useAccounts } from "@/hooks/queries/use-accounts"
 import { useTemplates } from "@/hooks/queries/use-templates"
 import { useChatbotFlows } from "@/hooks/queries/use-chatbot"
-import { useFlowVariables } from "@/hooks/queries/use-flow-variables"
 import { useCreateCampaign, usePreviewAudience } from "@/hooks/queries/use-campaigns"
 import { toApiFilter } from "@/hooks/queries/use-contact-filters"
 import { useContactFilterUI } from "@/components/chat/contact-list/contact-filter"
 import { SearchablePicker } from "./searchable-picker"
 import { DateTimePicker } from "./datetime-picker"
 import { InfoBanner24hr } from "./info-banner-24hr"
-import { VariableMappingForm } from "./variable-mapping-form"
-import { AudiencePickerSamplingCentral } from "./audience-picker-sampling-central"
-import type { AudiencePreview } from "@/types/campaigns"
+import { FreestandClaimantAudienceFields } from "./freestand-claimant-audience-fields"
+import type { AudienceConfigFreestandClaimant } from "@/types/campaigns"
 import type { ContactFilter } from "@/types/chat"
 
 // v1 audience sources. "csv" renders a coming-soon tab body; the 2-step CSV
 // backend path (create draft → import recipients) needs its own UX pass.
-const AUDIENCE_SOURCES = ["contacts", "sampling-central", "csv"] as const
+const AUDIENCE_SOURCES = ["contacts", "freestand-claimant", "csv"] as const
 type AudienceSourceValue = (typeof AUDIENCE_SOURCES)[number]
 
 // Channels shown in the picker. Only whatsapp is wired; instagram/line are
@@ -59,7 +57,10 @@ const schema = z
     template_id: z.string().optional(),
     flow_id: z.string().optional(),
     audience_source: z.enum(AUDIENCE_SOURCES),
-    sc_audience_id: z.string().optional(),
+    // audience_config.audience_id is populated by FreestandClaimantAudienceFields
+    // via useFormContext — kept as an untyped bag so the nested setValue calls
+    // there don't have to fight the schema's strictness.
+    audience_config: z.any().optional(),
     send_when: z.enum(["now", "later"]).default("now"),
     scheduled_at_local: z.string().optional(),
   })
@@ -83,32 +84,18 @@ const schema = z
       })
     }
   })
-  .refine(
-    (data) => data.audience_source !== "sampling-central" || !!data.sc_audience_id,
-    {
-      message: "Audience ID is required",
-      path: ["sc_audience_id"],
-    },
-  )
   .refine((data) => data.audience_source !== "csv", {
-    message: "CSV upload is coming in a follow-up — pick Contacts or Sampling Central",
+    message: "CSV upload is coming in a follow-up — pick Contacts or Freestand Claimant Audience",
     path: ["audience_source"],
   })
 
 type FormValues = z.infer<typeof schema>
 
-// Extract {{name}} refs from template body (ignore dotted names like session.x)
-function extractTemplatePlaceholders(body: string | undefined): string[] {
-  if (!body) return []
-  const set = new Set<string>()
-  for (const m of body.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}/g)) {
-    const name = m[1]
-    if (!name.includes(".")) set.add(name)
-  }
-  return Array.from(set)
-}
-
 const EMPTY_FILTER: ContactFilter = { logic: "and", filters: [] }
+
+function isUUID(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+}
 
 // Shared card shell for form sections. Keeps section chrome consistent and
 // local to this file — every card has an icon header + muted subtitle.
@@ -164,14 +151,11 @@ export function CampaignCreateForm() {
 
   const type = form.watch("type")
   const audienceSource = form.watch("audience_source")
-  const templateId = form.watch("template_id")
-  const flowId = form.watch("flow_id")
 
-  const { data: flowVars } = useFlowVariables(type === "flow" ? flowId : undefined)
-
-  // SC-specific state — preview blob + column mapping for the variable form
-  const [scPreview, setScPreview] = useState<AudiencePreview | null>(null)
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
+  // Freestand-claimant preview state — surfaces a count/error next to the
+  // audience_id input once the user enters a UUID.
+  const [claimantPreviewCount, setClaimantPreviewCount] = useState<number | null>(null)
+  const [claimantPreviewError, setClaimantPreviewError] = useState<string | null>(null)
 
   // Contacts-specific state — ContactFilter tree + live count
   const [contactFilter, setContactFilter] = useState<ContactFilter>(EMPTY_FILTER)
@@ -201,20 +185,13 @@ export function CampaignCreateForm() {
     },
   })
 
-  const variablesToMap: string[] = (() => {
-    if (audienceSource !== "sampling-central") return []
-    if (type === "flow") return flowVars?.variables ?? []
-    if (type === "template" && templateId) {
-      const t = (templates ?? []).find((tpl: { id: string }) => tpl.id === templateId)
-      return extractTemplatePlaceholders((t as { body_content?: string })?.body_content)
-    }
-    return []
-  })()
-
   const onSubmit = async (values: FormValues) => {
-    if (values.audience_source === "sampling-central") {
-      if (!scPreview) {
-        form.setError("sc_audience_id", { message: "Fetch the audience first" })
+    if (values.audience_source === "freestand-claimant") {
+      const cfg = (values.audience_config ?? {}) as Partial<AudienceConfigFreestandClaimant>
+      if (!cfg.audience_id || !isUUID(cfg.audience_id)) {
+        form.setError("audience_config" as never, {
+          message: "Enter a valid audience UUID",
+        })
         return
       }
     } else if (values.audience_source === "contacts") {
@@ -230,10 +207,11 @@ export function CampaignCreateForm() {
     }
 
     let audience_config: unknown
-    if (values.audience_source === "sampling-central") {
+    if (values.audience_source === "freestand-claimant") {
+      const cfg = (values.audience_config ?? {}) as Partial<AudienceConfigFreestandClaimant>
       audience_config = {
-        audience_id: values.sc_audience_id!,
-        column_mapping: columnMapping,
+        audience_id: cfg.audience_id!,
+        column_mapping: cfg.column_mapping ?? {},
       }
     } else if (values.audience_source === "contacts") {
       audience_config = {
@@ -276,7 +254,19 @@ export function CampaignCreateForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <form
+        onSubmit={form.handleSubmit(
+          (values) => {
+            console.log("[CreateCampaign] valid submit — values:", values)
+            return onSubmit(values)
+          },
+          (errors) => {
+            console.error("[CreateCampaign] ZOD VALIDATION FAILED — errors:", errors)
+            console.log("[CreateCampaign] current form values:", form.getValues())
+          },
+        )}
+        className="flex flex-col gap-4"
+      >
         {/* Page header owns the Cancel / Create Draft actions via children so
             they sit inline with the title instead of floating below it. */}
         <PageHeader title="New Campaign">
@@ -504,10 +494,11 @@ export function CampaignCreateForm() {
             render={({ field }) => {
               const selectSource = (v: AudienceSourceValue) => {
                 field.onChange(v)
-                setScPreview(null)
+                setClaimantPreviewCount(null)
+                setClaimantPreviewError(null)
                 setContactCount(null)
                 form.clearErrors("audience_source")
-                form.clearErrors("sc_audience_id")
+                form.clearErrors("audience_config" as never)
                 // Reset schedule state when switching to CSV
                 if (v === "csv") {
                   form.setValue("send_when", "now")
@@ -528,11 +519,11 @@ export function CampaignCreateForm() {
                       sublabel="Filter your CRM"
                     />
                     <SendTypeButton
-                      active={field.value === "sampling-central"}
-                      onClick={() => selectSource("sampling-central")}
+                      active={field.value === "freestand-claimant"}
+                      onClick={() => selectSource("freestand-claimant")}
                       icon={<FlaskConical className="h-5 w-5" />}
-                      label="Sampling Central"
-                      sublabel="External audience"
+                      label="Freestand Claimant Audience"
+                      sublabel="go-backend audience"
                     />
                     <SendTypeButton
                       active={field.value === "csv"}
@@ -578,22 +569,29 @@ export function CampaignCreateForm() {
             </div>
           )}
 
-          {audienceSource === "sampling-central" && (
-            <FormField
-              control={form.control}
-              name="sc_audience_id"
-              render={({ field: scField }) => (
-                <FormItem>
-                  <FormControl>
-                    <AudiencePickerSamplingCentral
-                      value={scField.value ?? ""}
-                      onChange={scField.onChange}
-                      onPreviewLoaded={setScPreview}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+          {audienceSource === "freestand-claimant" && (
+            <FreestandClaimantAudienceFields
+              onAudienceIdChange={(id) => {
+                // Clear stale count/error the moment a new UUID fires. The
+                // mutation flips isPending=true right after, so the child's
+                // loading branch takes over without a visual hiccup.
+                setClaimantPreviewCount(null)
+                setClaimantPreviewError(null)
+                previewAudience
+                  .mutateAsync({ source: "freestand-claimant", audience_id: id })
+                  .then((res) => {
+                    setClaimantPreviewCount(res.total_count)
+                  })
+                  .catch((err: unknown) => {
+                    setClaimantPreviewCount(null)
+                    setClaimantPreviewError(
+                      err instanceof Error ? err.message : "Failed to preview audience",
+                    )
+                  })
+              }}
+              previewCount={claimantPreviewCount}
+              previewError={claimantPreviewError}
+              previewLoading={previewAudience.isPending}
             />
           )}
 
@@ -608,7 +606,7 @@ export function CampaignCreateForm() {
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-sm mb-4">
                   Import contacts from a CSV file. Support for uploads is landing in a
-                  follow-up — pick Contacts or Sampling Central for now.
+                  follow-up — pick Contacts or Freestand Claimant Audience for now.
                 </p>
                 <Button type="button" variant="outline" disabled className="gap-2">
                   <FileSpreadsheet className="h-4 w-4" />
@@ -632,17 +630,6 @@ export function CampaignCreateForm() {
           />
           </SectionCard>
         </div>
-
-        {/* Variable mapping — only for SC source, rendered below the grid so
-            it can span the full width if the column list is long. */}
-        {audienceSource === "sampling-central" && scPreview && variablesToMap.length > 0 && (
-          <VariableMappingForm
-            variables={variablesToMap}
-            availableColumns={scPreview.available_columns}
-            value={columnMapping}
-            onChange={setColumnMapping}
-          />
-        )}
 
         {/* Schedule */}
         <SectionCard

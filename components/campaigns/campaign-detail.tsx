@@ -9,9 +9,11 @@ import { Progress } from "@/components/ui/progress"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { PageHeader } from "@/components/page-header"
 import { CampaignStatusBadge } from "./campaign-status-badge"
+import { MaterializationProgress } from "./materialization-progress"
 import { RecipientTable } from "./recipient-table"
 import { RescheduleDialog } from "./reschedule-dialog"
 import { useCampaignStatsSubscription } from "./use-campaign-stats-subscription"
+import { useCampaignMaterializationSubscription } from "./use-campaign-materialization-subscription"
 import {
   useStartCampaign,
   usePauseCampaign,
@@ -25,18 +27,26 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
   const router = useRouter()
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   useCampaignStatsSubscription(campaign.id)
+  useCampaignMaterializationSubscription(campaign.id)
 
   const { mutate: startCampaign, isPending: starting } = useStartCampaign()
   const { mutate: pauseCampaign, isPending: pausing } = usePauseCampaign()
   const { mutate: cancelCampaign, isPending: cancelling } = useCancelCampaign()
   const { mutate: retryFailed, isPending: retrying } = useRetryFailedCampaign()
 
-  const canStart = campaign.status === "draft" || campaign.status === "scheduled" || campaign.status === "paused"
+  const materializing = campaign.status === "materializing"
+  const materializingTooltip = "Waiting for recipients to materialize"
+  const canStart =
+    campaign.status === "draft" ||
+    campaign.status === "scheduled" ||
+    campaign.status === "paused" ||
+    materializing
   const canPause = campaign.status === "processing"
   const canCancel =
     campaign.status === "processing" ||
     campaign.status === "paused" ||
-    campaign.status === "scheduled"
+    campaign.status === "scheduled" ||
+    materializing
   const canRetry =
     campaign.failed_count > 0 &&
     (campaign.status === "completed" ||
@@ -72,7 +82,8 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           {canStart && (
             <Button
               onClick={() => startCampaign(campaign.id)}
-              disabled={starting}
+              disabled={starting || materializing}
+              title={materializing ? materializingTooltip : undefined}
               className="cursor-pointer"
             >
               {campaign.status === "paused" ? "Resume" : "Start Campaign"}
@@ -114,7 +125,8 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
             <Button
               variant="destructive"
               onClick={() => cancelCampaign(campaign.id)}
-              disabled={cancelling}
+              disabled={cancelling || materializing}
+              title={materializing ? materializingTooltip : undefined}
               className="cursor-pointer"
             >
               Cancel
@@ -153,6 +165,8 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           </>
         )}
       </div>
+
+      <MaterializationProgress campaign={campaign} />
 
       {campaign.status === "scheduled" && campaign.scheduled_at && (
         <div className="rounded-md border bg-muted/50 p-3 text-sm">

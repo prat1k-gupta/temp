@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api-client"
 import type {
   Campaign,
@@ -16,7 +16,18 @@ export const campaignKeys = {
   details: () => [...campaignKeys.all, "detail"] as const,
   detail: (id: string) => [...campaignKeys.details(), id] as const,
   recipients: (campaignId: string) => [...campaignKeys.detail(campaignId), "recipients"] as const,
+  recipientsPage: (
+    campaignId: string,
+    page: number,
+    limit: number,
+    status: RecipientStatusFilter,
+    search: string,
+  ) => [...campaignKeys.recipients(campaignId), { page, limit, status, search }] as const,
 } as const
+
+export const RECIPIENTS_PAGE_SIZE = 50
+
+export type RecipientStatusFilter = "all" | "pending" | "sent" | "delivered" | "read" | "failed"
 
 export function useCampaigns(filters: { status?: CampaignStatus } = {}) {
   return useQuery({
@@ -46,17 +57,27 @@ export function useCampaign(id: string | undefined) {
   })
 }
 
-export function useCampaignRecipients(campaignId: string | undefined) {
-  return useInfiniteQuery({
-    queryKey: campaignKeys.recipients(campaignId ?? ""),
-    queryFn: async ({ pageParam = 1 }) => {
-      return apiClient.get<{ recipients: CampaignRecipient[]; total: number }>(
-        `/api/campaigns/${campaignId}/recipients?page=${pageParam}&limit=50`,
+export function useCampaignRecipients(
+  campaignId: string | undefined,
+  page: number = 1,
+  limit: number = RECIPIENTS_PAGE_SIZE,
+  status: RecipientStatusFilter = "all",
+  search: string = "",
+) {
+  return useQuery({
+    queryKey: campaignKeys.recipientsPage(campaignId ?? "", page, limit, status, search),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (status !== "all") params.set("status", status)
+      if (search) params.set("search", search)
+      return apiClient.get<{ recipients: CampaignRecipient[]; total: number; page: number; limit: number }>(
+        `/api/campaigns/${campaignId}/recipients?${params.toString()}`,
       )
     },
     enabled: Boolean(campaignId),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => (lastPage.recipients.length === 50 ? allPages.length + 1 : undefined),
+    // Keep the previous page visible while the next page loads — prevents the
+    // table from flashing empty on every page click.
+    placeholderData: keepPreviousData,
     // Match useCampaign so recipient statuses refresh alongside counters.
     staleTime: 0,
     refetchOnMount: "always",

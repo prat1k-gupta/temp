@@ -532,7 +532,8 @@ function createEditTools(
             request.platform,
             existingNodes,
             existingEdges,
-            templateResolver
+            templateResolver,
+            toolContext?.approvedTemplates,
           )
 
           console.log("[generate-flow] Tool apply_edit result:", {
@@ -850,7 +851,16 @@ function createEditTools(
         return { success: false, error: 'Cannot trigger flow — authentication context is missing.' }
       }
 
-      const body: Record<string, any> = { phone_number }
+      const body: Record<string, any> = {
+        phone_number,
+        // Always force a new session on trigger_flow. This is a test-send
+        // tool called interactively from chat — any prior session on the
+        // contact is either a stuck leftover from a failed attempt or an
+        // abandoned test. Without this, retries get blocked by fs-chat's
+        // "active session" 409 guard and the AI has to report failure
+        // instead of just working.
+        force_new_session: true,
+      }
       if (toolContext.waAccountName) body.whatsapp_account = toolContext.waAccountName
       if (variables && Object.keys(variables).length > 0) body.variables = variables
 
@@ -877,200 +887,209 @@ function createEditTools(
     },
   })
 
-  // publish_flow
-  extraTools.publish_flow = tool({
-    description: 'Publish the current flow edits to make them live. Saves a new version, deploys to the runtime, and activates the flow. Call after validate_result confirms no issues.',
-    inputSchema: z.object({}),
-    execute: async () => {
-      if (!toolContext?.projectId) {
-        return { success: false, error: 'Cannot publish — project context is missing.' }
-      }
-      if (!authHeaders || !apiUrl) {
-        return { success: false, error: 'Cannot publish — authentication context is missing.' }
-      }
-
-      const projectId = toolContext.projectId
-
-      try {
-        // Step 1: Compute the intended publish state — existing canvas
-        // merged with any in-session AI edits. For the internal UI this
-        // includes draft changes the user already made; for the agent API
-        // it's the latest version loaded by flow-loader plus tool edits.
-        const editResult = callbacks.getEditResult()
-        const intendedNodes = editResult
-          ? buildCurrentNodes(existingNodes, editResult, request.platform)
-          : existingNodes
-        const intendedEdges = editResult
-          ? buildCurrentEdges(existingEdges, editResult)
-          : existingEdges
-
-        // Step 2: Fetch the latest version from DB to compare.
-        const latestRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions?limit=1`, {
-          headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        })
-        if (!latestRes.ok) {
-          return { success: false, error: `Failed to fetch latest version: HTTP ${latestRes.status}` }
+  // publish_flow — only registered when we have a project to publish against.
+  // The public create endpoint (POST /api/v1/agent/flows) saves the project
+  // AT the end of the stream, so `projectId` is unavailable during the AI
+  // session. Registering the tool there causes the AI to call it, fail with
+  // "project context is missing", emit a stream error, and short-circuit the
+  // entire session (flow doesn't save, campaign doesn't get created).
+  // Gating keeps the tool hidden from the AI in create contexts — the route
+  // handler auto-publishes after the stream anyway.
+  if (toolContext?.projectId) {
+    extraTools.publish_flow = tool({
+      description: 'Publish the current flow edits to make them live. Saves a new version, deploys to the runtime, and activates the flow. Call after validate_result confirms no issues.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        if (!toolContext?.projectId) {
+          return { success: false, error: 'Cannot publish — project context is missing.' }
         }
-        const latestBody = await latestRes.json()
-        let latest = latestBody.data?.versions?.[0]
-        if (!latest) {
-          return { success: false, error: 'Flow has no versions to publish.' }
+        if (!authHeaders || !apiUrl) {
+          return { success: false, error: 'Cannot publish — authentication context is missing.' }
         }
 
-        // Step 3: Save a new version if the intended state differs from
-        // the latest DB version. Catches three cases:
-        //   (a) AI just made edits (editResult exists, mergedNodes differs)
-        //   (b) User has draft changes on canvas (existingNodes differs
-        //       from latest version — draft is NOT a version)
-        //   (c) Nothing changed → skip version save
-        const intendedSnapshot = JSON.stringify({ nodes: intendedNodes, edges: intendedEdges })
-        const latestSnapshot = JSON.stringify({ nodes: latest.nodes || [], edges: latest.edges || [] })
-        if (intendedSnapshot !== latestSnapshot) {
-          // Pull the draft's changes array to carry into the new version.
-          // Matches the Update & Publish button path, which passes
-          // changeTracker.getChanges() to createVersion. Without this the
-          // version history shows "0 changes" for AI-published versions.
-          let draftChanges: any[] = []
-          try {
-            const draftRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
+        const projectId = toolContext.projectId
+
+        try {
+          // Step 1: Compute the intended publish state — existing canvas
+          // merged with any in-session AI edits. For the internal UI this
+          // includes draft changes the user already made; for the agent API
+          // it's the latest version loaded by flow-loader plus tool edits.
+          const editResult = callbacks.getEditResult()
+          const intendedNodes = editResult
+            ? buildCurrentNodes(existingNodes, editResult, request.platform)
+            : existingNodes
+          const intendedEdges = editResult
+            ? buildCurrentEdges(existingEdges, editResult)
+            : existingEdges
+
+          // Step 2: Fetch the latest version from DB to compare.
+          const latestRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions?limit=1`, {
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          })
+          if (!latestRes.ok) {
+            return { success: false, error: `Failed to fetch latest version: HTTP ${latestRes.status}` }
+          }
+          const latestBody = await latestRes.json()
+          let latest = latestBody.data?.versions?.[0]
+          if (!latest) {
+            return { success: false, error: 'Flow has no versions to publish.' }
+          }
+
+          // Step 3: Save a new version if the intended state differs from
+          // the latest DB version. Catches three cases:
+          //   (a) AI just made edits (editResult exists, mergedNodes differs)
+          //   (b) User has draft changes on canvas (existingNodes differs
+          //       from latest version — draft is NOT a version)
+          //   (c) Nothing changed → skip version save
+          const intendedSnapshot = JSON.stringify({ nodes: intendedNodes, edges: intendedEdges })
+          const latestSnapshot = JSON.stringify({ nodes: latest.nodes || [], edges: latest.edges || [] })
+          if (intendedSnapshot !== latestSnapshot) {
+            // Pull the draft's changes array to carry into the new version.
+            // Matches the Update & Publish button path, which passes
+            // changeTracker.getChanges() to createVersion. Without this the
+            // version history shows "0 changes" for AI-published versions.
+            let draftChanges: any[] = []
+            try {
+              const draftRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
+                headers: { ...authHeaders, 'Content-Type': 'application/json' },
+              })
+              if (draftRes.ok) {
+                const draftBody = await draftRes.json()
+                draftChanges = draftBody.data?.draft?.changes || []
+              }
+            } catch { /* no draft — use empty changes */ }
+
+            const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+              method: 'POST',
               headers: { ...authHeaders, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: 'AI publish',
+                nodes: intendedNodes,
+                edges: intendedEdges,
+                changes: draftChanges,
+                platform: request.platform,
+              }),
             })
-            if (draftRes.ok) {
-              const draftBody = await draftRes.json()
-              draftChanges = draftBody.data?.draft?.changes || []
+            if (!versionRes.ok) {
+              return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
             }
-          } catch { /* no draft — use empty changes */ }
+            const newVersion = (await versionRes.json()).data?.version
+            if (newVersion) {
+              latest = newVersion // new version is now the target to publish
+            }
+            // Signal the edit endpoint not to create its own duplicate version.
+            callbacks.markVersionSavedByTool?.()
+          }
 
-          const versionRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions`, {
+          const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
+          const firstKeyword = (toolContext.triggerKeywords || [])[0]
+          const testUrl = phoneDigits && firstKeyword
+            ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
+            : undefined
+
+          // Step 3: If already published, nothing to do.
+          if (latest.is_published) {
+            return {
+              success: true,
+              already_published: true,
+              message: `Version ${latest.version_number} is already published.`,
+              version: latest.version_number,
+              ...(testUrl ? { test_url: testUrl } : {}),
+            }
+          }
+
+          // Step 4: Publish the latest unpublished version.
+          const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${latest.id}/publish`, {
             method: 'POST',
             headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+          if (!publishRes.ok) {
+            return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
+          }
+
+          // Step 5: Flatten + convert + deploy to runtime.
+          // Use intendedNodes/intendedEdges (what we just saved) rather than
+          // latest.nodes which might be missing if the POST response doesn't
+          // include the full payload.
+          const flat = flattenFlow(intendedNodes, intendedEdges)
+          const converted = convertToFsWhatsApp(
+            flat.nodes,
+            flat.edges,
+            toolContext.projectName || 'Flow',
+            undefined,
+            [],
+            toolContext.triggerKeywords || [],
+            toolContext.triggerMatchType || 'exact',
+            undefined,
+            toolContext.flowSlug,
+            toolContext.waAccountId,
+          )
+
+          const existingRuntimeId = toolContext.publishedFlowId
+          const runtimeUrl = existingRuntimeId
+            ? `${apiUrl}/api/chatbot/flows/${existingRuntimeId}`
+            : `${apiUrl}/api/chatbot/flows`
+
+          const runtimeRes = await fetch(runtimeUrl, {
+            method: existingRuntimeId ? 'PUT' : 'POST',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              name: 'AI publish',
-              nodes: intendedNodes,
-              edges: intendedEdges,
-              changes: draftChanges,
-              platform: request.platform,
+              ...converted,
+              trigger_keywords: toolContext.triggerKeywords || [],
+              trigger_match_type: toolContext.triggerMatchType || 'exact',
             }),
           })
-          if (!versionRes.ok) {
-            return { success: false, error: `Failed to save version: HTTP ${versionRes.status}` }
+          if (!runtimeRes.ok) {
+            return { success: false, error: `Failed to deploy to runtime: HTTP ${runtimeRes.status}` }
           }
-          const newVersion = (await versionRes.json()).data?.version
-          if (newVersion) {
-            latest = newVersion // new version is now the target to publish
+
+          const runtimeBody = await runtimeRes.json()
+          const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
+          const runtimeFlowSlug: string | undefined = runtimeBody.data?.flow_slug
+
+          // Step 6: Save published_flow_id (and first-time flow_slug) back
+          // to the project + update toolContext so trigger_flow can use
+          // publishedFlowId in the same session. flow_slug is immutable —
+          // only write on first publish (matches UI onPublished behavior).
+          if (runtimeFlowId) {
+            toolContext.publishedFlowId = runtimeFlowId
+            const projectUpdates: Record<string, unknown> = { published_flow_id: runtimeFlowId }
+            if (runtimeFlowSlug && !toolContext.flowSlug) {
+              projectUpdates.flow_slug = runtimeFlowSlug
+              toolContext.flowSlug = runtimeFlowSlug
+            }
+            await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
+              method: 'PUT',
+              headers: { ...authHeaders, 'Content-Type': 'application/json' },
+              body: JSON.stringify(projectUpdates),
+            }).catch(() => {})
           }
-          // Signal the edit endpoint not to create its own duplicate version.
-          callbacks.markVersionSavedByTool?.()
-        }
 
-        const phoneDigits = toolContext.waPhoneNumber?.replace(/\D/g, '')
-        const firstKeyword = (toolContext.triggerKeywords || [])[0]
-        const testUrl = phoneDigits && firstKeyword
-          ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(firstKeyword)}`
-          : undefined
+          // Step 7: Delete the draft — the draft represented unpublished
+          // changes, and we just published them. Leaving the draft in place
+          // causes the UI to reload old state on refresh and show stale
+          // "unsaved changes" in the changes modal. Same behavior as the
+          // normal publish-button flow (see use-version-manager.ts).
+          await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
+            method: 'DELETE',
+            headers: authHeaders,
+          }).catch(() => {})
 
-        // Step 3: If already published, nothing to do.
-        if (latest.is_published) {
+          console.log("[generate-flow] Tool publish_flow: published version", latest.version_number, "for project", projectId)
           return {
             success: true,
-            already_published: true,
-            message: `Version ${latest.version_number} is already published.`,
+            already_published: false,
+            message: `Flow published! Version ${latest.version_number} is now live.`,
             version: latest.version_number,
             ...(testUrl ? { test_url: testUrl } : {}),
           }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Publish failed' }
         }
-
-        // Step 4: Publish the latest unpublished version.
-        const publishRes = await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/versions/${latest.id}/publish`, {
-          method: 'POST',
-          headers: { ...authHeaders, 'Content-Type': 'application/json' },
-          body: '{}',
-        })
-        if (!publishRes.ok) {
-          return { success: false, error: `Failed to publish version: HTTP ${publishRes.status}` }
-        }
-
-        // Step 5: Flatten + convert + deploy to runtime.
-        // Use intendedNodes/intendedEdges (what we just saved) rather than
-        // latest.nodes which might be missing if the POST response doesn't
-        // include the full payload.
-        const flat = flattenFlow(intendedNodes, intendedEdges)
-        const converted = convertToFsWhatsApp(
-          flat.nodes,
-          flat.edges,
-          toolContext.projectName || 'Flow',
-          undefined,
-          [],
-          toolContext.triggerKeywords || [],
-          toolContext.triggerMatchType || 'exact',
-          undefined,
-          toolContext.flowSlug,
-          toolContext.waAccountId,
-        )
-
-        const existingRuntimeId = toolContext.publishedFlowId
-        const runtimeUrl = existingRuntimeId
-          ? `${apiUrl}/api/chatbot/flows/${existingRuntimeId}`
-          : `${apiUrl}/api/chatbot/flows`
-
-        const runtimeRes = await fetch(runtimeUrl, {
-          method: existingRuntimeId ? 'PUT' : 'POST',
-          headers: { ...authHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...converted,
-            trigger_keywords: toolContext.triggerKeywords || [],
-            trigger_match_type: toolContext.triggerMatchType || 'exact',
-          }),
-        })
-        if (!runtimeRes.ok) {
-          return { success: false, error: `Failed to deploy to runtime: HTTP ${runtimeRes.status}` }
-        }
-
-        const runtimeBody = await runtimeRes.json()
-        const runtimeFlowId = runtimeBody.data?.id || existingRuntimeId
-        const runtimeFlowSlug: string | undefined = runtimeBody.data?.flow_slug
-
-        // Step 6: Save published_flow_id (and first-time flow_slug) back
-        // to the project + update toolContext so trigger_flow can use
-        // publishedFlowId in the same session. flow_slug is immutable —
-        // only write on first publish (matches UI onPublished behavior).
-        if (runtimeFlowId) {
-          toolContext.publishedFlowId = runtimeFlowId
-          const projectUpdates: Record<string, unknown> = { published_flow_id: runtimeFlowId }
-          if (runtimeFlowSlug && !toolContext.flowSlug) {
-            projectUpdates.flow_slug = runtimeFlowSlug
-            toolContext.flowSlug = runtimeFlowSlug
-          }
-          await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}`, {
-            method: 'PUT',
-            headers: { ...authHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify(projectUpdates),
-          }).catch(() => {})
-        }
-
-        // Step 7: Delete the draft — the draft represented unpublished
-        // changes, and we just published them. Leaving the draft in place
-        // causes the UI to reload old state on refresh and show stale
-        // "unsaved changes" in the changes modal. Same behavior as the
-        // normal publish-button flow (see use-version-manager.ts).
-        await fetch(`${apiUrl}/api/magic-flow/projects/${projectId}/draft`, {
-          method: 'DELETE',
-          headers: authHeaders,
-        }).catch(() => {})
-
-        console.log("[generate-flow] Tool publish_flow: published version", latest.version_number, "for project", projectId)
-        return {
-          success: true,
-          already_published: false,
-          message: `Flow published! Version ${latest.version_number} is now live.`,
-          version: latest.version_number,
-          ...(testUrl ? { test_url: testUrl } : {}),
-        }
-      } catch (error) {
-        return { success: false, error: error instanceof Error ? error.message : 'Publish failed' }
-      }
-    },
-  })
+      },
+    })
+  }
 
   // Broadcast + lookup tools (from PR #74). Gated on auth availability
   // and use the same X-API-Key vs Authorization header routing as the

@@ -6,7 +6,7 @@ import {
   isNodeTypeValidForPlatform,
 } from "../flow-plan-builder"
 import type { FlowPlan, EditFlowPlan } from "@/types/flow-plan"
-import type { Platform, ChoiceData, TemplateResolver } from "@/types"
+import type { Platform, ChoiceData, TemplateResolver, ApprovedTemplate } from "@/types"
 import { START_X, HORIZONTAL_GAP } from "../flow-layout"
 
 // ─── helpers ──────────────────────────────────────────
@@ -2370,5 +2370,113 @@ describe("buildFlowFromPlan — templateMessage", () => {
     const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
 
     expect(data.parameterMappings).toEqual([])
+  })
+})
+
+describe("buildFlowFromPlan — templateMessage with approvedTemplates catalog", () => {
+  // Minimal catalog entry matching the shape returned by list_approved_templates.
+  const catalog: ApprovedTemplate[] = [
+    {
+      id: "real-uuid-123",
+      name: "welcome_customer",
+      displayName: "Welcome Customer",
+      language: "en",
+      category: "MARKETING",
+      headerType: "TEXT",
+      body: "Hi {{customer_name}}, welcome to {{company}}!",
+      variables: ["customer_name", "company"],
+      buttons: [
+        { type: "quick_reply", text: "Get Started" },
+        { type: "url", text: "Visit Site", url: "https://example.com" },
+      ],
+    },
+  ]
+
+  const basePlan = (content: any): FlowPlan => ({
+    message: "test",
+    steps: [
+      { step: "node", nodeType: "templateMessage", content },
+    ],
+  })
+
+  it("overwrites AI-hallucinated templateId / bodyPreview with catalog values when the name matches", () => {
+    const plan = basePlan({
+      templateName: "welcome_customer",
+      language: "en",
+      // AI-fabricated values — builder must ignore all of these.
+      templateId: "fake-meta-id-9999",
+      bodyPreview: "Hi {{1}}! Totally wrong body the AI invented.",
+      category: "WRONG",
+      headerType: "IMAGE",
+      templateButtons: [{ type: "QUICK_REPLY", text: "fabricated button" }],
+      parameterMappings: [
+        { templateVar: "1", flowValue: "{{system.contact_name}}" },
+      ],
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined, catalog)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    expect(data.templateId).toBe("real-uuid-123")
+    expect(data.bodyPreview).toBe("Hi {{customer_name}}, welcome to {{company}}!")
+    expect(data.category).toBe("MARKETING")
+    expect(data.headerType).toBe("TEXT")
+    expect(data.displayName).toBe("Welcome Customer")
+    expect(data.language).toBe("en")
+    expect(data.buttons).toHaveLength(2)
+    expect(data.buttons[0]).toMatchObject({ type: "quick_reply", text: "Get Started", id: "btn-0" })
+    expect(data.buttons[1]).toMatchObject({ type: "url", text: "Visit Site", id: "btn-1" })
+    expect(result.warnings).toEqual([])
+  })
+
+  it("pushes a warning and drops the fabricated data when the templateName doesn't match any approved template", () => {
+    const plan = basePlan({
+      templateName: "no_such_template_lol",
+      language: "en",
+      templateId: "fake-id",
+      bodyPreview: "AI invented body",
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined, catalog)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    // The node still exists (templateName / language passthrough from plan)
+    // but the AI's fabricated values MUST NOT land. Factory defaults (empty
+    // string / undefined) are acceptable — what matters is that the
+    // hallucinated fake-id / fake body aren't adopted.
+    expect(data.templateName).toBe("no_such_template_lol")
+    expect(data.templateId).not.toBe("fake-id")
+    expect(data.bodyPreview).not.toBe("AI invented body")
+
+    expect(result.warnings.length).toBeGreaterThan(0)
+    const warning = result.warnings.find(w => w.includes("no_such_template_lol"))
+    expect(warning).toBeDefined()
+    expect(warning).toContain("list_approved_templates")
+  })
+
+  it("merges parameterMappings: preserves AI-supplied flowValue for matching templateVars, adds catalog-only variables with empty flowValue, drops hallucinated templateVars", () => {
+    const plan = basePlan({
+      templateName: "welcome_customer",
+      language: "en",
+      // AI pre-bound customer_name → flow var (should survive). Also bound
+      // a hallucinated `first_name` that doesn't exist on the real template
+      // (should be dropped). `company` is in the catalog but unbound here —
+      // should appear with empty flowValue.
+      parameterMappings: [
+        { templateVar: "customer_name", flowValue: "{{user_name_var}}" },
+        { templateVar: "first_name", flowValue: "{{fake_var}}" },
+      ],
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined, catalog)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    expect(data.parameterMappings).toEqual([
+      { templateVar: "customer_name", flowValue: "{{user_name_var}}" }, // preserved
+      { templateVar: "company", flowValue: "" }, // catalog-only, defaulted
+    ])
+    // Hallucinated `first_name` is not in the result.
+    const firstName = data.parameterMappings.find((m: any) => m.templateVar === "first_name")
+    expect(firstName).toBeUndefined()
   })
 })

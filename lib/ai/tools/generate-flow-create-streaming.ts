@@ -55,7 +55,7 @@ export async function executeCreateModeStreaming(
         execute: async (plan) => {
           try {
             const flowPlan = plan as FlowPlan
-            const build = buildFlowFromPlan(flowPlan, request.platform, templateResolver)
+            const build = buildFlowFromPlan(flowPlan, request.platform, templateResolver, request.toolContext?.approvedTemplates)
             const validation = validateGeneratedFlow(build.nodes, build.edges, request.platform)
 
             if (validation.isValid) {

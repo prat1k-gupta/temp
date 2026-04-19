@@ -1,9 +1,10 @@
 import { getAIClient } from "../core/ai-client"
 import { getPlatformGuidelines } from "../core/ai-context"
-import type { Platform, TemplateAIMetadata, TemplateResolver } from "@/types"
+import type { Platform, TemplateAIMetadata, TemplateResolver, ApprovedTemplate } from "@/types"
 import type { Node, Edge } from "@xyflow/react"
 import { editFlowPlanSchema, flowPlanSchema } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
+import { fetchApprovedTemplates } from "./list-approved-templates"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { buildSystemPrompt, buildUserPrompt } from "./flow-prompts"
 import { executeEditMode, executeEditModeStreaming, applyNodeUpdates } from "./generate-flow-edit"
@@ -36,6 +37,17 @@ export interface GenerateFlowRequest {
     waPhoneNumber?: string
     userTimezone?: string
     currentTime?: string
+    /**
+     * Catalog of Meta-approved WhatsApp templates for the current account,
+     * fetched once at session start and passed to the flow-plan builder so
+     * templateMessage nodes are resolved authoritatively by (name, language)
+     * rather than trusting model-supplied templateId / bodyPreview /
+     * parameterMappings. Not surfaced to the AI in the prompt — the AI
+     * still discovers templates via the `list_approved_templates` tool
+     * when it wants to see bodies/variables. This field is the builder's
+     * private reference.
+     */
+    approvedTemplates?: ApprovedTemplate[]
   }
   /** Agent API context. When source is "agent_api", downstream code may skip UI-specific fields. */
   context?: { source: "agent_api" | "ui" }
@@ -236,6 +248,69 @@ export function deduplicateEdges(edges: Edge[]): Edge[] {
 }
 
 /**
+ * Populate request.toolContext.approvedTemplates with the current account's
+ * approved WhatsApp templates. Fetched once per session so the flow-plan
+ * builder can resolve templateMessage nodes by (name, language) instead of
+ * trusting model-supplied templateId / bodyPreview.
+ *
+ * Only runs for WhatsApp flows with auth context — other platforms don't
+ * have Meta templates. Failure is silent (logged) so a temporary fetch
+ * error doesn't block the whole AI session; the builder's passthrough
+ * fallback covers it.
+ *
+ * NOTE: mutates `request.toolContext` in place. The idempotency guard
+ * (returns early when approvedTemplates is already set) makes re-entry
+ * cheap, but callers should treat `request` as owned by this function
+ * for the duration of the session.
+ */
+async function primeApprovedTemplates(request: GenerateFlowRequest): Promise<void> {
+  if (request.platform !== "whatsapp") return
+  const apiUrl = process.env.FS_WHATSAPP_API_URL
+  const authHeader = request.toolContext?.authHeader
+  if (!apiUrl || !authHeader) return
+  if (request.toolContext?.approvedTemplates) return // already primed
+
+  const result = await fetchApprovedTemplates(apiUrl, authHeader)
+  if (!result.success) {
+    console.warn("[generate-flow] Failed to prime approved templates:", result.error)
+    return
+  }
+  request.toolContext = { ...(request.toolContext || {}), approvedTemplates: result.templates }
+}
+
+/**
+ * Decide whether a request should run as an edit (tool-use agent with 21
+ * tools including the broadcast/campaign family) or as a create (2-tool
+ * plan-generation agent). Shared by generateFlow + generateFlowStreaming
+ * so the non-streaming and streaming paths agree.
+ *
+ * Rules:
+ *  - Canvas has real nodes or any edge → edit. The AI is modifying something
+ *    that already exists.
+ *  - Empty canvas + prompt mentions broadcast/campaign keywords → edit,
+ *    because only the edit agent has the campaign tools the user is asking
+ *    for (see promptImpliesBroadcast).
+ *  - **Exception**: when the request originates from the public Agent API's
+ *    create endpoint (POST /api/v1/agent/flows, empty canvas), stay in
+ *    create mode regardless of keywords. That endpoint can't support
+ *    publish_flow / create_campaign mid-stream — the project row is saved
+ *    by the route handler AFTER the stream ends. Callers schedule broadcasts
+ *    in a follow-up POST /api/v1/agent/flows/{id}/edit once the flow_id
+ *    exists. The in-app chat and the agent-API /edit endpoint still get
+ *    broadcast-aware promotion — they always have project context.
+ */
+function decideRequestMode(request: GenerateFlowRequest): boolean {
+  const hasRealNodes = Boolean(request.existingFlow &&
+    request.existingFlow.nodes.some(n => n.type !== "start"))
+  const hasEdges = Boolean(request.existingFlow &&
+    request.existingFlow.edges.length > 0)
+  const isAgentApiCreate = request.context?.source === "agent_api" &&
+    !hasRealNodes && !hasEdges
+  return (hasRealNodes || hasEdges) ||
+    (!isAgentApiCreate && promptImpliesBroadcast(request.prompt))
+}
+
+/**
  * promptImpliesBroadcast returns true when the user's instruction references
  * broadcasting / scheduling a campaign. Used to force the edit-mode agent
  * (which has the 11 broadcast/campaign tools) even for a canvas that only
@@ -263,20 +338,11 @@ export async function generateFlow(
   request: GenerateFlowRequest
 ): Promise<GenerateFlowResponse | null> {
   try {
+    await primeApprovedTemplates(request)
     const aiClient = getAIClient()
     const platformGuidelines = getPlatformGuidelines(request.platform)
 
-    // A canvas with only the start node is a fresh flow → create mode,
-    // UNLESS the user's instruction implies broadcast/campaign work — the
-    // edit agent is the one with the 11 campaign tools, so force into
-    // edit mode when the prompt clearly needs them (see
-    // promptImpliesBroadcast above for rationale).
-    const hasRealNodes = request.existingFlow &&
-      request.existingFlow.nodes.some(n => n.type !== "start")
-    const hasEdges = request.existingFlow &&
-      request.existingFlow.edges.length > 0
-    const isEditRequest = Boolean(hasRealNodes || hasEdges) ||
-      promptImpliesBroadcast(request.prompt)
+    const isEditRequest = decideRequestMode(request)
 
     // Build template resolver from user template data
     const templateResolver: TemplateResolver | undefined = request.userTemplateData
@@ -344,7 +410,8 @@ async function handleFallback(
           request.platform,
           existingNodes,
           existingEdgesFallback,
-          templateResolver
+          templateResolver,
+          request.toolContext?.approvedTemplates,
         )
         const updatedNodes = applyNodeUpdates(nodeUpdates, existingNodes, request.platform)
 
@@ -363,7 +430,7 @@ async function handleFallback(
         }
       } else {
         const plan = flowPlanSchema.parse(rawPlan)
-        const build = buildFlowFromPlan(plan, request.platform, templateResolver)
+        const build = buildFlowFromPlan(plan, request.platform, templateResolver, request.toolContext?.approvedTemplates)
 
         const validation = validateGeneratedFlow(build.nodes, build.edges, request.platform)
         const allWarnings = [
@@ -399,18 +466,11 @@ export async function generateFlowStreaming(
   emit: (event: StreamEvent) => void,
 ): Promise<void> {
   try {
+    await primeApprovedTemplates(request)
     const aiClient = getAIClient()
     const platformGuidelines = getPlatformGuidelines(request.platform)
 
-    // Same gate as generateFlow above — force edit mode when the prompt
-    // implies broadcast/campaign work so the 11 campaign tools are available
-    // from the first turn, even on an empty canvas.
-    const hasRealNodes = request.existingFlow &&
-      request.existingFlow.nodes.some(n => n.type !== "start")
-    const hasEdges = request.existingFlow &&
-      request.existingFlow.edges.length > 0
-    const isEditRequest = Boolean(hasRealNodes || hasEdges) ||
-      promptImpliesBroadcast(request.prompt)
+    const isEditRequest = decideRequestMode(request)
 
     const templateResolver: TemplateResolver | undefined = request.userTemplateData
       ? (id: string) => {

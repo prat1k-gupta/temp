@@ -4,7 +4,7 @@ import type { FlowPlan } from "@/types/flow-plan"
 import { buildFlowFromPlan } from "@/utils/flow-plan-builder"
 import { validateGeneratedFlow, type FlowIssue } from "@/utils/flow-validator"
 import type { Platform, TemplateResolver } from "@/types"
-import type { GenerateFlowResponse } from "./generate-flow"
+import type { GenerateFlowRequest, GenerateFlowResponse } from "./generate-flow"
 
 /**
  * Build a correction prompt from validation issues.
@@ -23,7 +23,7 @@ export function buildCorrectionPrompt(issues: FlowIssue[], platform: Platform): 
  * Uses Haiku to generate a semantic flow plan, validates it, and retries up to 2x.
  */
 export async function executeCreateMode(
-  request: { platform: Platform },
+  request: Pick<GenerateFlowRequest, "platform" | "toolContext">,
   systemPrompt: string,
   userPrompt: string,
   templateResolver: TemplateResolver | undefined,
@@ -49,7 +49,7 @@ export async function executeCreateMode(
       model: 'claude-sonnet',
     })
 
-    const build = buildFlowFromPlan(plan, request.platform, templateResolver)
+    const build = buildFlowFromPlan(plan, request.platform, templateResolver, request.toolContext?.approvedTemplates)
     const validation = validateGeneratedFlow(build.nodes, build.edges, request.platform)
 
     if (validation.isValid || attempt === MAX_CORRECTION_RETRIES) {

@@ -156,6 +156,16 @@ export const POST = withAgentAuth(async (ctx, req) => {
           context: { source: "agent_api" },
           userTemplates,
           userTemplateData,
+          // Pass auth + the WhatsApp account so generate-flow can prime
+          // approved templates for authoritative templateMessage resolution
+          // and so broadcast/lookup tools have what they need if the
+          // edit-agent path kicks in via promptImpliesBroadcast.
+          toolContext: {
+            authHeader: ctx.apiKey,
+            waAccountName: ctx.account.name,
+            waAccountId: ctx.account.id,
+            waPhoneNumber: ctx.account.phone_number,
+          },
         },
         (event: StreamEvent) => {
           switch (event.type) {

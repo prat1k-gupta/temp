@@ -10,7 +10,7 @@
 import { DEFAULT_EDGE_STYLE } from "@/constants/edge-styles"
 
 import type { Node, Edge } from "@xyflow/react"
-import type { Platform, ChoiceData, TemplateResolver } from "@/types"
+import type { Platform, ChoiceData, TemplateResolver, ApprovedTemplate } from "@/types"
 import type { FlowPlan, FlowStep, NodeStep, BranchStep, NodeContent, EditFlowPlan, EditChain, NodeUpdate, EdgeReference, NewEdge } from "@/types/flow-plan"
 import { VALID_BASE_NODE_TYPES } from "@/types/flow-plan"
 
@@ -263,6 +263,7 @@ export function buildFlowFromPlan(
   plan: FlowPlan,
   platform: Platform,
   templateResolver?: TemplateResolver,
+  approvedTemplates?: ApprovedTemplate[],
 ): BuildFlowResult {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -285,6 +286,7 @@ export function buildFlowFromPlan(
     maxBranchX: 0,
     warnings,
     templateResolver,
+    approvedTemplates,
   })
 
   autoPopulateStoreAs(nodes)
@@ -319,6 +321,7 @@ export function buildEditFlowFromPlan(
   existingNodes: Node[],
   existingEdges: Edge[] = [],
   templateResolver?: TemplateResolver,
+  approvedTemplates?: ApprovedTemplate[],
 ): BuildEditFlowResult {
   const newNodes: Node[] = []
   const newEdges: Edge[] = []
@@ -361,7 +364,7 @@ export function buildEditFlowFromPlan(
       const targetType = update.newType ?? existingNode.type ?? ""
       const baseNodeType = getBaseNodeType(targetType)
       const existingBaseType = getBaseNodeType(existingNode.type || "")
-      const data = contentToNodeData(update.content, targetType)
+      const data = contentToNodeData(update.content, targetType, { approvedTemplates, warnings })
 
       // Same-family choice-bearing conversions (quickReply ↔ interactiveList):
       // if the AI sent listTitle/label without resending choices, backfill
@@ -549,6 +552,7 @@ export function buildEditFlowFromPlan(
       maxBranchX: 0,
       warnings,
       templateResolver,
+      approvedTemplates,
       localIdMap,
     }
 
@@ -569,7 +573,7 @@ export function buildEditFlowFromPlan(
         }
 
         if (firstStep.content) {
-          node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
+          node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType, { approvedTemplates, warnings }) }
         }
 
         // Auto-convert quickReply → interactiveList if buttons exceed platform limit
@@ -635,7 +639,7 @@ export function buildEditFlowFromPlan(
         }
 
         if (firstStep.content) {
-          node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
+          node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType, { approvedTemplates, warnings }) }
         }
 
         // Auto-convert quickReply → interactiveList if buttons exceed platform limit
@@ -959,6 +963,16 @@ interface WalkContext {
   warnings: string[]
   templateResolver?: TemplateResolver
   /**
+   * Catalog of Meta-approved templates for the current account, used to
+   * resolve templateMessage nodes authoritatively. The plan supplies only
+   * (templateName, language) as a reference; the builder looks up the real
+   * body, meta_template_id, buttons, and variables from this catalog. When
+   * absent, templateMessage nodes fall back to whatever fields were in the
+   * plan (legacy / UI-path behavior), but the AI path should always provide
+   * this so model hallucinations of body/templateId don't land in the node.
+   */
+  approvedTemplates?: ApprovedTemplate[]
+  /**
    * Map from step.localId → generated node ID. Only set by
    * buildEditFlowFromPlan — buildFlowFromPlan leaves it undefined since
    * localId is an edit-plan-only feature. Entries are recorded at every
@@ -1069,7 +1083,7 @@ function processNodeStep(step: NodeStep, ctx: WalkContext): void {
 
   // Merge content from the plan
   if (step.content) {
-    node.data = { ...node.data, ...contentToNodeData(step.content, step.nodeType) }
+    node.data = { ...node.data, ...contentToNodeData(step.content, step.nodeType, { approvedTemplates: ctx.approvedTemplates, warnings: ctx.warnings }) }
   }
 
   // Auto-convert quickReply → interactiveList if buttons exceed platform limit
@@ -1251,7 +1265,7 @@ function processBranchStep(step: BranchStep, ctx: WalkContext): void {
     }
 
     if (firstStep.content) {
-      node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType) }
+      node.data = { ...node.data, ...contentToNodeData(firstStep.content, firstStep.nodeType, { approvedTemplates: ctx.approvedTemplates, warnings: ctx.warnings }) }
     }
 
     ctx.nodes.push(node)
@@ -1333,7 +1347,16 @@ export function isNodeTypeValidForPlatform(
  */
 export function contentToNodeData(
   content: NodeContent,
-  nodeType: string
+  nodeType: string,
+  /**
+   * Optional resolution context. When `approvedTemplates` is passed, the
+   * builder resolves templateMessage nodes by (templateName, language)
+   * authoritatively — ignoring AI-supplied templateId / bodyPreview / etc.
+   * Without this, templateMessage falls back to legacy passthrough so
+   * UI-built flows (which already carry authoritative data from the
+   * template dropdown) keep working and tests don't break.
+   */
+  options?: { approvedTemplates?: ApprovedTemplate[]; warnings?: string[] }
 ): Record<string, unknown> {
   const data: Record<string, unknown> = {}
 
@@ -1360,29 +1383,80 @@ export function contentToNodeData(
   if (content.responseMapping) data.responseMapping = content.responseMapping
   if (content.fallbackMessage) data.fallbackMessage = content.fallbackMessage
 
-  // templateMessage — Meta-approved WhatsApp templates
+  // templateMessage — Meta-approved WhatsApp templates.
+  //
+  // When a catalog is available (AI path), the builder is authoritative:
+  // the plan supplies only (templateName, language) and everything else —
+  // templateId, bodyPreview, category, headerType, buttons, and the base
+  // parameterMappings shape — comes from the catalog match. This prevents
+  // model hallucinations (fake templateIds, paraphrased bodies, wrong
+  // variable names) from landing in the node. Without a catalog (UI path,
+  // tests, legacy), fall back to the original passthrough so dropped-from-
+  // palette nodes and unit tests keep working.
   if (nodeType === "templateMessage") {
-    if (content.templateId) data.templateId = content.templateId
     if (content.templateName) data.templateName = content.templateName
-    if (content.displayName) data.displayName = content.displayName
     if (content.language) data.language = content.language
-    if (content.category) data.category = content.category
-    if (content.headerType) data.headerType = content.headerType
-    if (content.bodyPreview) data.bodyPreview = content.bodyPreview
 
-    if (content.templateButtons) {
-      data.buttons = content.templateButtons.map((b, i) => ({
-        ...b,
-        type: String(b.type || "").toLowerCase(),
-        id: b.id || `btn-${i}`,
-      }))
-    }
+    if (options?.approvedTemplates) {
+      const name = typeof content.templateName === "string" ? content.templateName : ""
+      const lang = typeof content.language === "string" ? content.language : "en"
+      const match = options.approvedTemplates.find(
+        (t) => t.name === name && t.language === lang,
+      )
+      if (match) {
+        data.templateId = match.id
+        data.templateName = match.name
+        if (match.displayName) data.displayName = match.displayName
+        data.language = match.language
+        data.category = match.category
+        if (match.headerType) data.headerType = match.headerType
+        data.bodyPreview = match.body
+        // Catalog buttons already have lowercase types (see
+        // list-approved-templates.ts::shapeTemplate). Just assign fresh IDs.
+        data.buttons = match.buttons.map((b, i) => ({ ...b, id: `btn-${i}` }))
+        // parameterMappings: one entry per real variable. Preserve any
+        // flowValue the AI already assigned (via an earlier edit turn)
+        // for matching templateVars; default to empty otherwise.
+        const aiMappings = Array.isArray(content.parameterMappings)
+          ? content.parameterMappings
+          : []
+        data.parameterMappings = match.variables.map((v) => {
+          const prior = aiMappings.find((m) => m?.templateVar === v)
+          return prior ?? { templateVar: v, flowValue: "" }
+        })
+      } else if (name) {
+        // Catalog provided but the name doesn't match any approved template.
+        // Surface a warning so the AI can retry with list_approved_templates
+        // and pick a real name. Do NOT fall back to AI-supplied values —
+        // that's the exact bug this resolver exists to prevent.
+        options.warnings?.push(
+          `templateMessage references "${name}" (${lang}) — not in approved templates. Call list_approved_templates first and pick a real template.`,
+        )
+      }
+    } else {
+      // Legacy passthrough: UI-built flows already carry authoritative
+      // data from the palette drop / dropdown, and unit tests exercise
+      // this path directly without a catalog.
+      if (content.templateId) data.templateId = content.templateId
+      if (content.displayName) data.displayName = content.displayName
+      if (content.category) data.category = content.category
+      if (content.headerType) data.headerType = content.headerType
+      if (content.bodyPreview) data.bodyPreview = content.bodyPreview
 
-    if (content.parameterMappings) {
-      data.parameterMappings = content.parameterMappings
-    } else if (content.bodyPreview) {
-      data.parameterMappings = extractTemplateVariables(content.bodyPreview)
-        .map((v) => ({ templateVar: v, flowValue: "" }))
+      if (content.templateButtons) {
+        data.buttons = content.templateButtons.map((b, i) => ({
+          ...b,
+          type: String(b.type || "").toLowerCase(),
+          id: b.id || `btn-${i}`,
+        }))
+      }
+
+      if (content.parameterMappings) {
+        data.parameterMappings = content.parameterMappings
+      } else if (content.bodyPreview) {
+        data.parameterMappings = extractTemplateVariables(content.bodyPreview)
+          .map((v) => ({ templateVar: v, flowValue: "" }))
+      }
     }
   }
 

@@ -12,6 +12,26 @@ export interface TemplateAIMetadata {
 
 export type TemplateResolver = (templateId: string) => { nodes: Node[], edges: Edge[] } | null
 
+/**
+ * A Meta-approved WhatsApp template, in the shape the flow builder resolves
+ * templateMessage nodes against. Mirrors `ShapedTemplate` in
+ * `lib/ai/tools/list-approved-templates.ts` — kept in sync by using the same
+ * fetcher (fetchApprovedTemplates) at session start. Plan builders look up
+ * by (name, language) against the current account's catalog so the AI can't
+ * hallucinate bodyPreview / templateId / parameterMappings.
+ */
+export interface ApprovedTemplate {
+  id: string
+  name: string
+  displayName?: string
+  language: string
+  category: string
+  headerType?: string
+  body: string
+  variables: string[]
+  buttons: Array<{ type: string; text: string; url?: string }>
+}
+
 export type WhatsAppInputType = "none" | "text" | "number" | "email" | "phone" | "date" | "select" | "button" | "whatsapp_flow"
 
 export interface ValidationConfig {

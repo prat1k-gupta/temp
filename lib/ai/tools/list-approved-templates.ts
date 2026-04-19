@@ -2,21 +2,10 @@ import { tool } from "ai"
 import { z } from "zod"
 import { extractTemplateVariables } from "@/utils/template-helpers"
 import type { GenerateFlowRequest } from "./generate-flow"
-
-type ShapedTemplate = {
-  id: string
-  name: string
-  displayName?: string
-  language: string
-  category: string
-  headerType?: string
-  body: string
-  variables: string[]
-  buttons: Array<{ type: string; text: string; url?: string }>
-}
+import type { ApprovedTemplate } from "@/types"
 
 export type FetchApprovedTemplatesResult =
-  | { success: true; templates: ShapedTemplate[]; count: number }
+  | { success: true; templates: ApprovedTemplate[]; count: number }
   | { success: false; error: string }
 
 /**
@@ -79,7 +68,7 @@ export function createListApprovedTemplatesTool(
   })
 }
 
-function shapeTemplate(t: any): ShapedTemplate {
+function shapeTemplate(t: any): ApprovedTemplate {
   const body = t.body_content || ""
   return {
     id: t.id,

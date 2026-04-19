@@ -333,26 +333,21 @@ function buildDataStructure(
     base.responseFields = ["string (field names returned by the form, auto-extracted from flow)"]
   }
 
-  // Template message (Meta-approved WhatsApp templates)
+  // Template message (Meta-approved WhatsApp templates).
+  // NOTE: the flow-plan builder resolves this node authoritatively from the
+  // approved-templates catalog — supply only templateName + language, and
+  // optionally parameterMappings if you want to pre-bind flow variables to
+  // template params. Everything else (templateId, bodyPreview, buttons,
+  // category, headerType) is filled in by the builder; DO NOT set those
+  // fields in the plan — they will be overwritten, and inventing a fake
+  // templateId or paraphrasing bodyPreview is a bug.
   if (t === "templateMessage") {
-    base.templateId = "string (template's backend ID — from list_approved_templates)"
-    base.templateName = "string (Meta-registered template name — from list_approved_templates.name)"
-    base.displayName = "string (optional human-readable name)"
-    base.language = "string (e.g., 'en', 'en_US')"
-    base.category = "MARKETING | UTILITY | AUTHENTICATION"
-    base.headerType = "TEXT | IMAGE | VIDEO | DOCUMENT (optional)"
-    base.bodyPreview = "string (full template body with {{vars}} intact)"
-    base.templateButtons = [
-      {
-        type: "quick_reply | url | phone_number | copy_code",
-        text: "string (button label)",
-        url: "string (for url buttons only)",
-      },
-    ]
+    base.templateName = "string (REQUIRED — exact name from list_approved_templates.name)"
+    base.language = "string (optional, defaults to 'en' — must match the template's language)"
     base.parameterMappings = [
       {
-        templateVar: "string (variable name from the template body, e.g. 'first_name' or '1')",
-        flowValue: "string (literal value or {{variable_name}} reference to a flow variable)",
+        templateVar: "string (variable name from the template body, e.g. 'customer_name')",
+        flowValue: "string (optional — literal value or {{variable_name}} reference to a flow variable)",
       },
     ]
   }

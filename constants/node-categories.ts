@@ -440,12 +440,12 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       selectionRule:
         "Only usable on WhatsApp. Requires calling `list_approved_templates` first to discover available templates. NEVER guess a template name — always use one returned by the tool.",
       contentFields:
-        "templateId, templateName, displayName, language, category, bodyPreview, headerType, templateButtons[{type,text,url?}] (type is lowercase: quick_reply|url|phone_number|copy_code), parameterMappings[{templateVar, flowValue}]",
+        "templateName (required, exact name from list_approved_templates), language (optional, defaults to 'en'), parameterMappings[{templateVar, flowValue}] (optional — pre-bind flow variables to template params). The builder fills templateId, bodyPreview, buttons, category, headerType from the approved-templates catalog; do NOT supply those.",
       bestPractices: [
         "Always call `list_approved_templates` before choosing a template — never guess names",
-        "Map every `{{var}}` in the body to a parameterMappings entry",
-        "Use `{{variable_name}}` in flowValue when the value comes from earlier in the flow",
-        "Use literal strings in flowValue for static substitutions",
+        "Supply only `templateName` and `language` — the builder fills in body, buttons, and template ID from the catalog",
+        "For `parameterMappings`, use `{{variable_name}}` in `flowValue` to reference a flow variable, or a literal string for a static value",
+        "The builder creates one parameterMappings entry per real template variable automatically — only include entries where you want a specific flowValue",
         "Templates must be pre-approved by Meta before use — only APPROVED status is selectable",
       ],
       examples: [
@@ -453,8 +453,8 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
         "Send appointment_reminder template the day before a booking",
         "Re-engage a dormant contact with a marketing template",
       ],
-      requiredProperties: ["label", "platform", "templateId", "templateName", "language"],
-      optionalProperties: ["displayName", "category", "headerType", "bodyPreview", "templateButtons", "parameterMappings"],
+      requiredProperties: ["label", "platform", "templateName"],
+      optionalProperties: ["language", "parameterMappings"],
     },
   },
 

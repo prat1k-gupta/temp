@@ -695,8 +695,7 @@ function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowId
   const [phoneNumber, setPhoneNumber] = useState("")
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [isSending, setIsSending] = useState(false)
-  const [isEndingSession, setIsEndingSession] = useState(false)
-  const [lastResult, setLastResult] = useState<{ success: boolean; message: string; hasActiveSession?: boolean } | null>(null)
+  const [lastResult, setLastResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // Find template message nodes and extract their named parameters
   const templateParams = useMemo(() => {
@@ -723,31 +722,6 @@ function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowId
     return account?.name || waAccountId
   }, [waAccountId, accounts])
 
-  const handleEndSessionAndRetry = async () => {
-    if (!phoneNumber.trim() || !publishedFlowId) return
-    setIsEndingSession(true)
-    try {
-      // Find active sessions for this phone number
-      const sessionsData = await apiClient.get<any>(`/api/chatbot/sessions?phone=${encodeURIComponent(phoneNumber.trim())}&status=active`)
-      const sessions = sessionsData?.sessions || []
-      if (sessions.length === 0) {
-        setLastResult({ success: false, message: "No active session found" })
-        setIsEndingSession(false)
-        return
-      }
-      // Complete all active sessions
-      for (const session of sessions) {
-        await apiClient.put(`/api/chatbot/sessions/${session.id}`, { status: "completed" })
-      }
-      setIsEndingSession(false)
-      // Retry send
-      await handleSend()
-    } catch (error: any) {
-      setLastResult({ success: false, message: error?.message || "Failed to end session" })
-      setIsEndingSession(false)
-    }
-  }
-
   const handleSend = async () => {
     if (!phoneNumber.trim() || !publishedFlowId) return
     setIsSending(true)
@@ -755,6 +729,12 @@ function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowId
     try {
       const body: Record<string, any> = {
         phone_number: phoneNumber.trim(),
+        // Always force a new session from the test panel. Any prior session
+        // is either a leftover from a failed retry or an abandoned test —
+        // wiping it is the right default for a button labeled "Send" from
+        // the flow builder. The old two-step "Send → error → click End
+        // Session & Retry" flow collapses into a single click.
+        force_new_session: true,
       }
       if (accountName) body.whatsapp_account = accountName
       const nonEmptyVars = Object.fromEntries(
@@ -765,9 +745,7 @@ function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowId
       await apiClient.post(`/api/chatbot/flows/${publishedFlowId}/send`, body)
       setLastResult({ success: true, message: "Flow sent to " + phoneNumber.trim() })
     } catch (error: any) {
-      const msg = error?.message || "Failed to send flow"
-      const hasActiveSession = msg.toLowerCase().includes("active session")
-      setLastResult({ success: false, message: msg, hasActiveSession })
+      setLastResult({ success: false, message: error?.message || "Failed to send flow" })
     } finally {
       setIsSending(false)
     }
@@ -846,18 +824,6 @@ function StartNodePanel({ selectedNode, platform, allNodes = [], publishedFlowId
                   {lastResult.success ? <CheckCircle className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
                   {lastResult.message}
                 </div>
-                {lastResult.hasActiveSession && (
-                  <Button
-                    onClick={handleEndSessionAndRetry}
-                    disabled={isEndingSession}
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2 text-xs"
-                  >
-                    {isEndingSession ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                    {isEndingSession ? "Ending session..." : "End Session & Retry"}
-                  </Button>
-                )}
               </div>
             )}
           </div>

@@ -25,3 +25,18 @@ export function extractTemplateVariables(body: string): string[] {
   }
   return ordered
 }
+
+const REJECTION_REASON_LABELS: Record<string, string> = {
+  ABUSIVE_CONTENT: "Abusive content",
+  INCORRECT_CATEGORY: "Wrong category for this template",
+  INVALID_FORMAT: "Invalid format (check variables, structure, or characters)",
+  NONE: "",
+  PROMOTIONAL: "Promotional content in a non-marketing category",
+  SCAM: "Flagged as scam",
+  TAG_CONTENT_MISMATCH: "Content doesn't match the selected category",
+}
+
+export function formatRejectionReason(code: string | undefined | null): string {
+  if (!code || code === "NONE") return ""
+  return REJECTION_REASON_LABELS[code] || code.replace(/_/g, " ").toLowerCase()
+}

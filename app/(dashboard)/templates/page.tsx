@@ -11,6 +11,7 @@ import { TemplateBuilder } from "@/components/template-builder"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
 import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
+import { formatRejectionReason } from "@/utils/template-helpers"
 
 interface Template {
   id: string
@@ -19,6 +20,7 @@ interface Template {
   whatsapp_account: string
   category: string
   status: string
+  rejection_reason?: string
   language: string
   body_content: string
   header_type?: string
@@ -98,15 +100,22 @@ export default function TemplatesPage() {
   }
 
   const handleSave = async (data: any) => {
-    // Map builder field names to fs-whatsapp API field names
+    // Map builder field names to fs-whatsapp API field names.
+    // If the user set a header type but left the content blank, treat as no
+    // header — Meta rejects HEADER components with empty text/handle.
+    const hasHeaderContent = !!(data.header_content && data.header_content.trim())
+    const effectiveHeaderType = data.header_type === "none" || !hasHeaderContent
+      ? ""
+      : (data.header_type || "")
+
     const payload: Record<string, any> = {
       whatsapp_account: data.whatsapp_account || "",
       name: data.name,
       display_name: data.display_name,
       language: data.language,
       category: data.category,
-      header_type: data.header_type === "none" ? "" : (data.header_type || ""),
-      header_content: data.header_content || "",
+      header_type: effectiveHeaderType,
+      header_content: effectiveHeaderType ? (data.header_content || "") : "",
       body_content: data.body || data.body_content || "",
       footer_content: data.footer || data.footer_content || "",
       buttons: (data.buttons || []).map((btn: any) => {
@@ -123,28 +132,18 @@ export default function TemplatesPage() {
         const bodyVars = (bodyText.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
         const headerVars = (headerText.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
         const result: any[] = []
-        bodyVars.forEach((v: string, i: number) => {
+        const pushSample = (component: "body" | "header", v: string) => {
           const val = (data.sample_values || {})[v]
-          if (val) {
-            const isPositional = /^\d+$/.test(v)
-            result.push({
-              component: "body",
-              ...(isPositional ? { index: i + 1 } : { param_name: v }),
-              value: val,
-            })
-          }
-        })
-        headerVars.forEach((v: string, i: number) => {
-          const val = (data.sample_values || {})[v]
-          if (val) {
-            const isPositional = /^\d+$/.test(v)
-            result.push({
-              component: "header",
-              ...(isPositional ? { index: i + 1 } : { param_name: v }),
-              value: val,
-            })
-          }
-        })
+          if (!val) return
+          const isPositional = /^\d+$/.test(v)
+          result.push({
+            component,
+            ...(isPositional ? { index: parseInt(v, 10) } : { param_name: v }),
+            value: val,
+          })
+        }
+        bodyVars.forEach((v: string) => pushSample("body", v))
+        headerVars.forEach((v: string) => pushSample("header", v))
         return result
       })(),
     }
@@ -174,19 +173,20 @@ export default function TemplatesPage() {
           whatsapp_account: editingTemplate.whatsapp_account || "",
           language: editingTemplate.language,
           category: editingTemplate.category,
-          header_type: (editingTemplate.header_type as any) || "none",
+          header_type: (editingTemplate.header_type || "none").toLowerCase() as any,
           header_content: editingTemplate.header_content || "",
           body: editingTemplate.body_content || "",
           footer: editingTemplate.footer_content || "",
           buttons: editingTemplate.buttons || [],
           sample_values: Array.isArray(editingTemplate.sample_values)
             ? editingTemplate.sample_values.reduce((acc: Record<string, string>, item: any) => {
-                const key = item.key || (item.index != null ? String(item.index) : "")
+                const key = item.param_name || (item.index != null ? String(item.index) : "")
                 if (key) acc[key] = item.value || ""
                 return acc
               }, {})
             : {},
           status: editingTemplate.status,
+          rejection_reason: editingTemplate.rejection_reason,
         } : undefined}
         onSave={handleSave}
         onCancel={() => {
@@ -314,6 +314,11 @@ export default function TemplatesPage() {
                   </div>
                   {template.body_content && (
                     <p className="text-xs text-muted-foreground line-clamp-3">{template.body_content}</p>
+                  )}
+                  {template.status === "REJECTED" && formatRejectionReason(template.rejection_reason) && (
+                    <div className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
+                      <span className="font-medium">Rejected:</span> {formatRejectionReason(template.rejection_reason)}
+                    </div>
                   )}
                 </CardContent>
 

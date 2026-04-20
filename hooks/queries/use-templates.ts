@@ -82,6 +82,41 @@ export function useSaveTemplate() {
 }
 
 /**
+ * Upload a media file (image/video/document) for use as a template header
+ * sample. Goes through fs-whatsapp's resumable upload to Meta and returns
+ * the handle that the template submission needs.
+ */
+export interface UploadTemplateMediaResult {
+  handle: string
+  filename: string
+  mime_type: string
+  size: number
+}
+
+export function useUploadTemplateMedia() {
+  return useMutation({
+    mutationFn: async ({ file, account }: { file: File; account: string }): Promise<UploadTemplateMediaResult> => {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("account", account)
+
+      const res = await apiClient.raw("/api/templates/upload-media", {
+        method: "POST",
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.message || err?.data?.message || "Upload failed")
+      }
+      const json = await res.json()
+      const unwrapped = json?.data ?? json
+      if (!unwrapped?.handle) throw new Error("No handle returned from server")
+      return unwrapped as UploadTemplateMediaResult
+    },
+  })
+}
+
+/**
  * Duplicate a template (create copy).
  */
 export function useDuplicateTemplate() {

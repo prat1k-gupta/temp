@@ -5,7 +5,7 @@ export { useVersions, useDraft, useCreateVersion, usePublishVersion, useSaveDraf
 export { useAutoSave } from "./use-auto-save"
 export { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount, type Account } from "./use-accounts"
 export { chatbotKeys, useChatbotFlows, useGlobalVariables } from "./use-chatbot"
-export { templateKeys, useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useSaveTemplate, useDuplicateTemplate } from "./use-templates"
+export { templateKeys, useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useSaveTemplate, useDuplicateTemplate, useUploadTemplateMedia, type UploadTemplateMediaResult } from "./use-templates"
 export { waFlowKeys, useWhatsAppFlows, useCreateWhatsAppFlow, useUpdateWhatsAppFlow, useSaveWhatsAppFlowToMeta, usePublishWhatsAppFlow } from "./use-whatsapp-flows"
 export { useProfile, useUpdateProfile, useChangePassword } from "./use-profile"
 export { useUsers, useCreateUser, useUpdateUser, useDeleteUser, type OrgUser } from "./use-users"

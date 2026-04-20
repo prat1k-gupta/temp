@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { extractTemplateVariables } from "@/utils/template-helpers"
+import { extractTemplateVariables, formatRejectionReason } from "@/utils/template-helpers"
 
 describe("extractTemplateVariables", () => {
   it("extracts named variables in first-occurrence order", () => {
@@ -48,5 +48,26 @@ describe("extractTemplateVariables", () => {
   it("extracts consecutive variables with no separator", () => {
     expect(extractTemplateVariables("{{a}}{{b}}{{c}}"))
       .toEqual(["a", "b", "c"])
+  })
+})
+
+describe("formatRejectionReason", () => {
+  it("returns empty string for NONE or missing reason", () => {
+    expect(formatRejectionReason("NONE")).toBe("")
+    expect(formatRejectionReason("")).toBe("")
+    expect(formatRejectionReason(undefined)).toBe("")
+    expect(formatRejectionReason(null)).toBe("")
+  })
+
+  it("maps known Meta rejection codes to human-readable labels", () => {
+    expect(formatRejectionReason("INVALID_FORMAT"))
+      .toBe("Invalid format (check variables, structure, or characters)")
+    expect(formatRejectionReason("ABUSIVE_CONTENT")).toBe("Abusive content")
+    expect(formatRejectionReason("TAG_CONTENT_MISMATCH"))
+      .toBe("Content doesn't match the selected category")
+  })
+
+  it("falls back to a prettified code for unknown reasons", () => {
+    expect(formatRejectionReason("SOME_NEW_REASON")).toBe("some new reason")
   })
 })

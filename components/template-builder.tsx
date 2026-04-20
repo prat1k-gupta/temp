@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,9 +18,24 @@ import {
   GripVertical,
   ArrowUp,
   ArrowDown,
+  Upload,
+  CheckCircle2,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useAccounts } from "@/hooks/queries"
+import { useAccounts, useUploadTemplateMedia } from "@/hooks/queries"
+import { formatRejectionReason } from "@/utils/template-helpers"
+
+const MEDIA_SIZE_LIMITS_MB: Record<string, number> = {
+  image: 5,
+  video: 16,
+  document: 100,
+}
+
+const MEDIA_ACCEPT: Record<string, string> = {
+  image: "image/jpeg,image/png",
+  video: "video/mp4,video/3gp",
+  document: "application/pdf",
+}
 
 interface TemplateButton {
   type: "quick_reply" | "url" | "phone_number" | "copy_code"
@@ -45,6 +60,7 @@ interface TemplateData {
   buttons: TemplateButton[]
   sample_values: Record<string, string>
   status?: string
+  rejection_reason?: string
 }
 
 interface TemplateBuilderProps {
@@ -105,7 +121,11 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   const [data, setData] = useState<TemplateData>(template || emptyTemplate)
   const [saving, setSaving] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
+  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
+  const uploadMutation = useUploadTemplateMedia()
+  const uploading = uploadMutation.isPending
 
   // Auto-select if only one account and no account set
   useEffect(() => {
@@ -158,6 +178,32 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
     update({ buttons: data.buttons.filter((_, i) => i !== index) })
   }
 
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // allow re-selecting the same file later
+    if (!file) return
+
+    if (!data.whatsapp_account) {
+      toast.error("Select a WhatsApp account first")
+      return
+    }
+
+    const limitMB = MEDIA_SIZE_LIMITS_MB[data.header_type] ?? 5
+    if (file.size > limitMB * 1024 * 1024) {
+      toast.error(`File too large. Max ${limitMB} MB for ${data.header_type}.`)
+      return
+    }
+
+    try {
+      const result = await uploadMutation.mutateAsync({ file, account: data.whatsapp_account })
+      update({ header_content: result.handle })
+      setUploadedFilename(file.name)
+      toast.success("Media uploaded")
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed")
+    }
+  }
+
   const handleMoveButton = (index: number, direction: "up" | "down") => {
     const newIndex = direction === "up" ? index - 1 : index + 1
     if (newIndex < 0 || newIndex >= data.buttons.length) return
@@ -167,13 +213,14 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   }
 
   const handleAiGenerate = async () => {
+    const isImprove = !!data.body
     setAiLoading(true)
     try {
       const response = await fetch("/api/ai/generate-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: data.body ? "improve" : "generate",
+          mode: isImprove ? "improve" : "generate",
           description: data.display_name || data.name || "general purpose template",
           currentBody: data.body || undefined,
           category: data.category,
@@ -181,23 +228,31 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
       })
       if (!response.ok) throw new Error("AI generation failed")
       const result = await response.json()
+
+      // Improve mode rewrites the body only — the AI schema can't represent
+      // image/video/document headers, so applying its headerType/content here
+      // would destroy any media header the user already set up. Leave the
+      // header, footer, buttons, and category alone in improve mode.
       if (result.bodyContent) update({ body: result.bodyContent })
-      if (result.headerContent && result.headerType !== "none") {
-        update({ header_type: result.headerType || "text", header_content: result.headerContent })
+
+      if (!isImprove) {
+        if (result.headerContent && result.headerType !== "none") {
+          update({ header_type: result.headerType || "text", header_content: result.headerContent })
+        }
+        if (result.footerContent) update({ footer: result.footerContent })
+        if (result.category) update({ category: result.category })
+        if (result.buttons?.length) {
+          update({
+            buttons: result.buttons.map((b: any) => ({
+              type: b.type || "quick_reply",
+              text: b.text || "",
+              url: b.url,
+              phone_number: b.phone_number,
+            })),
+          })
+        }
       }
-      if (result.footerContent) update({ footer: result.footerContent })
-      if (result.category) update({ category: result.category })
-      if (result.buttons?.length) {
-        update({
-          buttons: result.buttons.map((b: any) => ({
-            type: b.type || "quick_reply",
-            text: b.text || "",
-            url: b.url,
-            phone_number: b.phone_number,
-          })),
-        })
-      }
-      toast.success("AI generated template content")
+      toast.success(isImprove ? "AI improved the body" : "AI generated template content")
     } catch {
       toast.error("Failed to generate template with AI")
     } finally {
@@ -245,7 +300,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Header bar */}
       <div className="border-b border-border bg-background/95 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -268,8 +323,14 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
         </div>
       </div>
 
+      {data.status === "REJECTED" && formatRejectionReason(data.rejection_reason) && (
+        <div className="border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-xs text-destructive">
+          <span className="font-medium">Meta rejected this template:</span> {formatRejectionReason(data.rejection_reason)}. Fix the issue, save, then resubmit.
+        </div>
+      )}
+
       {/* Content */}
-      <div className="flex h-[calc(100vh-53px)] overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left — Form */}
         <div className="flex-1 overflow-y-auto scroll-minimal">
           <div className="max-w-2xl mx-auto px-6 py-4 space-y-3">
@@ -341,7 +402,13 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                 <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Header</h3>
                 <span className="text-[10px] text-muted-foreground/50">Optional</span>
               </div>
-              <Select value={data.header_type} onValueChange={(v) => update({ header_type: v as TemplateData["header_type"] })}>
+              <Select
+                value={data.header_type}
+                onValueChange={(v) => {
+                  update({ header_type: v as TemplateData["header_type"], header_content: "" })
+                  setUploadedFilename(null)
+                }}
+              >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
@@ -382,12 +449,53 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                 </div>
               )}
               {(data.header_type === "image" || data.header_type === "video" || data.header_type === "document") && (
-                <Input
-                  value={data.header_content}
-                  onChange={(e) => update({ header_content: e.target.value })}
-                  placeholder={`Enter ${data.header_type} URL`}
-                  className="h-9"
-                />
+                <div className="space-y-1.5">
+                  <p className="text-[9px] text-muted-foreground/50">
+                    Meta requires a sample {data.header_type}. Uploaded here, used only for template review — not shown to recipients.
+                  </p>
+                  {data.header_content ? (
+                    <div className="flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/30 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+                        <span className="text-xs truncate">
+                          {uploadedFilename || `Uploaded ${data.header_type}`}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        type="button"
+                        className="cursor-pointer h-7 px-2 text-xs gap-1"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                      >
+                        {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        Replace
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="w-full justify-start cursor-pointer h-9"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading || !data.whatsapp_account}
+                    >
+                      {uploading ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-2" />}
+                      {uploading ? "Uploading…" : `Upload ${data.header_type}`}
+                    </Button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={MEDIA_ACCEPT[data.header_type] ?? ""}
+                    className="hidden"
+                    onChange={handleMediaUpload}
+                  />
+                  {!data.whatsapp_account && (
+                    <p className="text-[10px] text-warning">Select a WhatsApp account above to enable upload.</p>
+                  )}
+                </div>
               )}
             </section>
 

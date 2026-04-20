@@ -71,6 +71,7 @@ Hit the limit → `429 rate_limited`. Back off and retry. The response body incl
 |---|---|---|---|
 | GET | `/v1/flows` | cheap | List flows |
 | GET | `/v1/flows/{id}` | cheap | Get a single flow |
+| PATCH | `/v1/flows/{id}` | write | Update metadata (name, keywords, match type, ref, description, enabled). Cascades to the runtime on published flows — no re-publish needed. |
 | DELETE | `/v1/flows/{id}` | write | Delete a flow |
 | POST | `/v1/flows/{id}/publish` | publish | Publish the latest draft (idempotent) |
 | POST | `/v1/flows/{id}/trigger` | write | Send the flow to a phone number for testing |
@@ -259,6 +260,55 @@ curl -H "X-API-Key: $FREESTAND_API_KEY" \
 ```
 
 Or just open `platform_url` in a browser — the platform shows live counts and per-recipient status.
+
+---
+
+## Editing flow metadata without re-publishing
+
+`PATCH /v1/flows/{id}` updates **metadata only** — rename a flow, swap the trigger keyword, flip the match mode, change the wa.me ref, rewrite the description, or pause/resume the runtime. For **content** changes (add/remove nodes, edit messages) use `POST /v1/agent/flows/{id}/edit`.
+
+All fields optional; at least one is required.
+
+```json
+PATCH /v1/flows/{id}
+{
+  "name": "Pedigree — Shop & Save",
+  "description": "Inbound offer claim flow",
+  "trigger_keywords": ["offer", "deal"],
+  "trigger_match_type": "exact",
+  "trigger_ref": "summer-2025",
+  "is_enabled": true
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Display name (builder, chat logs, admin UI). |
+| `description` | string | Free text, ≤1000 chars. |
+| `trigger_keywords` | string[] | Full replace. Max 20 items, each ≤50 chars. |
+| `trigger_match_type` | enum | `exact`, `contains_whole_word`, `contains`, `starts_with`. |
+| `trigger_ref` | string | Ref param for `wa.me/...?ref=xxx` attribution. |
+| `is_enabled` | boolean | Write-only. `false` pauses the runtime (bot ignores the flow); `true` resumes. Not returned on reads — inspect `chatbot_flows` if you need the current value. |
+
+**Effects are immediate on published flows.** The backend cascades these fields into the runtime row in the same transaction as the project write, so there's no re-publish dance. On **unpublished** drafts only the project row changes; keyword/match-type/ref/is_enabled have no runtime to hit yet and will take effect on first publish.
+
+### Appending / removing a single keyword
+
+The PATCH body takes the full array. To append, read-modify-write:
+
+```bash
+current=$(curl -sH "X-API-Key: $KEY" https://fs-flow.vercel.app/api/v1/flows/$ID | jq -c '.project.trigger_keywords')
+curl -X PATCH -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d "{\"trigger_keywords\": $(echo $current | jq '. + ["deal"]')}" \
+  https://fs-flow.vercel.app/api/v1/flows/$ID
+```
+
+### Errors
+
+| Code | Status | When |
+|---|---|---|
+| `invalid_param` | 400 | Empty body, unknown `trigger_match_type` enum, keywords array over 20 items, etc. |
+| `flow_not_found` | 404 | No project with that ID in your org. |
 
 ---
 

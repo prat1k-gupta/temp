@@ -126,3 +126,33 @@ export const triggerFlowBodySchema = z.object({
   // template body parameters as { variable_name: value }.
   variables: z.record(z.string(), z.string()).optional(),
 })
+
+/**
+ * PATCH /v1/flows/{flow_id} request body. Metadata-only updates; flow
+ * content changes go through POST /v1/agent/flows/{id}/edit instead.
+ *
+ * All fields optional; at least one required. The fs-whatsapp handler
+ * cascades name / description / trigger_keywords / trigger_match_type /
+ * trigger_ref / is_enabled to the runtime chatbot_flows row when the
+ * project is published, so edits take effect without re-publishing.
+ * is_enabled is write-only — it never round-trips on project reads
+ * because there is no column on magic_flow_projects; reading it back
+ * requires fetching the runtime chatbot_flows row.
+ */
+export const patchFlowBodySchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    description: z.string().max(1000).optional(),
+    trigger_keywords: z.array(z.string().min(1).max(50)).max(20).optional(),
+    trigger_match_type: z
+      .enum(["exact", "contains_whole_word", "contains", "starts_with"])
+      .optional(),
+    trigger_ref: z.string().max(100).optional(),
+    is_enabled: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message:
+      "At least one of name, description, trigger_keywords, trigger_match_type, trigger_ref, is_enabled is required",
+  })
+
+export type PatchFlowBody = z.infer<typeof patchFlowBodySchema>

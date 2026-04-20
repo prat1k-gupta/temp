@@ -913,6 +913,93 @@ function createEditTools(
   // Gating keeps the tool hidden from the AI in create contexts — the route
   // handler auto-publishes after the stream anyway.
   if (toolContext?.projectId) {
+    // update_flow_metadata — deterministic metadata writes (no AI content
+    // generation). For renames, keyword tweaks, pause/resume, etc. The
+    // fs-whatsapp PUT /api/magic-flow/projects/{id} handler cascades these
+    // fields to the runtime chatbot_flows row on published flows, so the
+    // change takes effect without re-publishing.
+    //
+    // Trigger-keyword intent is expressed via three verbs:
+    //   - set_trigger_keywords: replace the whole list
+    //   - add_trigger_keyword:   append one (no-op if already present)
+    //   - remove_trigger_keyword: drop one (no-op if absent)
+    // The tool merges against the current keywords (from toolContext) and
+    // sends the resolved list back to fs-whatsapp.
+    extraTools.update_flow_metadata = tool({
+      description: 'Update flow metadata (name, description, trigger keywords, match type, trigger ref, enabled state) without AI content changes. Use this when the user asks to rename the flow, change/add/remove a trigger keyword, change how keywords match, update the wa.me ref link, or pause/resume the flow. Effects apply immediately to the live bot on published flows — no re-publish needed. For content changes (add/remove nodes, edit messages), use apply_edit instead.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(100).optional().describe('New display name for the flow'),
+        description: z.string().max(1000).optional().describe('New description text'),
+        set_trigger_keywords: z.array(z.string().min(1).max(50)).max(20).optional().describe('Replace the entire keyword list with this array. Mutually exclusive with add/remove.'),
+        add_trigger_keyword: z.string().min(1).max(50).optional().describe('Append one keyword. No-op if already present.'),
+        remove_trigger_keyword: z.string().min(1).max(50).optional().describe('Remove one keyword. No-op if absent.'),
+        trigger_match_type: z.enum(['exact', 'contains_whole_word', 'contains', 'starts_with']).optional().describe('How incoming messages are matched against trigger keywords'),
+        trigger_ref: z.string().max(100).optional().describe('Ref param for wa.me deep-link attribution (e.g. "summer-2025")'),
+        is_enabled: z.boolean().optional().describe('Pause (false) or resume (true) the runtime flow. Paused flows stay in DB but do not match incoming messages.'),
+      }),
+      execute: async (input) => {
+        if (!toolContext?.projectId) {
+          return { success: false, error: 'Cannot update metadata — project context is missing.' }
+        }
+        if (!authHeaders || !apiUrl) {
+          return { success: false, error: 'Cannot update metadata — authentication context is missing.' }
+        }
+
+        // Resolve keyword intent into the final array we send to fs-whatsapp.
+        // Only one of set/add/remove can be used per call; reject combined use
+        // so the AI doesn't accidentally smash the list while also appending.
+        const keywordOps = [input.set_trigger_keywords, input.add_trigger_keyword, input.remove_trigger_keyword].filter(v => v !== undefined).length
+        if (keywordOps > 1) {
+          return { success: false, error: 'Use only one of set_trigger_keywords, add_trigger_keyword, or remove_trigger_keyword per call.' }
+        }
+
+        let triggerKeywords: string[] | undefined
+        if (input.set_trigger_keywords !== undefined) {
+          triggerKeywords = input.set_trigger_keywords
+        } else if (input.add_trigger_keyword) {
+          const current = toolContext.triggerKeywords ?? []
+          const kw = input.add_trigger_keyword.trim().toLowerCase()
+          triggerKeywords = current.includes(kw) ? current : [...current, kw]
+        } else if (input.remove_trigger_keyword) {
+          const current = toolContext.triggerKeywords ?? []
+          const kw = input.remove_trigger_keyword.trim().toLowerCase()
+          triggerKeywords = current.filter(k => k !== kw)
+        }
+
+        const body: Record<string, unknown> = {}
+        if (input.name !== undefined) body.name = input.name
+        if (input.description !== undefined) body.description = input.description
+        if (triggerKeywords !== undefined) body.trigger_keywords = triggerKeywords
+        if (input.trigger_match_type !== undefined) body.trigger_match_type = input.trigger_match_type
+        if (input.trigger_ref !== undefined) body.trigger_ref = input.trigger_ref
+        if (input.is_enabled !== undefined) body.is_enabled = input.is_enabled
+
+        if (Object.keys(body).length === 0) {
+          return { success: false, error: 'No fields to update — supply at least one of name, description, trigger keywords, match type, trigger ref, or is_enabled.' }
+        }
+
+        try {
+          const res = await fetch(`${apiUrl}/api/magic-flow/projects/${toolContext.projectId}`, {
+            method: 'PUT',
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}))
+            return { success: false, error: data?.message || data?.error || `HTTP ${res.status}` }
+          }
+          return {
+            success: true,
+            updated: Object.keys(body),
+            trigger_keywords: triggerKeywords,
+            message: 'Flow metadata updated. Changes are live on the bot immediately — no re-publish needed.',
+          }
+        } catch (error) {
+          return { success: false, error: error instanceof Error ? error.message : 'Network error calling fs-whatsapp' }
+        }
+      },
+    })
+
     extraTools.publish_flow = tool({
       description: 'Publish the current flow edits to make them live. Saves a new version, deploys to the runtime, and activates the flow. Call after validate_result confirms no issues.',
       inputSchema: z.object({}),

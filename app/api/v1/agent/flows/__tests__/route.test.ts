@@ -347,6 +347,7 @@ describe("POST /v1/agent/flows", () => {
     expect(result.node_count).toBe(3) // 2 AI-generated + 1 prepended start node
     expect(result.trigger_keyword).toBe("lead")
     expect(result.magic_flow_url).toContain("/flow/proj_1")
+    expect(result.platform_url).toContain("/flow/proj_1")
     expect(result.test_url).toBe("https://wa.me/919876543210?text=lead")
     expect(result.created_at).toBeDefined()
 

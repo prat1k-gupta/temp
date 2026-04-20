@@ -26,6 +26,8 @@ export const RATE_LIMIT_BUCKETS = {
   expensive: { maxPerMinute: 10 },
   /** Applied to POST /v1/agent/flows/{id}/publish */
   publish: { maxPerMinute: 30 },
+  /** Applied to write endpoints (POST/PUT/DELETE for templates, campaigns, etc.) */
+  write: { maxPerMinute: 60 },
   /** Applied to GET /v1/agent/flows (cheap list) */
   cheap: { maxPerMinute: 120 },
 } as const

@@ -66,7 +66,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         published_at: latestVersion.publishedAt,
         test_url: testUrl,
         trigger_keyword: firstKeyword,
-        magic_flow_url: `${appUrl}/flow/${project.id}`,
+        magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
+        platform_url: `${appUrl}/flow/${project.id}`,
       },
       { status: 200 },
     )
@@ -114,7 +115,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
       published_at: new Date().toISOString(),
       test_url: testUrl,
       trigger_keyword: firstKeyword,
-      magic_flow_url: `${appUrl}/flow/${project.id}`,
+      magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
+      platform_url: `${appUrl}/flow/${project.id}`,
     },
     { status: 200 },
   )

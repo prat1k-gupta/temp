@@ -70,6 +70,7 @@ describe("listFlows", () => {
       node_count: 6,
       current_version: 3,
       magic_flow_url: expect.stringContaining("/flow/mf_1"),
+      platform_url: expect.stringContaining("/flow/mf_1"),
       test_url: "https://wa.me/919876543210?text=iphone11",
       created_at: "2026-04-15T11:42:08Z",
       updated_at: "2026-04-15T11:47:22Z",
@@ -537,6 +538,7 @@ describe("checkKeywordConflict", () => {
       id: "mf_1",
       name: "iPhone 11 Flow",
       magic_flow_url: expect.stringContaining("/flow/mf_1"),
+      platform_url: expect.stringContaining("/flow/mf_1"),
     })
   })
 

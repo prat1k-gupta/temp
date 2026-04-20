@@ -12,7 +12,9 @@ export interface PublicFlow {
   trigger_keyword: string | undefined
   node_count: number
   current_version: number
+  /** @deprecated prefer platform_url */
   magic_flow_url: string
+  platform_url: string
   test_url: string | undefined
   created_at: string
   updated_at: string
@@ -85,7 +87,8 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
       trigger_keyword: firstKeyword,
       node_count: p.node_count ?? 0,
       current_version: p.latest_version ?? 1,
-      magic_flow_url: buildMagicFlowUrl(p.id),
+      magic_flow_url: buildMagicFlowUrl(p.id), // deprecated — prefer platform_url
+      platform_url: buildMagicFlowUrl(p.id),
       test_url: buildTestUrl(ctx.account.phone_number, firstKeyword),
       created_at: p.created_at,
       updated_at: p.updated_at,
@@ -525,7 +528,7 @@ export async function publishRuntimeFlow(
 export async function checkKeywordConflict(
   ctx: AgentContext,
   normalizedKeyword: string,
-): Promise<{ id: string; name: string; magic_flow_url: string } | null> {
+): Promise<{ id: string; name: string; magic_flow_url: string; platform_url: string } | null> {
   const { flows } = await listFlows(ctx, 50)
 
   const lowerKeyword = normalizedKeyword.toLowerCase()
@@ -538,7 +541,8 @@ export async function checkKeywordConflict(
   return {
     id: match.flow_id,
     name: match.name,
-    magic_flow_url: match.magic_flow_url,
+    magic_flow_url: match.magic_flow_url, // deprecated — prefer platform_url
+    platform_url: match.platform_url,
   }
 }
 

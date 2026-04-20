@@ -206,6 +206,7 @@ describe("POST /v1/agent/flows/[flow_id]/edit", () => {
     expect(result.changes.length).toBeGreaterThan(0)
     expect(result.next_action).toContain("publish")
     expect(result.magic_flow_url).toContain("/flow/proj_1")
+    expect(result.platform_url).toContain("/flow/proj_1")
 
     // Should NOT have any error events
     const errorEvents = events.filter((e) => e.event === "error")

@@ -318,7 +318,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         name: flowName,
         summary: captured.message || "Flow created successfully",
         node_count: allNodes.length,
-        magic_flow_url: `${appUrl}/flow/${projectId}`,
+        magic_flow_url: `${appUrl}/flow/${projectId}`, // deprecated — prefer platform_url
+        platform_url: `${appUrl}/flow/${projectId}`,
         test_url: testUrl,
         trigger_keyword: normalizedKeyword,
         created_at: new Date().toISOString(),

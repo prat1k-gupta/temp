@@ -151,7 +151,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
             summary: captured.message || `Version ${latest.versionNumber} is now live`,
             changes: [],
             node_count: latest.nodes.length,
-            magic_flow_url: `${appUrl}/flow/${project.id}`,
+            magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
+            platform_url: `${appUrl}/flow/${project.id}`,
             test_url: testUrl,
             updated_at: new Date().toISOString(),
           })
@@ -300,7 +301,8 @@ export const POST = withAgentAuth(async (ctx, req) => {
         summary: captured.message || "Flow edited successfully",
         changes: changesSummary,
         node_count: mergedNodes.length,
-        magic_flow_url: `${appUrl}/flow/${project.id}`,
+        magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
+        platform_url: `${appUrl}/flow/${project.id}`,
         next_action: published
           ? undefined
           : "Call the publish tool to make this version live.",

@@ -19,6 +19,7 @@ export type AgentErrorCode =
   | "validation_failed"
   | "internal_error"
   | "publish_failed"
+  | "campaign_materializing"
 
 const HTTP_STATUS_BY_CODE: Record<AgentErrorCode, number> = {
   missing_required_param: 400,
@@ -36,6 +37,7 @@ const HTTP_STATUS_BY_CODE: Record<AgentErrorCode, number> = {
   validation_failed: 500,
   internal_error: 500,
   publish_failed: 502,
+  campaign_materializing: 409,
 }
 
 export class AgentError extends Error {

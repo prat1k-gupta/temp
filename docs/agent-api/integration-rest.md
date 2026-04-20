@@ -698,10 +698,6 @@ Yes. Pure action / data-pipeline broadcasts are valid — the runtime executes p
 
 Yes. The advisory walks past server-side nodes (`apiFetch`, `action`, `transfer`, `condition`, `flowComplete`, integrations) when checking. The first **user-facing** node is what matters — if it's a template, no warning fires.
 
-**Why do flow responses have BOTH `magic_flow_url` and `platform_url`?**
-
-Backwards compatibility for one release. Existing callers using `magic_flow_url` keep working; new callers use `platform_url`. We'll drop `magic_flow_url` in the next release.
-
 **Where do I find rejection reasons for REJECTED templates?**
 
 `GET /v1/templates/{id}` returns the full template including `rejection_reason`. Or open `template.platform_url` — the UI also shows Meta's exact text and offers an edit form.

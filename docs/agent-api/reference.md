@@ -20,7 +20,7 @@ Find/list flows for the authenticated org.
       "trigger_keyword": "product",
       "node_count": 4,
       "current_version": 2,
-      "magic_flow_url": "https://your-app/flow/uuid",
+      "platform_url": "https://your-app/flow/uuid",
       "test_url": "https://wa.me/1234567890?text=product",
       "created_at": "2026-04-16T09:00:00Z",
       "updated_at": "2026-04-16T09:00:00Z"
@@ -92,7 +92,7 @@ data: {
   "name": "Product Inquiry",
   "summary": "Created a 3-node flow that...",
   "node_count": 4,
-  "magic_flow_url": "https://your-app/flow/uuid",
+  "platform_url": "https://your-app/flow/uuid",
   "test_url": "https://wa.me/1234567890?text=product",
   "trigger_keyword": "product",
   "created_at": "2026-04-16T09:00:00Z"
@@ -170,7 +170,7 @@ data: {
     {"type": "node_update", "node_id": "plan-message-4-r1s5", "description": "Updated whatsappMessage: Thank you!"}
   ],
   "node_count": 5,
-  "magic_flow_url": "https://your-app/flow/uuid",
+  "platform_url": "https://your-app/flow/uuid",
   "next_action": "Call /publish to make this live",
   "updated_at": "2026-04-16T09:00:00Z"
 }
@@ -209,7 +209,7 @@ Publish the latest draft version of a flow to make it live on WhatsApp. This is 
   "published_at": "2026-04-16T09:05:00Z",
   "test_url": "https://wa.me/1234567890?text=product",
   "trigger_keyword": "product",
-  "magic_flow_url": "https://your-app/flow/uuid"
+  "platform_url": "https://your-app/flow/uuid"
 }
 ```
 
@@ -235,7 +235,7 @@ All errors (both HTTP and SSE) use this shape:
 {
   "code": "keyword_conflict",
   "message": "Trigger keyword 'product' is already in use",
-  "existing_flow": { "id": "...", "name": "...", "magic_flow_url": "..." }
+  "existing_flow": { "id": "...", "name": "...", "platform_url": "..." }
 }
 ```
 

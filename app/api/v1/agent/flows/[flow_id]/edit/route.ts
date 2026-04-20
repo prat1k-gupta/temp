@@ -135,7 +135,6 @@ export const POST = withAgentAuth(async (ctx, req) => {
       if (!captured.updates) {
         const latest = await getLatestVersion(ctx, project.id)
         if (latest?.isPublished) {
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
           const phoneDigits = ctx.account.phone_number?.replace(/\D/g, "")
           const firstKeyword = (project.triggerKeywords ?? [])[0]
           const testUrl =
@@ -151,8 +150,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
             summary: captured.message || `Version ${latest.versionNumber} is now live`,
             changes: [],
             node_count: latest.nodes.length,
-            magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
-            platform_url: `${appUrl}/flow/${project.id}`,
+            platform_url: project.platformUrl,
             test_url: testUrl,
             updated_at: new Date().toISOString(),
           })
@@ -284,8 +282,6 @@ export const POST = withAgentAuth(async (ctx, req) => {
       }
 
       // --- Emit final result ---
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
-
       // Compact changes summary (no full node data — just type, node_id, description)
       const changesSummary = flowChanges.map(c => ({
         type: c.type,
@@ -301,8 +297,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         summary: captured.message || "Flow edited successfully",
         changes: changesSummary,
         node_count: mergedNodes.length,
-        magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
-        platform_url: `${appUrl}/flow/${project.id}`,
+        platform_url: project.platformUrl,
         next_action: published
           ? undefined
           : "Call the publish tool to make this version live.",

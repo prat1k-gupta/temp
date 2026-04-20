@@ -205,7 +205,7 @@ describe("POST /v1/agent/flows/[flow_id]/edit", () => {
     expect(Array.isArray(result.changes)).toBe(true)
     expect(result.changes.length).toBeGreaterThan(0)
     expect(result.next_action).toContain("publish")
-    expect(result.magic_flow_url).toContain("/flow/proj_1")
+    expect(result.magic_flow_url).toBeUndefined()
     expect(result.platform_url).toContain("/flow/proj_1")
 
     // Should NOT have any error events

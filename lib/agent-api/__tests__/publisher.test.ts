@@ -69,12 +69,41 @@ describe("listFlows", () => {
       trigger_keyword: "iphone11",
       node_count: 6,
       current_version: 3,
-      magic_flow_url: expect.stringContaining("/flow/mf_1"),
       platform_url: expect.stringContaining("/flow/mf_1"),
       test_url: "https://wa.me/919876543210?text=iphone11",
       created_at: "2026-04-15T11:42:08Z",
       updated_at: "2026-04-15T11:47:22Z",
     })
+  })
+
+  it("uses fs-whatsapp's platform_url verbatim when provided", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_1",
+                name: "iPhone 11 Launch",
+                created_at: "2026-04-15T11:42:08Z",
+                updated_at: "2026-04-15T11:47:22Z",
+                trigger_keywords: ["iphone11"],
+                node_count: 6,
+                latest_version: 3,
+                platform_url: "https://app.freestand.io/custom-host/flow/mf_1",
+              },
+            ],
+            total: 1,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await listFlows(mockCtx(), 50)
+    expect(result.flows[0].platform_url).toBe("https://app.freestand.io/custom-host/flow/mf_1")
+    // magic_flow_url is removed from PublicFlow — consumers must use platform_url.
+    expect((result.flows[0] as unknown as Record<string, unknown>).magic_flow_url).toBeUndefined()
   })
 
   it("forwards X-API-Key in the fetch headers", async () => {
@@ -180,7 +209,12 @@ describe("createProject", () => {
         JSON.stringify({
           status: "success",
           data: {
-            project: { id: "proj_1", name: "Test Flow", platform: "whatsapp" },
+            project: {
+              id: "proj_1",
+              name: "Test Flow",
+              platform: "whatsapp",
+              platform_url: "https://app.test/flow/proj_1",
+            },
             latest_version: { id: "v_1", version_number: 1 },
           },
         }),
@@ -188,7 +222,7 @@ describe("createProject", () => {
       ),
     )
     const result = await createProject(mockCtx(), { name: "Test Flow", platform: "whatsapp" })
-    expect(result).toEqual({ id: "proj_1" })
+    expect(result).toEqual({ id: "proj_1", platformUrl: "https://app.test/flow/proj_1" })
 
     const [url, init] = (global.fetch as any).mock.calls[0]
     expect(url).toContain("/api/magic-flow/projects")
@@ -537,7 +571,6 @@ describe("checkKeywordConflict", () => {
     expect(result).toEqual({
       id: "mf_1",
       name: "iPhone 11 Flow",
-      magic_flow_url: expect.stringContaining("/flow/mf_1"),
       platform_url: expect.stringContaining("/flow/mf_1"),
     })
   })
@@ -626,6 +659,7 @@ describe("getProject", () => {
         trigger_match_type: "exact",
         wa_account_id: "waid_1",
         wa_phone_number: "+919876543210",
+        platform_url: "https://app.test/flow/proj_1",
         latest_version: {
           id: "ver_2",
           version_number: 2,
@@ -656,6 +690,7 @@ describe("getProject", () => {
       triggerMatchType: "exact",
       waAccountId: "waid_1",
       waPhoneNumber: "+919876543210",
+      platformUrl: "https://app.test/flow/proj_1",
       latestVersion: {
         id: "ver_2",
         versionNumber: 2,

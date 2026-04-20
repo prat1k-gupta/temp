@@ -305,8 +305,9 @@ export const POST = withAgentAuth(async (ctx, req) => {
         ...(runtime.flowSlug ? { flow_slug: runtime.flowSlug } : {}),
       })
 
-      // Step 6: Emit final result
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
+      // Step 6: Emit final result. platform_url comes from fs-whatsapp's
+      // createProject response (single source of truth driven by
+      // config.toml [platform] base_url), not a locally-rebuilt string.
       const phoneDigits = ctx.account.phone_number?.replace(/\D/g, "")
       const testUrl = phoneDigits
         ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(normalizedKeyword)}`
@@ -318,8 +319,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         name: flowName,
         summary: captured.message || "Flow created successfully",
         node_count: allNodes.length,
-        magic_flow_url: `${appUrl}/flow/${projectId}`, // deprecated — prefer platform_url
-        platform_url: `${appUrl}/flow/${projectId}`,
+        platform_url: project.platformUrl,
         test_url: testUrl,
         trigger_keyword: normalizedKeyword,
         created_at: new Date().toISOString(),

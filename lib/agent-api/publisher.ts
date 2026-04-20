@@ -12,8 +12,6 @@ export interface PublicFlow {
   trigger_keyword: string | undefined
   node_count: number
   current_version: number
-  /** @deprecated prefer platform_url */
-  magic_flow_url: string
   platform_url: string
   test_url: string | undefined
   created_at: string
@@ -37,6 +35,7 @@ interface FsProjectsEnvelope {
       trigger_keywords?: string[]
       node_count?: number
       latest_version?: number
+      platform_url?: string
     }>
     total: number
     page?: number
@@ -81,14 +80,18 @@ export async function listFlows(ctx: AgentContext, limit: number): Promise<ListF
   const projects = body.data?.projects ?? []
   const flows: PublicFlow[] = projects.map((p) => {
     const firstKeyword = (p.trigger_keywords ?? [])[0]
+    // Prefer the platform_url fs-whatsapp returns (driven by its
+    // config.toml [platform] base_url, the single source of truth).
+    // Fall back to the local builder only as a last resort — older
+    // fs-whatsapp versions may not emit the field.
+    const platformUrl = p.platform_url ?? buildMagicFlowUrl(p.id)
     return {
       flow_id: p.id,
       name: p.name,
       trigger_keyword: firstKeyword,
       node_count: p.node_count ?? 0,
       current_version: p.latest_version ?? 1,
-      magic_flow_url: buildMagicFlowUrl(p.id), // deprecated — prefer platform_url
-      platform_url: buildMagicFlowUrl(p.id),
+      platform_url: platformUrl,
       test_url: buildTestUrl(ctx.account.phone_number, firstKeyword),
       created_at: p.created_at,
       updated_at: p.updated_at,
@@ -114,7 +117,7 @@ export interface CreateProjectOpts {
 export async function createProject(
   ctx: AgentContext,
   opts: CreateProjectOpts,
-): Promise<{ id: string }> {
+): Promise<{ id: string; platformUrl: string }> {
   const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects`
 
   let res: Response
@@ -145,7 +148,7 @@ export async function createProject(
     throw new AgentError("internal_error", `fs-whatsapp returned ${res.status} when creating project`)
   }
 
-  let body: { status?: string; data?: { project?: { id?: string } } }
+  let body: { status?: string; data?: { project?: { id?: string; platform_url?: string } } }
   try {
     body = await res.json()
   } catch {
@@ -156,8 +159,9 @@ export async function createProject(
   if (!projectId) {
     throw new AgentError("internal_error", "fs-whatsapp did not return a project ID")
   }
+  const platformUrl = body.data?.project?.platform_url ?? buildMagicFlowUrl(projectId)
 
-  return { id: projectId }
+  return { id: projectId, platformUrl }
 }
 
 export async function updateProject(
@@ -215,6 +219,10 @@ export interface ProjectInfo {
   waAccountId: string
   waPhoneNumber: string
   latestVersion: VersionInfo | undefined
+  /** Deep link to this flow in the Freestand UI. Computed by fs-whatsapp
+   * from config.toml [platform] base_url so it's consistent with
+   * campaign / template / account platform_urls. */
+  platformUrl: string
 }
 
 function parseVersionInfo(v: {
@@ -289,6 +297,7 @@ export async function getProject(ctx: AgentContext, projectId: string): Promise<
     waAccountId: p.wa_account_id,
     waPhoneNumber: p.wa_phone_number,
     latestVersion: p.latest_version ? parseVersionInfo(p.latest_version) : undefined,
+    platformUrl: p.platform_url ?? buildMagicFlowUrl(p.id),
   }
 }
 
@@ -528,7 +537,7 @@ export async function publishRuntimeFlow(
 export async function checkKeywordConflict(
   ctx: AgentContext,
   normalizedKeyword: string,
-): Promise<{ id: string; name: string; magic_flow_url: string; platform_url: string } | null> {
+): Promise<{ id: string; name: string; platform_url: string } | null> {
   const { flows } = await listFlows(ctx, 50)
 
   const lowerKeyword = normalizedKeyword.toLowerCase()
@@ -541,7 +550,6 @@ export async function checkKeywordConflict(
   return {
     id: match.flow_id,
     name: match.name,
-    magic_flow_url: match.magic_flow_url, // deprecated — prefer platform_url
     platform_url: match.platform_url,
   }
 }

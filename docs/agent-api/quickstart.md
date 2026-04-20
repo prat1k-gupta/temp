@@ -63,7 +63,7 @@ Returns:
       "trigger_keyword": "product",
       "node_count": 4,
       "test_url": "https://wa.me/1234567890?text=product",
-      "magic_flow_url": "https://your-freestand-url/flow/..."
+      "platform_url": "https://your-freestand-url/flow/..."
     }
   ],
   "total": 1
@@ -122,7 +122,7 @@ Returns:
   "published_at": "2026-04-16T09:05:00Z",
   "test_url": "https://wa.me/1234567890?text=product",
   "trigger_keyword": "product",
-  "magic_flow_url": "https://your-freestand-url/flow/..."
+  "platform_url": "https://your-freestand-url/flow/..."
 }
 ```
 

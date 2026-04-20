@@ -48,6 +48,7 @@ function makeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
     waAccountId: "waid_1",
     waPhoneNumber: "+919876543210",
     latestVersion: makeVersion(),
+    platformUrl: "https://app.test/flow/proj_1",
     ...overrides,
   }
 }

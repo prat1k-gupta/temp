@@ -47,7 +47,6 @@ export const POST = withAgentAuth(async (ctx, req) => {
     throw new AgentError("flow_not_found", "Flow has no versions")
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
   const phoneDigits = ctx.account.phone_number?.replace(/\D/g, "")
   const firstKeyword = (project.triggerKeywords ?? [])[0]
   const testUrl =
@@ -66,8 +65,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         published_at: latestVersion.publishedAt,
         test_url: testUrl,
         trigger_keyword: firstKeyword,
-        magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
-        platform_url: `${appUrl}/flow/${project.id}`,
+        platform_url: project.platformUrl,
       },
       { status: 200 },
     )
@@ -115,8 +113,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
       published_at: new Date().toISOString(),
       test_url: testUrl,
       trigger_keyword: firstKeyword,
-      magic_flow_url: `${appUrl}/flow/${project.id}`, // deprecated — prefer platform_url
-      platform_url: `${appUrl}/flow/${project.id}`,
+      platform_url: project.platformUrl,
     },
     { status: 200 },
   )

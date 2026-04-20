@@ -35,7 +35,7 @@ X-API-Key: whm_...
       "trigger_keyword": "product",
       "node_count": 4,
       "current_version": 2,
-      "magic_flow_url": "https://app.freestand.xyz/flow/uuid",
+      "platform_url": "https://app.freestand.xyz/flow/uuid",
       "test_url": "https://wa.me/1234567890?text=product",
       "created_at": "2026-04-16T09:00:00Z",
       "updated_at": "2026-04-16T09:00:00Z"
@@ -89,7 +89,7 @@ event: progress
 data: {"phase":"publishing","message":"Deploying to runtime"}
 
 event: result
-data: {"flow_id":"uuid","version":2,"name":"Product Inquiry","summary":"Created a 3-node flow...","node_count":4,"magic_flow_url":"https://app.freestand.xyz/flow/uuid","test_url":"https://wa.me/1234567890?text=product","trigger_keyword":"product","created_at":"2026-04-16T09:00:00Z"}
+data: {"flow_id":"uuid","version":2,"name":"Product Inquiry","summary":"Created a 3-node flow...","node_count":4,"platform_url":"https://app.freestand.xyz/flow/uuid","test_url":"https://wa.me/1234567890?text=product","trigger_keyword":"product","created_at":"2026-04-16T09:00:00Z"}
 ```
 
 Rate limit: 10/min.
@@ -120,7 +120,7 @@ event: progress
 data: {"phase":"editing","message":"Applying changes to the flow"}
 
 event: result
-data: {"flow_id":"uuid","version":3,"published":false,"name":"Product Inquiry","summary":"Added a phone number question","changes":[{"type":"node_add","description":"Added question: Phone Number"}],"node_count":5,"magic_flow_url":"https://app.freestand.xyz/flow/uuid","next_action":"Call /publish to make this live","updated_at":"2026-04-16T09:02:00Z"}
+data: {"flow_id":"uuid","version":3,"published":false,"name":"Product Inquiry","summary":"Added a phone number question","changes":[{"type":"node_add","description":"Added question: Phone Number"}],"node_count":5,"platform_url":"https://app.freestand.xyz/flow/uuid","next_action":"Call /publish to make this live","updated_at":"2026-04-16T09:02:00Z"}
 ```
 
 Rate limit: 10/min.
@@ -149,7 +149,7 @@ Content-Type: application/json
   "published_at": "2026-04-16T09:05:00Z",
   "test_url": "https://wa.me/1234567890?text=product",
   "trigger_keyword": "product",
-  "magic_flow_url": "https://app.freestand.xyz/flow/uuid"
+  "platform_url": "https://app.freestand.xyz/flow/uuid"
 }
 ```
 
@@ -165,7 +165,7 @@ All errors use this shape (both HTTP responses and SSE `event: error`):
 {
   "code": "keyword_conflict",
   "message": "Trigger keyword 'product' is already in use",
-  "existing_flow": {"id": "...", "name": "...", "magic_flow_url": "..."}
+  "existing_flow": {"id": "...", "name": "...", "platform_url": "..."}
 }
 ```
 

@@ -21,6 +21,7 @@ export interface FlowEditContext {
     triggerMatchType: string
     flowSlug: string
     waAccountId: string
+    waAccountName: string
     waPhoneNumber?: string
     userTimezone?: string
     currentTime: string
@@ -59,6 +60,7 @@ export async function loadFlowForEdit(
       triggerMatchType: project.triggerMatchType,
       flowSlug: project.flowSlug,
       waAccountId: project.waAccountId,
+      waAccountName: ctx.account.name,
       waPhoneNumber: ctx.account.phone_number,
       // Server-side "now" so the AI can resolve relative times ("tomorrow 6 PM")
       // without relying on training-data priors. Public agent callers have no

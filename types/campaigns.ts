@@ -22,6 +22,10 @@ export interface Campaign {
   flow_id: string | null
   flow_name?: string | null
   audience_source: AudienceSource
+  // Shape varies by source; see CreateCampaignInput for the full spec.
+  // Backend now returns this on CampaignResponse so the UI can render
+  // filter details (tag/search/claimant id) without re-fetching.
+  audience_config?: Record<string, unknown> | null
   source_system: string | null
   source_external_id: string | null
   status: CampaignStatus

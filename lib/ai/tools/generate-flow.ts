@@ -4,7 +4,7 @@ import type { Platform, TemplateAIMetadata, TemplateResolver, ApprovedTemplate }
 import type { Node, Edge } from "@xyflow/react"
 import { editFlowPlanSchema, flowPlanSchema } from "@/types/flow-plan"
 import { buildFlowFromPlan, buildEditFlowFromPlan } from "@/utils/flow-plan-builder"
-import { fetchApprovedTemplates } from "./list-approved-templates"
+import { fetchTemplates } from "./list-templates"
 import { validateGeneratedFlow } from "@/utils/flow-validator"
 import { buildSystemPrompt, buildUserPrompt } from "./flow-prompts"
 import { executeEditMode, executeEditModeStreaming, applyNodeUpdates } from "./generate-flow-edit"
@@ -43,7 +43,7 @@ export interface GenerateFlowRequest {
      * templateMessage nodes are resolved authoritatively by (name, language)
      * rather than trusting model-supplied templateId / bodyPreview /
      * parameterMappings. Not surfaced to the AI in the prompt — the AI
-     * still discovers templates via the `list_approved_templates` tool
+     * still discovers templates via the `list_templates` tool
      * when it wants to see bodies/variables. This field is the builder's
      * private reference.
      */
@@ -270,12 +270,30 @@ async function primeApprovedTemplates(request: GenerateFlowRequest): Promise<voi
   if (!apiUrl || !authHeader) return
   if (request.toolContext?.approvedTemplates) return // already primed
 
-  const result = await fetchApprovedTemplates(apiUrl, authHeader)
-  if (!result.success) {
-    console.warn("[generate-flow] Failed to prime approved templates:", result.error)
-    return
+  // Include DRAFT and PENDING so the AI can wire templateMessage nodes to
+  // templates that were just created in-session, not only ones Meta has
+  // already approved. REJECTED stays out — it needs a fix+resubmit before
+  // it's usable. Plan-builder warns on non-APPROVED matches so the user
+  // knows the flow won't broadcast until approval lands.
+  const statuses = ["APPROVED", "DRAFT", "PENDING"] as const
+  const batches = await Promise.all(
+    statuses.map((s) => fetchTemplates(apiUrl, authHeader, s)),
+  )
+  const seen = new Set<string>()
+  const templates: ApprovedTemplate[] = []
+  for (const batch of batches) {
+    if (!batch.success) {
+      console.warn("[generate-flow] Failed to prime templates:", batch.error)
+      continue
+    }
+    for (const t of batch.templates) {
+      const key = `${t.name}||${t.language}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      templates.push(t)
+    }
   }
-  request.toolContext = { ...(request.toolContext || {}), approvedTemplates: result.templates }
+  request.toolContext = { ...(request.toolContext || {}), approvedTemplates: templates }
 }
 
 /**

@@ -15,7 +15,7 @@ export type TemplateResolver = (templateId: string) => { nodes: Node[], edges: E
 /**
  * A Meta-approved WhatsApp template, in the shape the flow builder resolves
  * templateMessage nodes against. Mirrors `ShapedTemplate` in
- * `lib/ai/tools/list-approved-templates.ts` — kept in sync by using the same
+ * `lib/ai/tools/list-templates.ts` — kept in sync by using the same
  * fetcher (fetchApprovedTemplates) at session start. Plan builders look up
  * by (name, language) against the current account's catalog so the AI can't
  * hallucinate bodyPreview / templateId / parameterMappings.
@@ -26,6 +26,11 @@ export interface ApprovedTemplate {
   displayName?: string
   language: string
   category: string
+  // Present when the catalog includes non-APPROVED statuses (e.g. the
+  // AI-session catalog fetched for flow-plan-builder). Plan-builder uses
+  // this to warn that a referenced template won't broadcast until Meta
+  // approves. Undefined for legacy list-templates responses that don't set it.
+  status?: string
   headerType?: string
   body: string
   variables: string[]

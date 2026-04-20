@@ -1411,12 +1411,8 @@ export function contentToNodeData(
         data.category = match.category
         if (match.headerType) data.headerType = match.headerType
         data.bodyPreview = match.body
-        // Catalog buttons already have lowercase types (see
-        // list-approved-templates.ts::shapeTemplate). Just assign fresh IDs.
+        // Catalog buttons already have lowercase types. Just assign fresh IDs.
         data.buttons = match.buttons.map((b, i) => ({ ...b, id: `btn-${i}` }))
-        // parameterMappings: one entry per real variable. Preserve any
-        // flowValue the AI already assigned (via an earlier edit turn)
-        // for matching templateVars; default to empty otherwise.
         const aiMappings = Array.isArray(content.parameterMappings)
           ? content.parameterMappings
           : []
@@ -1424,13 +1420,21 @@ export function contentToNodeData(
           const prior = aiMappings.find((m) => m?.templateVar === v)
           return prior ?? { templateVar: v, flowValue: "" }
         })
+        // Catalog now includes DRAFT/PENDING so AI can wire just-created
+        // templates into flows. Warn so the user knows the flow can't
+        // broadcast until Meta approves.
+        if (match.status && match.status !== "APPROVED") {
+          options.warnings?.push(
+            `templateMessage references "${match.name}" (${match.language}) which is ${match.status}. The flow will only send successfully after Meta approves it.`,
+          )
+        }
       } else if (name) {
         // Catalog provided but the name doesn't match any approved template.
-        // Surface a warning so the AI can retry with list_approved_templates
+        // Surface a warning so the AI can retry with list_templates
         // and pick a real name. Do NOT fall back to AI-supplied values —
         // that's the exact bug this resolver exists to prevent.
         options.warnings?.push(
-          `templateMessage references "${name}" (${lang}) — not in approved templates. Call list_approved_templates first and pick a real template.`,
+          `templateMessage references "${name}" (${lang}) — not in approved templates. Call list_templates first and pick a real template.`,
         )
       }
     } else {

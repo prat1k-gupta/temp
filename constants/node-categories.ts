@@ -438,11 +438,11 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
       whenToUse:
         "When the conversation needs to send a pre-approved Meta template — e.g. order confirmations, appointment reminders, re-engagement campaigns, any outbound message outside the 24-hour customer service window.",
       selectionRule:
-        "Only usable on WhatsApp. Requires calling `list_approved_templates` first to discover available templates. NEVER guess a template name — always use one returned by the tool.",
+        "Only usable on WhatsApp. Requires calling `list_templates` first to discover available templates. NEVER guess a template name — always use one returned by the tool.",
       contentFields:
-        "templateName (required, exact name from list_approved_templates), language (optional, defaults to 'en'), parameterMappings[{templateVar, flowValue}] (optional — pre-bind flow variables to template params). The builder fills templateId, bodyPreview, buttons, category, headerType from the approved-templates catalog; do NOT supply those.",
+        "templateName (required, exact name from list_templates), language (optional, defaults to 'en'), parameterMappings[{templateVar, flowValue}] (optional — pre-bind flow variables to template params). The builder fills templateId, bodyPreview, buttons, category, headerType from the approved-templates catalog; do NOT supply those.",
       bestPractices: [
-        "Always call `list_approved_templates` before choosing a template — never guess names",
+        "Always call `list_templates` before choosing a template — never guess names",
         "Supply only `templateName` and `language` — the builder fills in body, buttons, and template ID from the catalog",
         "For `parameterMappings`, use `{{variable_name}}` in `flowValue` to reference a flow variable, or a literal string for a static value",
         "The builder creates one parameterMappings entry per real template variable automatically — only include entries where you want a specific flowValue",

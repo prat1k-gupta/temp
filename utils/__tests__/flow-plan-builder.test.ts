@@ -2374,7 +2374,7 @@ describe("buildFlowFromPlan — templateMessage", () => {
 })
 
 describe("buildFlowFromPlan — templateMessage with approvedTemplates catalog", () => {
-  // Minimal catalog entry matching the shape returned by list_approved_templates.
+  // Minimal catalog entry matching the shape returned by list_templates.
   const catalog: ApprovedTemplate[] = [
     {
       id: "real-uuid-123",
@@ -2451,7 +2451,43 @@ describe("buildFlowFromPlan — templateMessage with approvedTemplates catalog",
     expect(result.warnings.length).toBeGreaterThan(0)
     const warning = result.warnings.find(w => w.includes("no_such_template_lol"))
     expect(warning).toBeDefined()
-    expect(warning).toContain("list_approved_templates")
+    expect(warning).toContain("list_templates")
+  })
+
+  it("hydrates a non-APPROVED match (DRAFT/PENDING) and emits a warning", () => {
+    const pendingCatalog: ApprovedTemplate[] = [{
+      ...catalog[0],
+      status: "PENDING",
+    }]
+    const plan = basePlan({
+      templateName: "welcome_customer",
+      language: "en",
+    })
+
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined, pendingCatalog)
+    const data = result.nodes.find((n) => n.type === "templateMessage")!.data as any
+
+    // Hydration still happens — AI needs preview/variables/buttons in the
+    // canvas for the template it just created.
+    expect(data.templateId).toBe("real-uuid-123")
+    expect(data.bodyPreview).toBe("Hi {{customer_name}}, welcome to {{company}}!")
+    expect(data.buttons).toHaveLength(2)
+
+    // But the user is told the flow can't actually send yet.
+    const warning = result.warnings.find(w => w.includes("welcome_customer"))
+    expect(warning).toBeDefined()
+    expect(warning).toContain("PENDING")
+    expect(warning?.toLowerCase()).toContain("approves")
+  })
+
+  it("emits no status warning when the matched template is APPROVED", () => {
+    const plan = basePlan({
+      templateName: "welcome_customer",
+      language: "en",
+    })
+    const approvedCatalog: ApprovedTemplate[] = [{ ...catalog[0], status: "APPROVED" }]
+    const result = buildFlowFromPlan(plan, "whatsapp", undefined, approvedCatalog)
+    expect(result.warnings).toEqual([])
   })
 
   it("merges parameterMappings: preserves AI-supplied flowValue for matching templateVars, adds catalog-only variables with empty flowValue, drops hallucinated templateVars", () => {

@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
 import { useTemplates, useSyncTemplates, useDeleteTemplate, usePublishTemplate, useDuplicateTemplate, useSaveTemplate } from "@/hooks/queries"
 import { formatRejectionReason } from "@/utils/template-helpers"
+import { buildTemplatePayload } from "@/utils/template-payload"
 
 interface Template {
   id: string
@@ -100,54 +101,7 @@ export default function TemplatesPage() {
   }
 
   const handleSave = async (data: any) => {
-    // Map builder field names to fs-whatsapp API field names.
-    // If the user set a header type but left the content blank, treat as no
-    // header — Meta rejects HEADER components with empty text/handle.
-    const hasHeaderContent = !!(data.header_content && data.header_content.trim())
-    const effectiveHeaderType = data.header_type === "none" || !hasHeaderContent
-      ? ""
-      : (data.header_type || "")
-
-    const payload: Record<string, any> = {
-      whatsapp_account: data.whatsapp_account || "",
-      name: data.name,
-      display_name: data.display_name,
-      language: data.language,
-      category: data.category,
-      header_type: effectiveHeaderType,
-      header_content: effectiveHeaderType ? (data.header_content || "") : "",
-      body_content: data.body || data.body_content || "",
-      footer_content: data.footer || data.footer_content || "",
-      buttons: (data.buttons || []).map((btn: any) => {
-        if (btn.type === "url" && btn.url && btn.url.includes("{{")) {
-          const urlVars = (btn.url.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
-          const example = urlVars.length > 0 ? (data.sample_values || {})[urlVars[0]] || "" : ""
-          return { ...btn, example }
-        }
-        return btn
-      }),
-      sample_values: (() => {
-        const bodyText = data.body || data.body_content || ""
-        const headerText = data.header_content || ""
-        const bodyVars = (bodyText.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
-        const headerVars = (headerText.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []).map((m: string) => m.replace(/\{\{|\}\}/g, ""))
-        const result: any[] = []
-        const pushSample = (component: "body" | "header", v: string) => {
-          const val = (data.sample_values || {})[v]
-          if (!val) return
-          const isPositional = /^\d+$/.test(v)
-          result.push({
-            component,
-            ...(isPositional ? { index: parseInt(v, 10) } : { param_name: v }),
-            value: val,
-          })
-        }
-        bodyVars.forEach((v: string) => pushSample("body", v))
-        headerVars.forEach((v: string) => pushSample("header", v))
-        return result
-      })(),
-    }
-
+    const payload = buildTemplatePayload(data)
     try {
       await saveMutation.mutateAsync({ id: data.id, data: payload })
       toast.success(data.id ? "Template updated" : "Template created")

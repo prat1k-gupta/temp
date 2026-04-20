@@ -8,7 +8,7 @@
  * Deduplicates; preserves first-occurrence order.
  *
  * Single source of truth for template variable parsing. Used by:
- * - lib/ai/tools/list-approved-templates.ts (for tool payload)
+ * - lib/ai/tools/list-templates.ts (for tool payload)
  * - utils/flow-plan-builder.ts (fallback when AI omits parameterMappings)
  * - components/properties-panel.tsx (when user picks a template)
  */

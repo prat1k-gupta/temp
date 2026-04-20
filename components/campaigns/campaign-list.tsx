@@ -45,6 +45,7 @@ import {
 } from "@/hooks/queries/use-campaigns"
 import { CampaignStatusBadge } from "./campaign-status-badge"
 import type { Campaign } from "@/types/campaigns"
+import { formatAudienceSummary } from "@/utils/campaign-audience"
 
 // Status groupings mirroring the fs-chat Vue parent — which transitions are
 // valid on which statuses determines which actions get rendered in the row
@@ -85,6 +86,7 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Type</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+              <th className="text-left font-medium text-muted-foreground px-4 py-3">Audience</th>
               <th className="text-left font-medium text-muted-foreground px-4 py-3">Progress</th>
               <th className="text-right font-medium text-muted-foreground px-4 py-3">Flow recipients</th>
               <th className="text-right font-medium text-muted-foreground px-4 py-3">Messages sent</th>
@@ -161,6 +163,18 @@ export function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                         {new Date(c.scheduled_at).toLocaleString()}
                       </span>
                     )}
+                  </td>
+
+                  {/* Audience */}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium capitalize">
+                        {c.audience_source.replace("-", " ")}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                        {formatAudienceSummary(c.audience_source, c.audience_config)}
+                      </span>
+                    </div>
                   </td>
 
                   {/* Progress */}

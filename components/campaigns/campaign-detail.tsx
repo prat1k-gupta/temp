@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { formatDistanceToNow } from "date-fns"
+import { describeAudience } from "@/utils/campaign-audience"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -165,6 +167,38 @@ export function CampaignDetail({ campaign }: { campaign: Campaign }) {
           </>
         )}
       </div>
+
+      {(() => {
+        const audience = describeAudience(campaign.audience_source, campaign.audience_config)
+        return (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
+            <span className="text-xs uppercase tracking-wide">Audience</span>
+            <Badge variant="outline" className="font-normal">
+              {audience.sourceLabel}
+            </Badge>
+            {audience.chips.map((chip) => (
+              <TooltipProvider key={chip.label} delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="secondary"
+                      className="font-normal gap-1 max-w-[320px] cursor-default"
+                    >
+                      <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
+                        {chip.label}
+                      </span>
+                      <span className="truncate font-mono text-[11px]">{chip.value}</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="font-mono text-[11px] max-w-md break-all">
+                    {chip.value}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ))}
+          </div>
+        )
+      })()}
 
       <MaterializationProgress campaign={campaign} />
 

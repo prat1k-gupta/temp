@@ -47,9 +47,9 @@ The user's timezone is ${request.toolContext?.userTimezone ?? "UTC"}. The curren
 - \`get_flow_variables\` — get variables used by a flow. Use to understand what data a flow collects before broadcasting.
 - \`preview_audience\` — preview how many recipients match an audience. ALWAYS call this before create_campaign. Show the user BOTH the exact audience descriptor (in readable form, e.g. "Tag is delhi" or the claimant audience name) AND the matching count so they can verify the right people were selected. Takes a discriminated \`source\`: for "contacts" pass filter/search/channel; for "freestand-claimant" pass audience_id. Note: preview_audience takes these as top-level params; create_campaign wraps the non-source fields inside audience_config.
 - \`create_campaign\` — creates a draft or scheduled broadcast campaign. Arguments include \`name\`, \`flow_id\`, \`account_name\`, \`audience_source\`, \`audience_config\`, and optional \`scheduled_at\` (ISO 8601 UTC). Valid audience sources:
-  - \`contacts\` — org contact DB; audience_config holds filter/search/channel.
+  - \`contacts\` — org contact DB (this is where tag-based audiences live; "send to tag X" → contacts, not freestand-claimant); audience_config holds filter/search/channel.
   - \`freestand-claimant\` — a Freestand claimant audience from go-backend; audience_config holds \`audience_id\` (UUID) + \`column_mapping\` (flow-variable-name → claimant column; allowed columns: name, city, state, pincode, country, address, status, claim_date, campaign_name, skus, utm_source, order_status, delivery_status, waybill_number). The campaign is returned with status \`materializing\` while recipients are fetched; poll get_campaign_status until status leaves \`materializing\` before calling start_campaign.
-  When the user asks to schedule ("tomorrow at 6 PM", "next Monday morning"), resolve the time in the user's timezone, convert to UTC, and pass \`scheduled_at\`. Must be at least 30 seconds in the future. NOT supported for CSV audience (users upload CSVs manually via UI — inform them and create a draft instead). Always call preview_audience first and confirm details with the user before creating.
+  When the user asks to schedule ("tomorrow at 6 PM", "next Monday morning"), resolve the time in the user's timezone, convert to UTC, and pass \`scheduled_at\`. Must be at least 30 seconds in the future. NOT supported for CSV audience (users upload CSVs manually via UI — inform them and create a draft instead). Always call preview_audience first and confirm details with the user before creating — do not chain preview+create in one turn. Also call \`list_campaigns\` first; if a campaign for this flow is already in \`draft/materializing/scheduled/queued/processing\`, refuse a duplicate unless the user explicitly asks for a second one. "Add template" in chat refers to editing the flow (apply_edit), never to creating a campaign.
 - \`reschedule_campaign\` — change the scheduled time of an existing campaign. Works on draft, scheduled, and failed campaigns. Confirm the new time with the user before calling.
 - \`start_campaign\` — starts sending. NEVER call this without explicit user confirmation. For freestand-claimant campaigns, ensure status has left \`materializing\` first.
 - \`get_campaign_status\` — check progress of a campaign. Status can be one of: draft, materializing, scheduled, queued, processing, paused, completed, cancelled, failed. \`materializing\` is transient and only occurs for freestand-claimant broadcasts while recipients are being fetched — poll this tool until it resolves. Returns sent/delivered/read/failed counts, plus materialized_count / audience_total / error_message for freestand-claimant.
@@ -59,13 +59,30 @@ The user's timezone is ${request.toolContext?.userTimezone ?? "UTC"}. The curren
 Valid audience_source values for create_campaign are "contacts" and "freestand-claimant". Ask the user who they want to target, and which source to use if ambiguous.
 
 **Template-first rule for broadcasts.** WhatsApp only permits initiating messages outside the 24-hour session window via approved templates. Broadcasts almost always target cold recipients, so any flow intended for broadcast MUST start (the node immediately after Start) with a \`templateMessage\` node referencing an approved template — otherwise WhatsApp will reject every send. When the user asks to broadcast a new flow or an existing flow whose entry node is not a template:
-1. Call \`list_approved_templates\` first to see what's available.
+1. Call \`list_templates\` first (defaults to APPROVED) to see what's available.
 2. Pick the template that best matches the user's stated goal (feedback → a feedback template, promo → a promo template, etc.) and confirm the choice with the user.
-3. If no approved template fits, tell the user they need to create + get Meta approval for one before the broadcast can go out; offer to help them draft the template.
+3. If no approved template fits, offer to draft one using \`create_template\` and submit it via \`submit_template\` — or tell the user the broadcast has to wait until Meta approves it.
 4. Only skip this rule if the user explicitly says something like "skip the template" or "send without a template" — and in that case warn them the broadcast will fail on cold recipients.
 Do NOT create a campaign for a flow that starts with a plain \`whatsappMessage\` node. Check the entry node before calling \`create_campaign\`.
 
-**templateMessage node content.** When you add a \`templateMessage\` node to a flow, supply ONLY \`templateName\` and \`language\` (default "en"). The builder looks up the real \`templateId\`, \`bodyPreview\`, \`category\`, \`headerType\`, \`buttons\`, and the base \`parameterMappings\` shape from the approved-templates catalog — you don't need to (and MUST NOT) copy the body text or invent a template ID. If the name you supply doesn't match any approved template, the node is dropped with a warning, so pick exactly what \`list_approved_templates\` returned.` : ""}
+**templateMessage node content.** When you add a \`templateMessage\` node to a flow, supply ONLY \`templateName\` and \`language\` (default "en"). The builder looks up the real \`templateId\`, \`bodyPreview\`, \`category\`, \`headerType\`, \`buttons\`, and the base \`parameterMappings\` shape from the approved-templates catalog — you don't need to (and MUST NOT) copy the body text or invent a template ID. If the name you supply doesn't match any approved template, the node is dropped with a warning, so pick exactly what \`list_templates\` returned.${request.platform === "whatsapp" ? `
+
+**Template lifecycle (WhatsApp only).** You have \`create_template\`, \`update_template\`, \`submit_template\`, \`get_template\`, \`sync_templates\`, \`delete_template\` — see each tool's description for what it does. Two rules override those descriptions:
+
+- **Confirmation gates.** For every mutating call (create/update/submit/delete), show the user what you're about to do (draft preview for create, diff for update, template name for delete/submit) and wait for a yes in a separate turn. Never chain create → submit in one turn — ask between. \`get_template\` / \`sync_templates\` are read-only.
+- **Fixing REJECTED**: \`get_template\` to read \`rejection_reason\` → explain → confirm → \`update_template\` → confirm → \`submit_template\`.
+
+**Broadcast + template-status check.** Before calling \`create_campaign\` for a flow that contains one or more \`templateMessage\` nodes, verify every referenced template is APPROVED. Walk the flow, collect each \`templateName\`, and call \`get_template\` (or \`list_templates({status:"DRAFT"|"PENDING"|"REJECTED"})\`) for any you're unsure about.
+
+- **All templates APPROVED** → proceed normally.
+- **Any non-APPROVED template AND \`scheduled_at\` is omitted (immediate send)** → do NOT call \`create_campaign\`. Explain to the user:
+  - Meta rejects every send for non-APPROVED templates (error 132001).
+  - Every recipient fails silently; the audience is effectively burned for this broadcast.
+  - Best practice: submit the template (\`submit_template\`) and wait for Meta approval (typical: minutes to hours). Then broadcast.
+  - Or pick an APPROVED template.
+- **Any non-APPROVED template AND \`scheduled_at\` is far enough in the future** → proceed, but warn the user explicitly: "template X is still \${status}; your scheduled send at \${scheduled_at} will only succeed if Meta approves by then, otherwise every recipient fails". Ask them to confirm before calling \`create_campaign\`.
+
+The backend enforces the same rule (409 on immediate + non-APPROVED; warning in the response on scheduled). If the backend rejects, relay its message verbatim — it names the offending template(s) and is already user-friendly.` : ""}` : ""}
 
 **Instructions:**
 ${isEdit ? getEditInstructions() : getCreateInstructions()}

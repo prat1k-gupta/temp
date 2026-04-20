@@ -342,7 +342,7 @@ function buildDataStructure(
   // fields in the plan — they will be overwritten, and inventing a fake
   // templateId or paraphrasing bodyPreview is a bug.
   if (t === "templateMessage") {
-    base.templateName = "string (REQUIRED — exact name from list_approved_templates.name)"
+    base.templateName = "string (REQUIRED — exact name from list_templates.name, call with default APPROVED status)"
     base.language = "string (optional, defaults to 'en' — must match the template's language)"
     base.parameterMappings = [
       {

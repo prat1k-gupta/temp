@@ -21,7 +21,8 @@ import type {
   UpdateBrief,
 } from "./generate-flow"
 import { buildToolStepPayload, nodeBrief } from "./generate-flow"
-import { createListApprovedTemplatesTool } from "./list-approved-templates"
+import { createListTemplatesTool } from "./list-templates"
+import { createTemplateCrudTools } from "./template-crud"
 import { flattenFlow } from "@/utils/flow-flattener"
 import { convertToFsWhatsApp } from "@/utils/whatsapp-converter"
 
@@ -815,23 +816,39 @@ function createEditTools(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extraTools: Record<string, any> = {}
 
-  // list_approved_templates
-  extraTools.list_approved_templates = (() => {
+  // list_templates — default APPROVED; pass status for DRAFT/PENDING/REJECTED/etc.
+  extraTools.list_templates = (() => {
     if (request.platform !== 'whatsapp') {
       return tool({
-        description: 'List approved WhatsApp message templates. Only available on WhatsApp flows.',
+        description: 'List WhatsApp message templates. Only available on WhatsApp flows.',
         inputSchema: z.object({}),
         execute: async () => ({ success: false, error: `Templates are only available for WhatsApp flows. This flow uses ${request.platform}.` }),
       })
     }
-    const created = createListApprovedTemplatesTool(toolContext)
+    const created = createListTemplatesTool(toolContext)
     if (created) return created
     return tool({
-      description: 'List approved WhatsApp message templates.',
+      description: 'List WhatsApp message templates.',
       inputSchema: z.object({}),
       execute: async () => ({ success: false, error: 'Cannot list templates — authentication context is missing.' }),
     })
   })()
+
+  // Template CRUD tools — create, update, submit, get, sync, delete.
+  // WhatsApp-only; on other platforms we still register them so the AI
+  // gets a clear error instead of an undefined-tool crash.
+  if (request.platform === 'whatsapp') {
+    Object.assign(extraTools, createTemplateCrudTools(toolContext))
+  } else {
+    const notSupported = tool({
+      description: `Templates are only available for WhatsApp flows. This flow uses ${request.platform}.`,
+      inputSchema: z.object({}),
+      execute: async () => ({ success: false, error: `Templates are only available for WhatsApp flows. This flow uses ${request.platform}.` }),
+    })
+    for (const name of ["create_template", "update_template", "submit_template", "get_template", "sync_templates", "delete_template"]) {
+      extraTools[name] = notSupported
+    }
+  }
 
   // trigger_flow
   extraTools.trigger_flow = tool({

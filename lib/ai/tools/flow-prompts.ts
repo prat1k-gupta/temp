@@ -58,12 +58,15 @@ The user's timezone is ${request.toolContext?.userTimezone ?? "UTC"}. The curren
 - \`cancel_campaign\` — cancel a campaign permanently. Confirm with user first.
 Valid audience_source values for create_campaign are "contacts" and "freestand-claimant". Ask the user who they want to target, and which source to use if ambiguous.
 
-**Template-first rule for broadcasts.** WhatsApp only permits initiating messages outside the 24-hour session window via approved templates. Broadcasts almost always target cold recipients, so any flow intended for broadcast MUST start (the node immediately after Start) with a \`templateMessage\` node referencing an approved template — otherwise WhatsApp will reject every send. When the user asks to broadcast a new flow or an existing flow whose entry node is not a template:
-1. Call \`list_templates\` first (defaults to APPROVED) to see what's available.
-2. Pick the template that best matches the user's stated goal (feedback → a feedback template, promo → a promo template, etc.) and confirm the choice with the user.
-3. If no approved template fits, offer to draft one using \`create_template\` and submit it via \`submit_template\` — or tell the user the broadcast has to wait until Meta approves it.
-4. Only skip this rule if the user explicitly says something like "skip the template" or "send without a template" — and in that case warn them the broadcast will fail on cold recipients.
-Do NOT create a campaign for a flow that starts with a plain \`whatsappMessage\` node. Check the entry node before calling \`create_campaign\`.
+**Template-first rule for broadcasts.** WhatsApp only permits initiating messages outside the 24-hour session window via approved templates. Walk the flow from Start and find the first **user-facing message node** — skip these server-side types: \`apiFetch\`, \`action\`, \`transfer\`, \`condition\`, \`flowComplete\`, \`shopify\`, \`stripe\`, \`zapier\`, \`google\`, \`salesforce\`, \`mailchimp\`, \`twilio\`, \`slack\`, \`airtable\`, \`metaAudience\`.
+
+User-facing node types are: \`templateMessage\`, \`whatsappMessage\`, \`instagramDM\`, \`instagramStory\`, \`question\`, \`quickReply\`, \`interactiveList\`, \`whatsappFlow\`, \`name\`, \`email\`, \`dob\`, \`address\`, \`homeDelivery\`, \`trackingNotification\`, \`event\`, \`retailStore\`.
+
+- **First user-facing = \`templateMessage\`** → proceed normally (still verify approval status per the rules below).
+- **First user-facing = any other type** → warn the user: "The first user-facing message in this flow isn't a template. Meta rejects non-template first messages to cold recipients, so this broadcast will only work for warm 24-hour-window recipients. Add a templateMessage at the top or confirm you want to proceed."
+- **No user-facing messages at all** (pure action/integration flow) → proceed. It's a data-pipeline broadcast.
+
+If no approved template fits the user's stated goal, offer to draft one using \`create_template\` and submit it via \`submit_template\`. The backend enforces only template-APPROVED-status on existing \`templateMessage\` nodes — it does NOT check position or existence, so don't refuse a campaign it would accept.
 
 **templateMessage node content.** When you add a \`templateMessage\` node to a flow, supply ONLY \`templateName\` and \`language\` (default "en"). The builder looks up the real \`templateId\`, \`bodyPreview\`, \`category\`, \`headerType\`, \`buttons\`, and the base \`parameterMappings\` shape from the approved-templates catalog — you don't need to (and MUST NOT) copy the body text or invent a template ID. If the name you supply doesn't match any approved template, the node is dropped with a warning, so pick exactly what \`list_templates\` returned.${request.platform === "whatsapp" ? `
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,19 +23,16 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useAccounts, useUploadTemplateMedia } from "@/hooks/queries"
-import { formatRejectionReason } from "@/utils/template-helpers"
-
-const MEDIA_SIZE_LIMITS_MB: Record<string, number> = {
-  image: 5,
-  video: 16,
-  document: 100,
-}
-
-const MEDIA_ACCEPT: Record<string, string> = {
-  image: "image/jpeg,image/png",
-  video: "video/mp4,video/3gp",
-  document: "application/pdf",
-}
+import { formatRejectionReason, extractTemplateVariables } from "@/utils/template-helpers"
+import {
+  LANGUAGES,
+  CATEGORIES,
+  BUTTON_TYPES,
+  MEDIA_SIZE_LIMITS_MB,
+  MEDIA_ACCEPT,
+  TEMPLATE_LIMITS,
+} from "@/constants/template"
+import { TemplateSchema, formatTemplateIssues } from "@/lib/schemas/template-schema"
 
 interface TemplateButton {
   type: "quick_reply" | "url" | "phone_number" | "copy_code"
@@ -69,40 +66,6 @@ interface TemplateBuilderProps {
   onCancel: () => void
 }
 
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "en_US", label: "English (US)" },
-  { value: "en_GB", label: "English (UK)" },
-  { value: "es", label: "Spanish" },
-  { value: "pt_BR", label: "Portuguese (BR)" },
-  { value: "hi", label: "Hindi" },
-  { value: "ar", label: "Arabic" },
-  { value: "fr", label: "French" },
-  { value: "de", label: "German" },
-  { value: "it", label: "Italian" },
-  { value: "ja", label: "Japanese" },
-  { value: "ko", label: "Korean" },
-  { value: "zh_CN", label: "Chinese (Simplified)" },
-]
-
-const CATEGORIES = [
-  { value: "MARKETING", label: "Marketing" },
-  { value: "UTILITY", label: "Utility" },
-  { value: "AUTHENTICATION", label: "Authentication" },
-]
-
-const BUTTON_TYPES = [
-  { value: "quick_reply", label: "Quick Reply" },
-  { value: "url", label: "URL" },
-  { value: "phone_number", label: "Phone Number" },
-  { value: "copy_code", label: "Copy Code" },
-]
-
-function extractVariables(text: string): string[] {
-  const matches = text.match(/\{\{(\d+|[a-zA-Z_]+)\}\}/g) || []
-  return [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, "")))]
-}
-
 const emptyTemplate: TemplateData = {
   name: "",
   display_name: "",
@@ -125,7 +88,9 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts()
   const uploadMutation = useUploadTemplateMedia()
-  const uploading = uploadMutation.isPending
+
+  const headerVars = useMemo(() => extractTemplateVariables(data.header_content), [data.header_content])
+  const bodyVars = useMemo(() => extractTemplateVariables(data.body), [data.body])
 
   // Auto-select if only one account and no account set
   useEffect(() => {
@@ -142,20 +107,9 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
     return value.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_/, "")
   }
 
-  // Collect all variables from header + body + URL buttons
-  const urlButtonVars = data.buttons
-    .filter((b) => b.type === "url" && b.url)
-    .flatMap((b) => extractVariables(b.url || ""))
-
-  const allVariables = [
-    ...extractVariables(data.header_content),
-    ...extractVariables(data.body),
-    ...urlButtonVars,
-  ]
-
   const handleAddButton = (type: string) => {
-    if (data.buttons.length >= 10) {
-      toast.error("Maximum 10 buttons allowed")
+    if (data.buttons.length >= TEMPLATE_LIMITS.totalButtonsMax) {
+      toast.error(`Maximum ${TEMPLATE_LIMITS.totalButtonsMax} buttons allowed`)
       return
     }
     const newButton: TemplateButton = {
@@ -188,7 +142,9 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
       return
     }
 
-    const limitMB = MEDIA_SIZE_LIMITS_MB[data.header_type] ?? 5
+    const limitMB = data.header_type === "image" || data.header_type === "video" || data.header_type === "document"
+      ? MEDIA_SIZE_LIMITS_MB[data.header_type]
+      : 5
     if (file.size > limitMB * 1024 * 1024) {
       toast.error(`File too large. Max ${limitMB} MB for ${data.header_type}.`)
       return
@@ -235,6 +191,23 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
       // header, footer, buttons, and category alone in improve mode.
       if (result.bodyContent) update({ body: result.bodyContent })
 
+      // Merge AI-generated sample values for any new body variables. In
+      // improve mode we only merge samples for variables that exist in the
+      // new body — drop ones orphaned by the rewrite.
+      if (result.sampleValues && typeof result.sampleValues === "object") {
+        const bodyText = result.bodyContent || data.body
+        const bodyVars = extractTemplateVariables(bodyText)
+        const headerVars = isImprove || !result.headerContent ? [] : extractTemplateVariables(result.headerContent)
+        const relevant = new Set([...bodyVars, ...headerVars])
+        const filtered: Record<string, string> = {}
+        for (const [k, v] of Object.entries(result.sampleValues)) {
+          if (relevant.has(k) && typeof v === "string" && v.trim()) filtered[k] = v
+        }
+        if (Object.keys(filtered).length > 0) {
+          update({ sample_values: { ...data.sample_values, ...filtered } })
+        }
+      }
+
       if (!isImprove) {
         if (result.headerContent && result.headerType !== "none") {
           update({ header_type: result.headerType || "text", header_content: result.headerContent })
@@ -261,33 +234,15 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
   }
 
   const handleSave = async () => {
-    if (!data.whatsapp_account) {
-      toast.error("WhatsApp account is required")
+    const result = TemplateSchema.safeParse(data)
+    if (!result.success) {
+      const issues = formatTemplateIssues(result)
+      // Show up to 3 issues per toast to keep it readable; the rest are
+      // summarised so the user knows more exist without overflowing.
+      const preview = issues.slice(0, 3).join("\n")
+      const extra = issues.length > 3 ? `\n+ ${issues.length - 3} more` : ""
+      toast.error(`Fix these before saving:\n${preview}${extra}`)
       return
-    }
-    if (!data.name) {
-      toast.error("Template name is required")
-      return
-    }
-    if (!data.body) {
-      toast.error("Template body is required")
-      return
-    }
-    // Meta requires quick reply buttons to be grouped together (not interleaved with other types)
-    if (data.buttons.length > 1) {
-      const types = data.buttons.map((b) => b.type === "quick_reply" ? "qr" : "other")
-      const seen = new Set<string>()
-      let lastType = ""
-      let interleaved = false
-      for (const t of types) {
-        if (t !== lastType && seen.has(t)) { interleaved = true; break }
-        seen.add(t)
-        lastType = t
-      }
-      if (interleaved) {
-        toast.error("Quick reply buttons must be grouped together — they can't be mixed with URL/phone buttons")
-        return
-      }
     }
     setSaving(true)
     try {
@@ -425,17 +380,17 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                     <p className="text-[9px] text-muted-foreground/50 mb-1">Bold text above the body. Supports one {"{{variable}}"}.</p>
                     <VariablePickerTextarea
                       value={data.header_content}
-                      onValueChange={(val) => { if (val.length <= 60) update({ header_content: val }) }}
+                      onValueChange={(val) => { if (val.length <= TEMPLATE_LIMITS.headerTextMax) update({ header_content: val }) }}
                       placeholder="e.g. Order update for {{customer_name}}"
                       className="min-h-[36px] text-sm"
                       showUnknownWarnings={false}
                       showVariableButton={false}
                     />
                     <div className="flex justify-end mt-0.5">
-                      <span className="text-[10px] text-muted-foreground/50">{data.header_content.length}/60</span>
+                      <span className="text-[10px] text-muted-foreground/50">{data.header_content.length}/{TEMPLATE_LIMITS.headerTextMax}</span>
                     </div>
                   </div>
-                  {extractVariables(data.header_content).map((v) => (
+                  {headerVars.map((v) => (
                     <div key={v} className="flex items-center gap-2">
                       <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
                       <Input
@@ -467,9 +422,9 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                         type="button"
                         className="cursor-pointer h-7 px-2 text-xs gap-1"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
+                        disabled={uploadMutation.isPending}
                       >
-                        {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        {uploadMutation.isPending ?<Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                         Replace
                       </Button>
                     </div>
@@ -479,16 +434,20 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                       type="button"
                       className="w-full justify-start cursor-pointer h-9"
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading || !data.whatsapp_account}
+                      disabled={uploadMutation.isPending || !data.whatsapp_account}
                     >
-                      {uploading ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-2" />}
-                      {uploading ? "Uploading…" : `Upload ${data.header_type}`}
+                      {uploadMutation.isPending ?<Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-2" />}
+                      {uploadMutation.isPending ?"Uploading…" : `Upload ${data.header_type}`}
                     </Button>
                   )}
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept={MEDIA_ACCEPT[data.header_type] ?? ""}
+                    accept={
+                      data.header_type === "image" || data.header_type === "video" || data.header_type === "document"
+                        ? MEDIA_ACCEPT[data.header_type]
+                        : ""
+                    }
                     className="hidden"
                     onChange={handleMediaUpload}
                   />
@@ -521,19 +480,19 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                 <p className="text-[10px] text-muted-foreground/60 mb-1.5">Type <code className="bg-muted px-1 rounded text-[9px]">{"{{" }</code> to insert a dynamic variable</p>
                 <VariablePickerTextarea
                   value={data.body}
-                  onValueChange={(val) => { if (val.length <= 1024) update({ body: val }) }}
+                  onValueChange={(val) => { if (val.length <= TEMPLATE_LIMITS.bodyMax) update({ body: val }) }}
                   placeholder="Hello {{user_name}}, your order {{order_id}} is confirmed!"
                   className="min-h-[120px] text-sm"
                   showUnknownWarnings={false}
                 />
                 <div className="flex justify-end mt-0.5">
-                  <span className="text-[10px] text-muted-foreground/50">{data.body.length}/1024</span>
+                  <span className="text-[10px] text-muted-foreground/50">{data.body.length}/{TEMPLATE_LIMITS.bodyMax}</span>
                 </div>
               </div>
-              {extractVariables(data.body).length > 0 && (
+              {bodyVars.length > 0 && (
                 <div className="border-t border-border/40 pt-2 space-y-1.5">
                   <p className="text-[10px] text-muted-foreground/60">Sample values for Meta review</p>
-                  {extractVariables(data.body).map((v) => (
+                  {bodyVars.map((v) => (
                     <div key={v} className="flex items-center gap-2">
                       <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
                       <Input
@@ -559,12 +518,12 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                 <p className="text-[9px] text-muted-foreground/50 mb-1">Small text below the body. No variables allowed.</p>
                 <Input
                   value={data.footer}
-                  onChange={(e) => { if (e.target.value.length <= 60) update({ footer: e.target.value }) }}
+                  onChange={(e) => { if (e.target.value.length <= TEMPLATE_LIMITS.footerMax) update({ footer: e.target.value }) }}
                   placeholder="e.g. Reply STOP to unsubscribe"
                   className="h-9"
                 />
                 <div className="flex justify-end mt-1">
-                  <span className="text-[10px] text-muted-foreground/50">{data.footer.length}/60</span>
+                  <span className="text-[10px] text-muted-foreground/50">{data.footer.length}/{TEMPLATE_LIMITS.footerMax}</span>
                 </div>
               </div>
             </section>
@@ -574,7 +533,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-medium text-muted-foreground tracking-wide">Buttons</h3>
-                  <span className="text-[10px] text-muted-foreground/50">{data.buttons.length}/10</span>
+                  <span className="text-[10px] text-muted-foreground/50">{data.buttons.length}/{TEMPLATE_LIMITS.totalButtonsMax}</span>
                 </div>
                 <Select onValueChange={handleAddButton}>
                   <SelectTrigger className="w-[140px] h-7 text-xs">
@@ -612,11 +571,11 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                     <Label className="text-[10px] text-muted-foreground">Button Label</Label>
                     <Input
                       value={btn.text}
-                      onChange={(e) => { if (e.target.value.length <= 25) handleUpdateButton(idx, { text: e.target.value }) }}
+                      onChange={(e) => { if (e.target.value.length <= TEMPLATE_LIMITS.buttonTextMax) handleUpdateButton(idx, { text: e.target.value }) }}
                       placeholder="e.g. Learn More"
                       className="mt-0.5 h-8 text-xs"
                     />
-                    <p className="text-[9px] text-muted-foreground/50 mt-0.5">Text shown on the button · {btn.text.length}/25</p>
+                    <p className="text-[9px] text-muted-foreground/50 mt-0.5">Text shown on the button · {btn.text.length}/{TEMPLATE_LIMITS.buttonTextMax}</p>
                   </div>
                   {btn.type === "url" && (
                     <div className="space-y-2">
@@ -632,7 +591,7 @@ export function TemplateBuilder({ template, onSave, onCancel }: TemplateBuilderP
                           showVariableButton={false}
                         />
                       </div>
-                      {extractVariables(btn.url || "").map((v) => (
+                      {extractTemplateVariables(btn.url || "").map((v) => (
                         <div key={v} className="flex items-center gap-2">
                           <span className="shrink-0 font-mono text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 rounded px-1.5 py-0.5 min-w-[50px] text-center">{v}</span>
                           <Input

@@ -157,16 +157,29 @@ Respond with raw JSON only.`
       }
 
       // Try to parse the JSON (and validate against schema if provided)
+      let raw: unknown
       try {
-        const raw = JSON.parse(jsonText)
+        raw = JSON.parse(jsonText)
+      } catch (parseError) {
+        console.error('[AI Client] Failed to parse JSON response:', jsonText)
+        console.error('[AI Client] Parse error:', parseError)
+        throw new Error(`AI returned non-JSON text. Response starts: ${jsonText.substring(0, 200)}...`)
+      }
+      try {
         const parsed = params.schema ? params.schema.parse(raw) as T : raw as T
         const duration = Date.now() - startTime
         console.log(`[AI Client] ${modelId} — Generated JSON in ${duration}ms`)
         return parsed
-      } catch (parseError) {
-        console.error('[AI Client] Failed to parse JSON response:', jsonText)
-        console.error('[AI Client] Parse error:', parseError)
-        throw new Error(`Invalid JSON response from AI. Response: ${jsonText.substring(0, 200)}...`)
+      } catch (schemaError) {
+        console.error('[AI Client] Schema validation failed on AI response:', raw)
+        if (schemaError instanceof z.ZodError) {
+          const issues = schemaError.issues
+            .map((i) => `${i.path.join(".") || "root"}: ${i.message}`)
+            .slice(0, 5)
+            .join("; ")
+          throw new Error(`AI response didn't match expected schema — ${issues}`)
+        }
+        throw schemaError
       }
     } catch (error) {
       console.error(`[AI Client] ${modelId} — Error generating JSON:`, error)

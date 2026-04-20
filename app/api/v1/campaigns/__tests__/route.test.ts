@@ -47,16 +47,30 @@ describe("GET /api/v1/campaigns", () => {
   })
 })
 
-describe("POST /api/v1/campaigns", () => {
-  it("validates body and forwards to fs-whatsapp", async () => {
-    vi.mocked(proxyToFsWhatsApp).mockResolvedValue({
+// POST /v1/campaigns resolves body.flow_id (magic_flow_projects.id) to
+// published_flow_id (chatbot_flows.id) via a preflight GET to
+// /api/magic-flow/projects/{id} before forwarding to /api/campaigns.
+const RUNTIME_FLOW_ID = "0a479bc1-9633-4548-b0d1-ef218e349d9b"
+
+type ProxyResult = Awaited<ReturnType<typeof proxyToFsWhatsApp>>
+
+function mockProjectThenCampaign(campaignResult: ProxyResult) {
+  // 1st call: project lookup. 2nd call: /api/campaigns.
+  vi.mocked(proxyToFsWhatsApp)
+    .mockResolvedValueOnce({
       ok: true,
       status: 200,
-      data: {
-        id: "cmp_1",
-        platform_url: "https://app.test/campaigns/cmp_1",
-        warnings: [],
-      },
+      data: { project: { published_flow_id: RUNTIME_FLOW_ID } },
+    })
+    .mockResolvedValueOnce(campaignResult)
+}
+
+describe("POST /api/v1/campaigns", () => {
+  it("resolves project flow_id to published_flow_id before forwarding", async () => {
+    mockProjectThenCampaign({
+      ok: true,
+      status: 200,
+      data: { id: "cmp_1", platform_url: "https://app.test/campaigns/cmp_1", warnings: [] },
     })
     const req = new Request("http://localhost/api/v1/campaigns", {
       method: "POST",
@@ -65,18 +79,57 @@ describe("POST /api/v1/campaigns", () => {
     })
     const res = await POST(req)
     expect(res.status).toBe(200)
+
+    const calls = vi.mocked(proxyToFsWhatsApp).mock.calls
+    expect(calls[0][0].path).toBe(`/api/magic-flow/projects/${validCampaignBody.flow_id}`)
+    expect(calls[1][0].path).toBe("/api/campaigns")
+    expect((calls[1][0].body as { flow_id: string }).flow_id).toBe(RUNTIME_FLOW_ID)
+  })
+
+  it("returns 400 flow_not_published when the project has no published_flow_id", async () => {
+    vi.mocked(proxyToFsWhatsApp).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      data: { project: { published_flow_id: null } },
+    })
+    const req = new Request("http://localhost/api/v1/campaigns", {
+      method: "POST",
+      headers: { "X-API-Key": "whm_x", "Content-Type": "application/json" },
+      body: JSON.stringify(validCampaignBody),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.code).toBe("flow_not_published")
+    expect(vi.mocked(proxyToFsWhatsApp).mock.calls).toHaveLength(1)
+  })
+
+  it("propagates upstream project-lookup errors (e.g. 404 flow_not_found)", async () => {
+    vi.mocked(proxyToFsWhatsApp).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      error: { code: "flow_not_found", message: "Flow not found" },
+    })
+    const req = new Request("http://localhost/api/v1/campaigns", {
+      method: "POST",
+      headers: { "X-API-Key": "whm_x", "Content-Type": "application/json" },
+      body: JSON.stringify(validCampaignBody),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(404)
+    const body = await res.json()
+    expect(body.code).toBe("flow_not_found")
+    expect(vi.mocked(proxyToFsWhatsApp).mock.calls).toHaveLength(1)
   })
 
   it("preserves warnings[] from fs-whatsapp in the response", async () => {
-    vi.mocked(proxyToFsWhatsApp).mockResolvedValue({
+    mockProjectThenCampaign({
       ok: true,
       status: 200,
       data: {
         id: "cmp_1",
         platform_url: "https://app.test/campaigns/cmp_1",
-        warnings: [
-          { code: "first_message_not_template", message: "..." },
-        ],
+        warnings: [{ code: "first_message_not_template", message: "..." }],
       },
       warnings: [{ code: "first_message_not_template", message: "..." }],
     })
@@ -99,6 +152,8 @@ describe("POST /api/v1/campaigns", () => {
     })
     const res = await POST(req)
     expect(res.status).toBe(400)
+    // Schema validation happens before any proxy call
+    expect(vi.mocked(proxyToFsWhatsApp).mock.calls).toHaveLength(0)
   })
 })
 

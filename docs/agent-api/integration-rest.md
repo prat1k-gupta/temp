@@ -103,6 +103,8 @@ Hit the limit → `429 rate_limited`. Back off and retry. The response body incl
 | POST | `/v1/campaigns/{id}/cancel` | publish | Cancel permanently |
 | POST | `/v1/campaigns/preview-audience` | write | Preview recipient count for an audience filter |
 
+Every campaign response (list, detail, create) carries top-level `audience_id` and `audience_name` for `freestand-claimant` sources so callers don't have to dig into `audience_config` JSONB or resolve the name out-of-band. `audience_id` is always populated; `audience_name` is best-effort — resolved from go-backend with a short cache and omitted if upstream is unreachable.
+
 ---
 
 ## Happy-path walkthrough — broadcast a flow
@@ -582,6 +584,7 @@ curl -X POST -H "X-API-Key: $FREESTAND_API_KEY" \
 ```json
 {
   "total_count": 8923,
+  "audience_id": "aud_01H...",
   "audience_type": "freestand-claimant",
   "audience_name": "Diwali Sale Claimants — Round 2",
   "snapshot_date": "2026-04-19T22:00:00Z",
@@ -593,7 +596,7 @@ curl -X POST -H "X-API-Key: $FREESTAND_API_KEY" \
 }
 ```
 
-`available_columns` lists the 14 fields the claimant audience exposes. You can map any of them to your flow's variables in step 2.
+The response echoes the `audience_id` you sent so you can correlate a preview back to its request without client-side bookkeeping. `available_columns` lists the 14 fields the claimant audience exposes — you can map any of them to your flow's variables in step 2.
 
 #### 2. Create the campaign with `column_mapping`
 
@@ -626,6 +629,9 @@ curl -X POST -H "X-API-Key: $FREESTAND_API_KEY" \
   "status": "materializing",
   "total_recipients": null,
   "audience_total": 8923,
+  "audience_source": "freestand-claimant",
+  "audience_id": "aud_01H...",
+  "audience_name": "Diwali Sale Claimants — Round 2",
   "platform_url": "https://fs-flow.vercel.app/campaigns/cmp_02H..."
 }
 ```

@@ -1258,7 +1258,8 @@ function createEditTools(
     })
 
     actionTools.get_flow_variables = tool({
-      description: 'Get the list of variables used by a published flow. Useful to understand what data a flow collects or requires before broadcasting it.',
+      description:
+        'Get the variables a published flow uses, split into two buckets. `needs_mapping` is the set of {{variable}} references the flow expects but never writes — these MUST be supplied via `column_mapping` when creating a broadcast (missing values render literally or trigger Meta 131008 rejections for templateMessage sends). `flow_managed` is the set of variables the flow writes itself at runtime (button picks, text inputs, API responses) — do NOT put these in `column_mapping`; the runtime overwrites anything mapped. Use `needs_mapping` to drive column_mapping keys and use `flow_managed` purely for visibility.',
       inputSchema: z.object({
         flow_id: z.string().uuid().describe('UUID of the published flow'),
       }),
@@ -1273,7 +1274,17 @@ function createEditTools(
             return { success: false, error: data?.message || data?.error || `HTTP ${response.status}` }
           }
           const result = data?.data || data
-          return { success: true, variables: result.variables || [] }
+          // fs-whatsapp now emits {needs_mapping, internal_flow_variables}. We
+          // expose the same two buckets here — renaming `internal_flow_variables`
+          // to `flow_managed` on the tool surface purely for the AI prompt's
+          // readability (the system-prompt rule set talks about "flow-managed"
+          // variables). Fall through to [] on unexpected shapes so the AI sees
+          // an empty bucket instead of an error dead-end.
+          return {
+            success: true,
+            needs_mapping: result.needs_mapping || [],
+            flow_managed: result.internal_flow_variables || [],
+          }
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Network error' }
         }

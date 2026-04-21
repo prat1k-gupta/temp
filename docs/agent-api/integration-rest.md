@@ -69,7 +69,7 @@ Hit the limit → `429 rate_limited`. Back off and retry. The response body incl
 
 | Method | Path | Bucket | Purpose |
 |---|---|---|---|
-| GET | `/v1/flows` | cheap | List flows |
+| GET | `/v1/flows?query=&limit=` | cheap | List flows. `query` (optional) is a case-insensitive substring match against flow name and trigger_keywords — applied server-side. `limit` defaults to 10, max 50. |
 | GET | `/v1/flows/{id}` | cheap | Get a single flow |
 | PATCH | `/v1/flows/{id}` | write | Update metadata (name, keywords, match type, ref, description, enabled). Cascades to the runtime on published flows — no re-publish needed. |
 | DELETE | `/v1/flows/{id}` | write | Delete a flow |
@@ -137,7 +137,7 @@ Save `accounts[0].name` — every campaign needs it.
 
 ```bash
 curl -H "X-API-Key: $FREESTAND_API_KEY" \
-  "https://fs-flow.vercel.app/api/v1/flows?limit=10"
+  "https://fs-flow.vercel.app/api/v1/flows?query=diwali&limit=10"
 ```
 
 ```json
@@ -154,7 +154,7 @@ curl -H "X-API-Key: $FREESTAND_API_KEY" \
 }
 ```
 
-If the flow isn't in the list, log into the platform and check it's published — only published flows are broadcastable.
+`query` is applied server-side as a case-insensitive substring match against flow name + trigger_keywords — omit it to list everything. If the flow still isn't in the list, log into the platform and check it's published — only published flows are broadcastable.
 
 ### 3. Preview the audience
 

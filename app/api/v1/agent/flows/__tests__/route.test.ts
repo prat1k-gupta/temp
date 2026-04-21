@@ -118,17 +118,40 @@ describe("GET /v1/agent/flows", () => {
     expect(body.code).toBe("invalid_param")
   })
 
-  it("forwards the query param to fs-whatsapp unchanged (for future server-side filtering)", async () => {
-    mockFsResponses()
+  it("forwards the query param to fs-whatsapp as a server-side search filter", async () => {
+    // Capture the projects-list URL so we can prove listFlows actually put
+    // the query on the wire — a silent regression that dropped `query` in
+    // publisher.listFlows (e.g. URLSearchParams rename) would have still
+    // returned 200 + a body, so just asserting shape is insufficient.
+    const seenUrls: string[] = []
+    const accountsBody = {
+      status: "success",
+      data: {
+        accounts: [
+          { id: "acc_1", name: "Acme Main", phone_number: "+919876543210", status: "active", has_access_token: true },
+        ],
+      },
+    }
+    const projectsBody = { status: "success", data: { projects: [], total: 0, page: 1, limit: 50 } }
+    let callIndex = 0
+    ;(global.fetch as any).mockImplementation((url: string) => {
+      seenUrls.push(url)
+      const response =
+        callIndex === 0
+          ? new Response(JSON.stringify(accountsBody), { status: 200 })
+          : new Response(JSON.stringify(projectsBody), { status: 200 })
+      callIndex++
+      return Promise.resolve(response)
+    })
+
     const req = new Request("https://example.com/api/v1/agent/flows?query=iphone", {
       headers: { "x-api-key": "whm_abc" },
     })
     const res = await GET(req)
     expect(res.status).toBe(200)
-    // The query is accepted at the schema level even though Phase 1 doesn't
-    // use it server-side — the parent LLM does fuzzy matching on the client.
-    const body = await res.json()
-    expect(body.flows).toBeDefined()
+    const projectsCall = seenUrls.find((u) => u.includes("/api/magic-flow/projects"))
+    expect(projectsCall).toBeDefined()
+    expect(projectsCall).toContain("query=iphone")
   })
 })
 

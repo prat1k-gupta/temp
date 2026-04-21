@@ -46,9 +46,17 @@ interface FsProjectsEnvelope {
 /**
  * Call fs-whatsapp's magic-flow projects list, forwarding the agent's API key.
  * Normalizes each project into our public flow shape with computed URLs.
+ *
+ * `query` (optional) is applied server-side in fs-whatsapp as a case-
+ * insensitive substring match against flow name + trigger_keywords. Empty
+ * / whitespace-only queries are ignored.
  */
-export async function listFlows(ctx: AgentContext, limit: number): Promise<ListFlowsResult> {
-  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects?limit=${encodeURIComponent(String(limit))}`
+export async function listFlows(ctx: AgentContext, limit: number, query?: string): Promise<ListFlowsResult> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (query && query.trim() !== "") {
+    params.set("query", query)
+  }
+  const url = `${FS_WHATSAPP_URL}/api/magic-flow/projects?${params.toString()}`
 
   let res: Response
   try {

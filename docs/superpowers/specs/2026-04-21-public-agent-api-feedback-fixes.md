@@ -25,8 +25,8 @@ Update this table as PRs open / merge. "fs-whatsapp" and "magic-flow" columns ho
 | PR | fs-whatsapp | magic-flow | Doc (`integration-rest.md`) | Status |
 |---|---|---|---|---|
 | PR-1 Audience fields + preview echo | [fs-chat#48](https://github.com/freestandtech/fs-chat/pull/48) merged | [magic-flow#100](https://github.com/freestandtech/magic-flow/pull/100) merged | covered in #100 | ✅ shipped |
-| PR-4 Flow variable buckets | branch `agent-api/flow-variable-buckets` | branch `agent-api/flow-variable-buckets-docs` | bundled in magic-flow branch | in progress |
-| PR-2 Server-side flow search | — | — | — | queued |
+| PR-4 Flow variable buckets | [fs-chat#49](https://github.com/freestandtech/fs-chat/pull/49) merged | [magic-flow#101](https://github.com/freestandtech/magic-flow/pull/101) merged | covered in #101 | ✅ shipped |
+| PR-2 Server-side flow search | branch `agent-api/flow-search` | branch `agent-api/flow-search-docs` | bundled in magic-flow branch | in progress |
 | PR-3 `description` end-to-end | — | — | — | queued |
 | PR-5 `PublicCampaign` normalizer | — | — | — | deferred |
 | Follow-ups | — | — | — | deferred |

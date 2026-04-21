@@ -124,6 +124,24 @@ describe("listFlows", () => {
     expect(url).toContain("limit=25")
   })
 
+  it("forwards query to fs-whatsapp when supplied and omits it otherwise", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: "success", data: { projects: [], total: 0 } }), { status: 200 }),
+    )
+    await listFlows(mockCtx(), 10, "pedigree")
+    expect((global.fetch as any).mock.calls[0][0]).toContain("query=pedigree")
+
+    ;(global.fetch as any).mockClear()
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(JSON.stringify({ status: "success", data: { projects: [], total: 0 } }), { status: 200 }),
+    )
+    // Whitespace-only query → dropped on our side before we even hit the
+    // wire, so fs-whatsapp's query handler doesn't need to defend against
+    // the trivial ILIKE '%%' match.
+    await listFlows(mockCtx(), 10, "   ")
+    expect((global.fetch as any).mock.calls[0][0]).not.toContain("query=")
+  })
+
   it("omits test_url when the account has no phone_number", async () => {
     ;(global.fetch as any).mockResolvedValue(
       new Response(

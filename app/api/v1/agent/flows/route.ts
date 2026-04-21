@@ -30,8 +30,10 @@ interface CapturedFlowData {
  * GET /v1/agent/flows — find/list flows for the authenticated org.
  *
  * Query params:
- *   - query (optional): fuzzy hint string; not used server-side in v1,
- *                       parent LLM does the fuzzy matching on the returned list
+ *   - query (optional): case-insensitive substring match against flow name
+ *                       + trigger_keywords, applied server-side in
+ *                       fs-whatsapp. Empty / whitespace-only values are
+ *                       ignored.
  *   - limit (optional): 1-50, default 10
  *
  * Auth: X-API-Key header with a whm_* key. See withAgentAuth.
@@ -51,7 +53,7 @@ export const GET = withAgentAuth(async (ctx, req) => {
     })
   }
 
-  const result = await listFlows(ctx, parsed.data.limit)
+  const result = await listFlows(ctx, parsed.data.limit, parsed.data.query)
   return Response.json(result, { status: 200 })
 }, "cheap")
 

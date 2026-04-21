@@ -7,7 +7,7 @@ Auth on every endpoint: `X-API-Key: whm_...` header.
 Find/list flows for the authenticated org.
 
 **Query params:**
-- `query` (optional) — hint string for matching
+- `query` (optional) — case-insensitive substring match on flow name + trigger_keywords, applied server-side. Empty/whitespace values are ignored.
 - `limit` (optional) — 1-50, default 10
 
 **Response (200):**

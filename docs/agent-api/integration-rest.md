@@ -75,7 +75,7 @@ Hit the limit → `429 rate_limited`. Back off and retry. The response body incl
 | DELETE | `/v1/flows/{id}` | write | Delete a flow |
 | POST | `/v1/flows/{id}/publish` | publish | Publish the latest draft (idempotent) |
 | POST | `/v1/flows/{id}/trigger` | write | Send the flow to a phone number for testing |
-| GET | `/v1/flows/{id}/variables` | cheap | List the flow's variables, bucketed into `needs_mapping` (must be supplied via `column_mapping`) and `flow_managed` (written by the flow at runtime — do not map) |
+| GET | `/v1/flows/{id}/variables` | cheap | List the flow's variables, bucketed into `needs_mapping` (must be supplied via `column_mapping`) and `internal_flow_variables` (written by the flow at runtime — do not map) |
 
 ### Templates
 
@@ -609,12 +609,12 @@ curl -H "X-API-Key: $FREESTAND_API_KEY" \
 ```json
 {
   "needs_mapping": ["customer_name", "order_id", "tracking_id"],
-  "flow_managed": ["platform_choice", "platform_choice_title", "rating", "rating_title"]
+  "internal_flow_variables": ["platform_choice", "platform_choice_title", "rating", "rating_title"]
 }
 ```
 
 - **`needs_mapping`** — variables the flow references but never writes. These are the keys you MUST pass to `column_mapping`. Missing any of them renders literal `{{var}}` in plain messages or triggers Meta's `131008` rejection for templateMessage broadcasts.
-- **`flow_managed`** — variables the flow writes at runtime (button picks, text inputs, API responses, WhatsApp flow submissions). Mapping these is a no-op; the runtime overwrites them at the producing step.
+- **`internal_flow_variables`** — variables the flow writes at runtime (button picks, text inputs, API responses, WhatsApp flow submissions). Mapping these is a no-op; the runtime overwrites them at the producing step.
 
 Use the list as the source of truth for which keys to include in `column_mapping` next. If a name you expected to see in `needs_mapping` is absent, the flow's runtime doesn't reference it — mapping it would be silently discarded.
 
@@ -704,7 +704,7 @@ curl -X POST -H "X-API-Key: $FREESTAND_API_KEY" \
 #### Notes specific to freestand-claimant
 
 - **Allowed `column_mapping` values** (right-hand side of each key) — `name, city, state, pincode, country, address, status, claim_date, campaign_name, skus, utm_source, order_status, delivery_status, waybill_number`. Anything else is rejected with `400 invalid_param`.
-- **Variable names** (left-hand side) come from the `needs_mapping` bucket of `GET /v1/flows/{id}/variables`. These are the flow's `{{<identifier>}}` placeholders that no step writes — including placeholders inside referenced WhatsApp templates. Mapping a `flow_managed` variable instead is silently ignored at runtime.
+- **Variable names** (left-hand side) come from the `needs_mapping` bucket of `GET /v1/flows/{id}/variables`. These are the flow's `{{<identifier>}}` placeholders that no step writes — including placeholders inside referenced WhatsApp templates. Mapping a `internal_flow_variables` variable instead is silently ignored at runtime.
 - **Materialization is one-shot** — if you cancel the campaign and re-create it for the same `audience_id`, the runtime materializes again. There's no caching.
 - **Scheduling works the same way:** add `scheduled_at` in step 2 to get `materializing → scheduled` instead of `materializing → draft`. The scheduler picks it up at the scheduled time.
 

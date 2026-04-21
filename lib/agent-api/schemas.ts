@@ -18,6 +18,12 @@ export type FindFlowQuery = z.infer<typeof findFlowQuerySchema>
 /** POST /v1/agent/flows request body. */
 export const createFlowBodySchema = z.object({
   name: z.string().min(1).max(100),
+  // Optional free-text description surfaced on list/detail. Same 1000-char
+  // cap as patchFlowBodySchema so update-after-create doesn't silently
+  // truncate. Omit to create without a description; fs-whatsapp stores
+  // empty string in that case, and both list and detail responses emit
+  // `"description": ""` (never undefined).
+  description: z.string().max(1000).optional(),
   instruction: z.string().min(1).max(4000),
   channel: z.enum(["whatsapp", "instagram", "web"]),
   trigger_keyword: z.string().min(1).max(50),

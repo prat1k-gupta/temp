@@ -146,6 +146,7 @@ curl -H "X-API-Key: $FREESTAND_API_KEY" \
     {
       "flow_id": "f_01H...",
       "name": "Diwali promo",
+      "description": "Round-2 fulfilment update",
       "trigger_keyword": "diwali",
       "node_count": 6,
       "platform_url": "https://fs-flow.vercel.app/flow/f_01H..."
@@ -154,7 +155,7 @@ curl -H "X-API-Key: $FREESTAND_API_KEY" \
 }
 ```
 
-`query` is applied server-side as a case-insensitive substring match against flow name + trigger_keywords — omit it to list everything. If the flow still isn't in the list, log into the platform and check it's published — only published flows are broadcastable.
+Every flow in the list carries `description` as a string — empty when none was ever set. Use it for a subtitle / tooltip; persist edits via `PATCH /v1/flows/{id}`. `query` is applied server-side as a case-insensitive substring match against flow name + trigger_keywords — omit it to list everything. If the flow still isn't in the list, log into the platform and check it's published — only published flows are broadcastable.
 
 ### 3. Preview the audience
 

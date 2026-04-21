@@ -66,6 +66,9 @@ describe("listFlows", () => {
     expect(result.flows[0]).toEqual({
       flow_id: "mf_1",
       name: "iPhone 11 Launch",
+      // fs-whatsapp didn't send a description → empty string, never
+      // undefined (consumers rely on PublicFlow.description existing).
+      description: "",
       trigger_keyword: "iphone11",
       node_count: 6,
       current_version: 3,
@@ -74,6 +77,34 @@ describe("listFlows", () => {
       created_at: "2026-04-15T11:42:08Z",
       updated_at: "2026-04-15T11:47:22Z",
     })
+  })
+
+  it("passes description through from fs-whatsapp verbatim", async () => {
+    ;(global.fetch as any).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: "success",
+          data: {
+            projects: [
+              {
+                id: "mf_2",
+                name: "Diwali promo",
+                description: "Round-2 fulfilment update flow",
+                created_at: "2026-04-18T11:00:00Z",
+                updated_at: "2026-04-18T11:00:00Z",
+                trigger_keywords: ["diwali"],
+                node_count: 4,
+                latest_version: 1,
+              },
+            ],
+            total: 1,
+          },
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await listFlows(mockCtx(), 10)
+    expect(result.flows[0].description).toBe("Round-2 fulfilment update flow")
   })
 
   it("uses fs-whatsapp's platform_url verbatim when provided", async () => {
@@ -267,6 +298,34 @@ describe("createProject", () => {
     const body = JSON.parse((global.fetch as any).mock.calls[0][1].body)
     expect(body.trigger_keywords).toEqual(["hello"])
     expect(body.trigger_match_type).toBe("exact")
+  })
+
+  it("forwards description when supplied and omits the field entirely otherwise", async () => {
+    const mockOk = () =>
+      (global.fetch as any).mockResolvedValue(
+        new Response(
+          JSON.stringify({ status: "success", data: { project: { id: "p1" }, latest_version: {} } }),
+          { status: 200 },
+        ),
+      )
+
+    mockOk()
+    await createProject(mockCtx(), {
+      name: "Test",
+      description: "Shop-and-save for pet parents",
+      platform: "whatsapp",
+    })
+    const withDesc = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect(withDesc.description).toBe("Shop-and-save for pet parents")
+
+    ;(global.fetch as any).mockClear()
+    mockOk()
+    // undefined → field dropped on the wire, so fs-whatsapp's decoder sees
+    // no key and leaves the column at its default empty string rather than
+    // interpreting a null.
+    await createProject(mockCtx(), { name: "Test", platform: "whatsapp" })
+    const withoutDesc = JSON.parse((global.fetch as any).mock.calls[0][1].body)
+    expect("description" in withoutDesc).toBe(false)
   })
 
   it("throws internal_error on non-2xx response", async () => {

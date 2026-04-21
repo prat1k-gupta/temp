@@ -17,6 +17,7 @@ Find/list flows for the authenticated org.
     {
       "flow_id": "uuid",
       "name": "Product Inquiry",
+      "description": "Collects product interest + email for sales follow-up",
       "trigger_keyword": "product",
       "node_count": 4,
       "current_version": 2,
@@ -30,6 +31,8 @@ Find/list flows for the authenticated org.
 }
 ```
 
+`description` is always a string — empty when the flow has no description set. Never `undefined` / absent from the payload.
+
 **Rate limit:** 120/min per key.
 
 ---
@@ -42,6 +45,7 @@ Create a new flow from natural language and publish it immediately. Returns SSE 
 ```json
 {
   "name": "Product Inquiry",
+  "description": "Collects product interest + email for sales follow-up",
   "instruction": "ask what product the user wants, ask their email, say thanks",
   "channel": "whatsapp",
   "trigger_keyword": "product"
@@ -51,6 +55,7 @@ Create a new flow from natural language and publish it immediately. Returns SSE 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Flow name (1-100 chars) |
+| `description` | string | no | Free-text description (max 1000 chars) surfaced on list/detail responses. Omit to store as empty. |
 | `instruction` | string | yes | What the flow should do (1-4000 chars) |
 | `channel` | string | yes | `"whatsapp"` (instagram/web coming later) |
 | `trigger_keyword` | string | yes | Keyword to trigger the flow (1-50 chars) |
@@ -90,6 +95,7 @@ data: {
   "flow_id": "uuid",
   "version": 2,
   "name": "Product Inquiry",
+  "description": "Collects product interest + email for sales follow-up",
   "summary": "Created a 3-node flow that...",
   "node_count": 4,
   "platform_url": "https://your-app/flow/uuid",
@@ -98,6 +104,8 @@ data: {
   "created_at": "2026-04-16T09:00:00Z"
 }
 ```
+
+`description` echoes the request body — empty string when the create call didn't send one.
 
 **In-stream errors** (HTTP status is still 200, error comes through the stream):
 

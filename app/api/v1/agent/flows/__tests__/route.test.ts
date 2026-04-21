@@ -373,10 +373,29 @@ describe("POST /v1/agent/flows", () => {
     expect(result.platform_url).toContain("/flow/proj_1")
     expect(result.test_url).toBe("https://wa.me/919876543210?text=lead")
     expect(result.created_at).toBeDefined()
+    // No description sent on the request → echoed as empty string, never
+    // undefined. Matches PublicFlow's always-string contract.
+    expect(result.description).toBe("")
 
     // Should NOT have any error events
     const errorEvents = events.filter((e) => e.event === "error")
     expect(errorEvents).toHaveLength(0)
+  })
+
+  it("echoes the request description in the result event when supplied", async () => {
+    mockHappyPathFetch()
+    mockHappyPathAI()
+
+    const req = makePostRequest({
+      instruction: "Create a lead capture flow",
+      channel: "whatsapp",
+      trigger_keyword: "lead2",
+      description: "Sales-qualified lead capture — stages phone + email before routing",
+    })
+    const res = await POST(req)
+    const events = await readSSE(res)
+    const result = events.find((e) => e.event === "result")?.data
+    expect(result?.description).toBe("Sales-qualified lead capture — stages phone + email before routing")
   })
 
   // -------------------------------------------------------------------------

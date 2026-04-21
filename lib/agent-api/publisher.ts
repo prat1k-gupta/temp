@@ -9,6 +9,7 @@ import type { AgentContext } from "./types"
 export interface PublicFlow {
   flow_id: string
   name: string
+  description: string
   trigger_keyword: string | undefined
   node_count: number
   current_version: number
@@ -30,6 +31,7 @@ interface FsProjectsEnvelope {
     projects: Array<{
       id: string
       name: string
+      description?: string
       created_at: string
       updated_at: string
       trigger_keywords?: string[]
@@ -96,6 +98,7 @@ export async function listFlows(ctx: AgentContext, limit: number, query?: string
     return {
       flow_id: p.id,
       name: p.name,
+      description: p.description ?? "",
       trigger_keyword: firstKeyword,
       node_count: p.node_count ?? 0,
       current_version: p.latest_version ?? 1,
@@ -115,6 +118,7 @@ export async function listFlows(ctx: AgentContext, limit: number, query?: string
 
 export interface CreateProjectOpts {
   name: string
+  description?: string
   platform: string
   triggerKeywords?: string[]
   triggerMatchType?: string
@@ -138,6 +142,10 @@ export async function createProject(
       },
       body: JSON.stringify({
         name: opts.name,
+        // Forward description only when supplied — omit the field entirely
+        // on undefined so fs-whatsapp's struct decoder leaves the column at
+        // its default empty-string value instead of seeing a literal null.
+        ...(opts.description !== undefined ? { description: opts.description } : {}),
         platform: opts.platform,
         trigger_keywords: opts.triggerKeywords,
         trigger_match_type: opts.triggerMatchType,

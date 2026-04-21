@@ -87,7 +87,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
     })
   }
 
-  const { name: flowName, instruction, channel, trigger_keyword: rawKeyword } = parsed.data
+  const { name: flowName, description: flowDescription, instruction, channel, trigger_keyword: rawKeyword } = parsed.data
   const normalizedKeyword = rawKeyword.toLowerCase()
 
   // Channel check
@@ -116,6 +116,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
       // Step 1: Create project
       const project = await createProject(ctx, {
         name: flowName,
+        description: flowDescription,
         platform: channel,
         triggerKeywords: [normalizedKeyword],
         triggerMatchType: "exact",
@@ -319,6 +320,7 @@ export const POST = withAgentAuth(async (ctx, req) => {
         flow_id: projectId,
         version: version.version_number,
         name: flowName,
+        description: flowDescription ?? "",
         summary: captured.message || "Flow created successfully",
         node_count: allNodes.length,
         platform_url: project.platformUrl,
